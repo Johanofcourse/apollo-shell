@@ -3,35 +3,28 @@ import json
 from datetime import datetime
 
 
-def fetch_poweroutage_data():
+def fetch_fpl_outages():
     """
-    Fetches live outage data from PowerOutage.us
-    Returns the raw JSON response
+    Fetches live outage data from FPL's CountyOutages.json endpoint
+    Returns the parsed JSON data
     """
-    # Use the full URL with query parameters from the browser
-    url = "https://poweroutage.us/__data.json?x-sveltekit-trailing-slash=1"
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://poweroutage.us/',
-        'x-sveltekit-fetch': 'true'
-    }
+    url = "https://www.fplmaps.com/customer/outage/CountyOutages.json"
     
     try:
-        session = requests.Session()
+        print("Fetching FPL outage data...")
         
-        # Visit main page first
-        session.get('https://poweroutage.us/', headers=headers, timeout=10)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://www.fplmaps.com/'
+        }
         
-        # Add a small delay to look more human
-        import time
-        time.sleep(1)
-        
-        # Fetch data with SvelteKit parameters
-        response = session.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
+        
+        # Debug: print what we actually got
+        print(f"Status Code: {response.status_code}")
+        print(f"Content Type: {response.headers.get('content-type')}")
+        print(f"First 200 chars of response: {response.text[:200]}")
         
         return response.json()
     
@@ -40,77 +33,65 @@ def fetch_poweroutage_data():
         return None
 
 
-def parse_florida_data(json_data):
+def display_south_florida_outages(data):
     """
-    Parses the compressed PowerOutage.us JSON format
-    Finds and returns Florida's outage data
+    Filters and displays outages for South Florida counties
+    (Miami-Dade, Broward, Palm Beach)
     """
-    try:
-        # Navigate to the states data node
-        # The structure is: nodes[2]["data"][2] contains state records
-        states_node = json_data["nodes"][2]["data"]
-        
-        # Index 2 has the schema (field names mapped to positions)
-        schema = states_node[2]
-        
-        # Index 1 has the array of state data arrays
-        state_arrays = states_node[1]
-        
-        # Find Florida in the data
-        for state_array in state_arrays:
-            state_dict = {}
-            
-            # Map the schema positions to values
-            for key, position in schema.items():
-                if position < len(state_array):
-                    state_dict[key] = state_array[position]
-            
-            # Check if this is Florida
-            if state_dict.get("stateAbbr") == "FL":
-                return state_dict
-        
-        print("Florida not found in data")
-        return None
+    if not data or 'outages' not in data:
+        print("No outage data available")
+        return
     
-    except Exception as e:
-        print(f"Error parsing data: {e}")
-        return None    
+    # South Florida counties we care about
+    south_fl_counties = ['Miami-Dade', 'Broward', 'Palm Beach']
+    
+    print("\n" + "=" * 70)
+    print("SOUTH FLORIDA POWER OUTAGES (FPL)")
+    print("=" * 70)
+    
+    total_out = 0
+    total_served = 0
+    
+    for outage in data['outages']:
+        county = outage.get('County Name', '')
+        
+        if county in south_fl_counties:
+            customers_out = int(outage.get('Customers Out', '0').replace(',', ''))
+            customers_served = int(outage.get('Customers Served', '0').replace(',', ''))
+            
+            total_out += customers_out
+            total_served += customers_served
+            
+            percentage = (customers_out / customers_served * 100) if customers_served > 0 else 0
+            
+            print(f"\n{county} County:")
+            print(f"  Customers Out: {customers_out:,}")
+            print(f"  Total Customers: {customers_served:,}")
+            print(f"  Percentage Affected: {percentage:.2f}%")
+    
+    print("\n" + "-" * 70)
+    print(f"TOTAL SOUTH FLORIDA:")
+    print(f"  Customers Out: {total_out:,}")
+    print(f"  Total Customers: {total_served:,}")
+    
+    overall_percentage = (total_out / total_served * 100) if total_served > 0 else 0
+    print(f"  Percentage Affected: {overall_percentage:.2f}%")
+    
+    print("=" * 70)
+    print(f"Data retrieved at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 70 + "\n")
 
 
 def main():
     """
-    Main function - fetches and displays Florida outage data
+    Main function - fetches and displays FPL outage data
     """
-    print("Fetching Florida outage data from PowerOutage.us...")
-    print("-" * 60)
+    data = fetch_fpl_outages()
     
-    # Fetch the data
-    data = fetch_poweroutage_data()
-    
-    if not data:
-        print("Failed to fetch data")
-        return
-    
-    # Parse Florida's data
-    fl_data = parse_florida_data(data)
-    
-    if not fl_data:
-        print("Failed to parse Florida data")
-        return
-    
-    # Display the results
-    print(f"\nState: {fl_data.get('stateName')}")
-    print(f"Status: {fl_data.get('status')}")
-    print(f"Customers Out: {fl_data.get('outageCount'):,}")
-    print(f"Total Customers: {fl_data.get('customerCount'):,}")
-    
-    # Parse and display the timestamp
-    if fl_data.get('lastUpdated'):
-        timestamp_str = fl_data['lastUpdated'][1]  # It's stored as ["Date", "ISO-string"]
-        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-        print(f"Last Updated: {timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    
-    print("-" * 60)
+    if data:
+        display_south_florida_outages(data)
+    else:
+        print("Failed to fetch outage data")
 
 
 if __name__ == "__main__":
