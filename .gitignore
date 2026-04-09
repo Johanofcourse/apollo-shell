@@ -172,3 +172,14 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Database files - local data, not code
+outages.db
+*.db
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Mac system files
+.DS_Store
