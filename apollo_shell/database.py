@@ -39,11 +39,12 @@ class OutageDatabase:
     
     def create_tables(self):
         """
-        Create the outages table if it doesn't exist
+        Create the outages and weather_alerts tables if they don't exist
         """
         conn = self.connect()
         cursor = conn.cursor()
         
+        # Outages table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS outages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,16 +57,36 @@ class OutageDatabase:
             )
         ''')
         
-        # Create index on timestamp for faster queries
+        # Weather alerts table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS weather_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                severity TEXT,
+                urgency TEXT,
+                areas TEXT NOT NULL,
+                effective TEXT,
+                expires TEXT,
+                headline TEXT,
+                description TEXT
+            )
+        ''')
+        
+        # Create indexes
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_timestamp 
             ON outages(timestamp)
         ''')
         
-        # Create index on county for faster filtering
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_county 
             ON outages(county)
+        ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_weather_timestamp 
+            ON weather_alerts(timestamp)
         ''')
         
         conn.commit()
