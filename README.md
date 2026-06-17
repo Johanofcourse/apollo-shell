@@ -1,5 +1,4 @@
 <<<<<<< Updated upstream
 # apollo-shell
 
-
-An AI-powered Outage map
+Outage map focused on last-mile issue and speculative analysis on resolutions.
