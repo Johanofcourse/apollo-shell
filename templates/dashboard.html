@@ -152,7 +152,7 @@
         <td>{{ county }}</td>
         <td>{{ stats.outage_count }}</td>
         <td>{{ "%.2f"|format(stats.max_percentage_out) }}%</td>
-        <td>{{ stats.alert_types }}</td>
+        <td>{{ stats.alert_types_display }}</td>
       </tr>
       {% endfor %}
     </table>

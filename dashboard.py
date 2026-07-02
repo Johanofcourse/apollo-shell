@@ -34,6 +34,14 @@ def _duration_since(start_iso, end_iso=None):
     return " ".join(parts)
 
 
+def _format_alert_types(alert_types):
+    """
+    Turn {"Flood Advisory": 32, "Tornado Warning": 2} into
+    "Flood Advisory ×32, Tornado Warning ×2"
+    """
+    return ", ".join(f"{name} ×{count}" for name, count in alert_types.items())
+
+
 @app.route("/")
 def index():
     db = OutageDatabase()
@@ -52,6 +60,8 @@ def index():
 
     matches = find_correlations()
     correlation = correlation_summary(matches)
+    for stats in correlation.values():
+        stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
 
     return render_template(
         "dashboard.html",
@@ -65,4 +75,4 @@ def index():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host="127.0.0.1", port=5050, debug=False)
