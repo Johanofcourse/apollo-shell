@@ -73,10 +73,30 @@ class OutageDatabase:
             )
         ''')
         
+        # Outage events table - tracks when an outage starts and ends per
+        # county/utility, derived from the outages snapshot table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS outage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customers_out INTEGER NOT NULL,
+                peak_percentage_out REAL NOT NULL,
+                customers_served INTEGER NOT NULL
+            )
+        ''')
+
         # Create indexes
         cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_timestamp 
+            CREATE INDEX IF NOT EXISTS idx_timestamp
             ON outages(timestamp)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_outage_events_open
+            ON outage_events(utility, county, end_time)
         ''')
         
         cursor.execute('''
@@ -119,20 +139,21 @@ class OutageDatabase:
 
 
 
-    def log_multiple_outages(self, utility, outage_list):
+    def log_multiple_outages(self, utility, outage_list, timestamp=None):
         """
         Insert multiple outage records at once (more efficient)
-        
+
         Args:
             utility: Name of utility
             outage_list: List of dicts with keys: county, customers_out, customers_served
+            timestamp: ISO timestamp to record for this batch; defaults to now
         """
         print(f"DEBUG: log_multiple_outages called with {len(outage_list)} records")
-        
+
         conn = self.connect()
         cursor = conn.cursor()
-        
-        timestamp = datetime.now().isoformat()
+
+        timestamp = timestamp or datetime.now().isoformat()
         print(f"DEBUG: Timestamp: {timestamp}")
         
         records = []
@@ -157,6 +178,65 @@ class OutageDatabase:
         conn.commit()
         print(f"DEBUG: commit completed")
         print(f"Logged {len(records)} outage records for {utility}")
+
+
+    def sync_outage_events(self, utility, outage_list, timestamp=None):
+        """
+        Update outage_events from a fresh batch of per-county snapshots.
+
+        For each county: if customers_out > 0 and no event is currently
+        open (end_time IS NULL), start one. If one is already open, bump
+        its peak if this snapshot is worse. If customers_out == 0 and an
+        event is open, close it.
+
+        Args:
+            utility: Name of utility (e.g., "FPL")
+            outage_list: List of dicts with keys: county, customers_out, customers_served
+            timestamp: ISO timestamp to record for opened/closed events; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+
+        opened = 0
+        closed = 0
+
+        for outage in outage_list:
+            county = outage['county']
+            customers_out = outage['customers_out']
+            customers_served = outage['customers_served']
+            percentage_out = (customers_out / customers_served * 100) if customers_served > 0 else 0
+
+            cursor.execute('''
+                SELECT id, peak_customers_out FROM outage_events
+                WHERE utility = ? AND county = ? AND end_time IS NULL
+            ''', (utility, county))
+            open_event = cursor.fetchone()
+
+            if customers_out > 0:
+                if open_event is None:
+                    cursor.execute('''
+                        INSERT INTO outage_events
+                            (utility, county, start_time, end_time, peak_customers_out, peak_percentage_out, customers_served)
+                        VALUES (?, ?, ?, NULL, ?, ?, ?)
+                    ''', (utility, county, timestamp, customers_out, percentage_out, customers_served))
+                    opened += 1
+                elif customers_out > open_event['peak_customers_out']:
+                    cursor.execute('''
+                        UPDATE outage_events
+                        SET peak_customers_out = ?, peak_percentage_out = ?, customers_served = ?
+                        WHERE id = ?
+                    ''', (customers_out, percentage_out, customers_served, open_event['id']))
+            else:
+                if open_event is not None:
+                    cursor.execute('''
+                        UPDATE outage_events SET end_time = ? WHERE id = ?
+                    ''', (timestamp, open_event['id']))
+                    closed += 1
+
+        conn.commit()
+        print(f"Outage events: {opened} opened, {closed} closed this cycle")
 
 
     def log_weather_alerts(self, alert_list):

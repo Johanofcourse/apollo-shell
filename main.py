@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apo
 from database import OutageDatabase
 from fetch_poweroutage import fetch_fpl_outages, outages_to_records
 from fetch_weather import get_alerts_summary
+from correlate import find_correlations, correlation_summary
 
 
 POLL_INTERVAL_SECONDS = 15 * 60
@@ -15,7 +16,8 @@ POLL_INTERVAL_SECONDS = 15 * 60
 
 def run_outage_cycle(db):
     """
-    Fetch current FPL outage data and save it to the database.
+    Fetch current FPL outage data, save the snapshot, and update
+    outage_events lifecycle tracking (start/end per county).
     """
     data = fetch_fpl_outages()
     if not data:
@@ -23,7 +25,9 @@ def run_outage_cycle(db):
         return
 
     records = outages_to_records(data)
-    db.log_multiple_outages('FPL', records)
+    timestamp = datetime.now().isoformat()
+    db.log_multiple_outages('FPL', records, timestamp=timestamp)
+    db.sync_outage_events('FPL', records, timestamp=timestamp)
 
 
 def run_weather_cycle(db):
@@ -36,6 +40,24 @@ def run_weather_cycle(db):
         return
 
     db.log_weather_alerts(summary['alerts'])
+
+
+def run_correlation_cycle():
+    """
+    Compute current outage/weather correlations and log a summary.
+    """
+    matches = find_correlations()
+    if not matches:
+        print("Correlation: no matches this cycle")
+        return
+
+    summary = correlation_summary(matches)
+    print(f"Correlation: {len(matches)} matches across {len(summary)} counties")
+    for county, stats in summary.items():
+        print(
+            f"  {county}: {stats['outage_count']} outage(s), "
+            f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}"
+        )
 
 
 def main():
@@ -62,6 +84,11 @@ def main():
                 run_weather_cycle(db)
             except Exception as e:
                 print(f"Weather fetch cycle failed: {e}")
+
+            try:
+                run_correlation_cycle()
+            except Exception as e:
+                print(f"Correlation cycle failed: {e}")
 
             print(f"Cycle complete. Sleeping {POLL_INTERVAL_SECONDS}s...")
             time.sleep(POLL_INTERVAL_SECONDS)
