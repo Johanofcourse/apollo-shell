@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="60">
+  <title>Apollo Sentinel — Live Status</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #161d27;
+      --border: #26313f;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --accent: #e8734a;
+      --ok: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 2rem;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+    .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
+    h2 {
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-top: 2.5rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+    tr:hover td { background: var(--panel); }
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      padding: 0.75rem 0;
+    }
+    .pct-bad { color: var(--accent); font-weight: 600; }
+    .pct-ok { color: var(--ok); }
+    .wrap { max-width: 100%; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>Apollo Sentinel — Live Status</h1>
+  <div class="meta">Generated {{ generated_at }} · refreshes every 60s</div>
+
+  <h2>Currently Open Outages ({{ open_events|length }})</h2>
+  <div class="wrap">
+  {% if open_events %}
+    <table>
+      <tr><th>County</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in open_events %}
+      <tr>
+        <td>{{ e.county }}</td>
+        <td class="pct-bad">{{ "%.2f"|format(e.peak_percentage_out) }}%</td>
+        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
+        <td>{{ e.start_time }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open outages right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>Latest Snapshot — Counties With Customers Out</h2>
+  <div class="wrap">
+  {% if snapshot %}
+    <table>
+      <tr><th>County</th><th>Customers Out</th><th>Customers Served</th><th>% Out</th></tr>
+      {% for row in snapshot %}
+      <tr>
+        <td>{{ row.county }}</td>
+        <td>{{ "{:,}".format(row.customers_out) }}</td>
+        <td>{{ "{:,}".format(row.customers_served) }}</td>
+        <td>{{ "%.2f"|format(row.percentage_out) }}%</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No outages in the latest cycle. All clear.</div>
+  {% endif %}
+  </div>
+
+  <h2>Recently Resolved</h2>
+  <div class="wrap">
+  {% if closed_events %}
+    <table>
+      <tr><th>County</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in closed_events %}
+      <tr>
+        <td>{{ e.county }}</td>
+        <td class="pct-ok">{{ "%.2f"|format(e.peak_percentage_out) }}%</td>
+        <td>{{ e.start_time }}</td>
+        <td>{{ e.end_time }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h2>Recent Weather Alerts</h2>
+  <div class="wrap">
+  {% if weather_alerts %}
+    <table>
+      <tr><th>Event</th><th>Severity</th><th>Areas</th><th>Effective</th><th>Expires</th></tr>
+      {% for a in weather_alerts %}
+      <tr>
+        <td>{{ a.event_type }}</td>
+        <td>{{ a.severity or "—" }}</td>
+        <td>{{ a.areas }}</td>
+        <td>{{ a.effective or "—" }}</td>
+        <td>{{ a.expires or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No weather alerts logged yet.</div>
+  {% endif %}
+  </div>
+
+  <h2>Weather / Outage Correlation</h2>
+  <div class="wrap">
+  {% if correlation %}
+    <table>
+      <tr><th>County</th><th>Correlated Outages</th><th>Peak % Out</th><th>Alert Types</th></tr>
+      {% for county, stats in correlation.items() %}
+      <tr>
+        <td>{{ county }}</td>
+        <td>{{ stats.outage_count }}</td>
+        <td>{{ "%.2f"|format(stats.max_percentage_out) }}%</td>
+        <td>{{ stats.alert_types }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No correlated outage/weather events right now.</div>
+  {% endif %}
+  </div>
+</body>
+</html>

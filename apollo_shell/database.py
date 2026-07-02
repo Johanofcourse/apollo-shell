@@ -276,6 +276,73 @@ class OutageDatabase:
         print(f"Logged {len(records)} weather alert records")
 
 
+    def get_latest_snapshot(self):
+        """
+        Return the most recent poll cycle's outage rows where customers are
+        currently out, sorted worst first.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT MAX(timestamp) AS ts FROM outages')
+        latest = cursor.fetchone()['ts']
+        if latest is None:
+            return []
+
+        cursor.execute('''
+            SELECT * FROM outages
+            WHERE timestamp = ? AND customers_out > 0
+            ORDER BY percentage_out DESC
+        ''', (latest,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_open_events(self):
+        """
+        Return currently open outage_events (end_time IS NULL), worst first.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM outage_events
+            WHERE end_time IS NULL
+            ORDER BY peak_percentage_out DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_recent_closed_events(self, limit=10):
+        """
+        Return the most recently closed outage_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM outage_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_recent_weather_alerts(self, limit=10):
+        """
+        Return the most recently logged weather alerts.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM weather_alerts
+            ORDER BY timestamp DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
 				
 
 
