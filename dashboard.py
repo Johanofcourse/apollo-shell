@@ -45,6 +45,7 @@ def _format_alert_types(alert_types):
 @app.route("/")
 def index():
     db = OutageDatabase()
+    db_path = db.db_path
 
     snapshot = db.get_latest_snapshot()
     open_events = db.get_open_events()
@@ -58,7 +59,7 @@ def index():
     for event in closed_events:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
-    matches = find_correlations()
+    matches = find_correlations(db_path)
     correlation = correlation_summary(matches)
     for stats in correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
