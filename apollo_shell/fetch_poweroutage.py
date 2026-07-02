@@ -83,43 +83,52 @@ def display_south_florida_outages(data):
     print("=" * 70 + "\n")
 
 
+def outages_to_records(data):
+    """
+    Convert raw FPL outage JSON into the list-of-dicts format expected by
+    OutageDatabase.log_multiple_outages()
+    """
+    outage_list = []
+    for outage in data.get('outages', []):
+        county = outage.get('County Name', '')
+        customers_out = int(outage.get('Customers Out', '0').replace(',', ''))
+        customers_served = int(outage.get('Customers Served', '0').replace(',', ''))
+
+        outage_list.append({
+            'county': county,
+            'customers_out': customers_out,
+            'customers_served': customers_served
+        })
+    return outage_list
+
+
 def main():
     """
     Main function - fetches FPL data, displays it, and saves to database
     """
     # Fetch the data
     data = fetch_fpl_outages()
-    
+
     if not data:
         print("Failed to fetch outage data")
         return
-    
+
     # Display it
     display_south_florida_outages(data)
-    
+
     # Save to database
     print("\nSaving data to database...")
     db = OutageDatabase()
-    
+
     # Convert FPL data format to our database format
-    outage_list = []
-    for outage in data.get('outages', []):
-        county = outage.get('County Name', '')
-        customers_out = int(outage.get('Customers Out', '0').replace(',', ''))
-        customers_served = int(outage.get('Customers Served', '0').replace(',', ''))
-        
-        outage_list.append({
-            'county': county,
-            'customers_out': customers_out,
-            'customers_served': customers_served
-        })
-    
+    outage_list = outages_to_records(data)
+
     print(f"DEBUG: Prepared {len(outage_list)} records to save")
-    
+
     # Log all counties at once
     db.log_multiple_outages('FPL', outage_list)
     db.close()
-    
+
     print("✓ Data saved to database!")
 
 

@@ -157,7 +157,43 @@ class OutageDatabase:
         conn.commit()
         print(f"DEBUG: commit completed")
         print(f"Logged {len(records)} outage records for {utility}")
-        
+
+
+    def log_weather_alerts(self, alert_list):
+        """
+        Insert multiple weather alert records at once
+
+        Args:
+            alert_list: List of dicts as returned by fetch_weather.parse_alert()
+                        (keys: event, headline, severity, urgency, areas,
+                        effective, expires, description)
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = datetime.now().isoformat()
+
+        records = []
+        for alert in alert_list:
+            records.append((
+                timestamp,
+                alert['event'],
+                alert.get('severity'),
+                alert.get('urgency'),
+                alert['areas'],
+                alert.get('effective'),
+                alert.get('expires'),
+                alert.get('headline'),
+                alert.get('description'),
+            ))
+
+        cursor.executemany('''
+            INSERT INTO weather_alerts (timestamp, event_type, severity, urgency, areas, effective, expires, headline, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', records)
+
+        conn.commit()
+        print(f"Logged {len(records)} weather alert records")
 
 
 				

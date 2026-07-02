@@ -1,6 +1,8 @@
 import requests
 from datetime import datetime
 
+from database import OutageDatabase
+
 
 def fetch_florida_alerts():
     """
@@ -110,7 +112,14 @@ def main():
             print(f"Severity: {alert['severity']} | Urgency: {alert['urgency']}")
             print(f"Areas: {alert['areas']}")
             print(f"Valid: {alert['effective']} to {alert['expires']}")
-    
+
+        # Save to database
+        print("\nSaving alerts to database...")
+        db = OutageDatabase()
+        db.log_weather_alerts(summary['alerts'])
+        db.close()
+        print("✓ Weather alerts saved to database!")
+
     print("\n" + "=" * 70)
     print(f"Data retrieved at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
