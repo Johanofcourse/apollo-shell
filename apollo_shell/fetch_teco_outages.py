@@ -4,6 +4,62 @@ from datetime import datetime
 
 TECO_OUTAGE_TILES_URL = "https://outage-data-prod-hrcadje2h9aje9c9.a03.azurefd.net/api/v1/outage-tiles"
 
+# The canonical utility name, matching the exact string this same real
+# entity is stored as in historical_import.py's PSC-report data (where
+# it appears as "Tampa Electric Company"). Two different tables,
+# two different granularities, but one name - so nobody has to guess
+# whether "TECO" and "Tampa Electric Company" are the same thing.
+UTILITY_NAME = "Tampa Electric Company"
+
+# Rough, best-effort keyword buckets for TECO's free-text reason/status
+# fields. This doesn't replace the original text anywhere - reason and
+# status are always kept as TECO wrote them. This is a derived label
+# stored alongside them so code can filter/count by cause without
+# needing to know every phrase TECO might ever use. Order matters:
+# first matching category wins, so more specific categories should
+# come before more general ones.
+REASON_CATEGORIES = [
+    ("animal", ["squirrel", "animal", "wildlife", "bird", "snake", "critter", "raccoon"]),
+    ("vegetation", ["tree", "limb", "branch", "vegetation", "foliage"]),
+    ("vehicle", ["vehicle", "car", "truck", "accident", "collision", "crash"]),
+    ("weather", ["storm", "wind", "lightning", "flood", "hurricane", "ice", "rain", "heat"]),
+    ("equipment", ["equipment", "transformer", "pole", "wire", "line", "fuse", "breaker", "damage"]),
+    ("planned", ["planned", "maintenance", "scheduled"]),
+    ("pending", ["pending", "investigat", "assessing", "unknown"]),
+]
+
+STATUS_CATEGORIES = [
+    ("restored", ["restored", "resolved", "complete"]),
+    ("onsite", ["onsite", "on-site", "working on"]),
+    ("investigating", ["on our way", "investigat", "assessing", "en route"]),
+    ("pending", ["pending", "reported"]),
+]
+
+
+def _categorize(text, categories):
+    """
+    Best-effort keyword match against a free-text field. Returns the
+    first matching category name, or "other" if nothing matches, or
+    "unknown" if there was no text to check at all.
+    """
+    if not text:
+        return "unknown"
+
+    lowered = text.lower()
+    for category, keywords in categories:
+        if any(keyword in lowered for keyword in keywords):
+            return category
+
+    return "other"
+
+
+def categorize_reason(reason):
+    return _categorize(reason, REASON_CATEGORIES)
+
+
+def categorize_status(status):
+    return _categorize(status, STATUS_CATEGORIES)
+
 # A box generously covering the whole state of Florida. Verified this is
 # safe to over-request with - TECO's backend only ever returns their own
 # real incidents regardless of how wide the box is, it doesn't error or
@@ -98,17 +154,22 @@ def parse_incidents(hits):
     """
     Convert raw Elasticsearch hits into a flat list of dicts ready for
     OutageDatabase.log_teco_incidents(), including a reverse-geocoded
-    county for each one.
+    county and derived reason/status categories for each one.
     """
     records = []
     for hit in hits:
         source = hit.get("_source", {})
         lon, lat = source.get("polygonCenter", [None, None])
+        reason = source.get("reason")
+        status = source.get("status")
 
         records.append({
+            "utility": UTILITY_NAME,
             "incident_id": source.get("incidentId"),
-            "status": source.get("status"),
-            "reason": source.get("reason"),
+            "status": status,
+            "status_category": categorize_status(status),
+            "reason": reason,
+            "reason_category": categorize_reason(reason),
             "customer_count": source.get("customerCount"),
             "lat": lat,
             "lon": lon,
@@ -144,8 +205,8 @@ def main():
         print(f"\n{len(incidents)} active incidents, {total_customers} customers affected\n")
         for incident in incidents:
             print(f"  {incident['incident_id']}: {incident['customer_count']} customers")
-            print(f"    Reason: {incident['reason']}")
-            print(f"    Status: {incident['status']}")
+            print(f"    Reason: {incident['reason']} ({incident['reason_category']})")
+            print(f"    Status: {incident['status']} ({incident['status_category']})")
             print(f"    ETR: {incident['estimated_restoration']}")
             print(f"    Location: {incident['lat']}, {incident['lon']} ({incident['county']} County)")
             print()

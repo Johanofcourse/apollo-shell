@@ -3,6 +3,18 @@ from datetime import datetime
 import os
 
 
+def _ensure_column(cursor, table, column, coltype='TEXT'):
+    """
+    Add a column to an existing table if it's not already there. Needed
+    because CREATE TABLE IF NOT EXISTS won't retroactively add new
+    columns to a database created by an earlier version of this schema.
+    """
+    cursor.execute(f"PRAGMA table_info({table})")
+    existing = {row[1] for row in cursor.fetchall()}
+    if column not in existing:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+
+
 class OutageDatabase:
     """
     Handles all SQLite database operations for storing outage data
@@ -114,8 +126,11 @@ class OutageDatabase:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 incident_id TEXT NOT NULL,
                 fetched_at TEXT NOT NULL,
+                utility TEXT,
                 status TEXT,
+                status_category TEXT,
                 reason TEXT,
+                reason_category TEXT,
                 customer_count INTEGER,
                 lat REAL,
                 lon REAL,
@@ -125,12 +140,15 @@ class OutageDatabase:
             )
         ''')
 
-        # Safe migration for databases created before the county column
-        # existed (CREATE TABLE IF NOT EXISTS won't retroactively add it)
-        cursor.execute("PRAGMA table_info(teco_incidents)")
-        existing_columns = {row[1] for row in cursor.fetchall()}
-        if 'county' not in existing_columns:
-            cursor.execute("ALTER TABLE teco_incidents ADD COLUMN county TEXT")
+        # Safe migrations for databases created before these columns
+        # existed (CREATE TABLE IF NOT EXISTS won't retroactively add them).
+        # utility: the canonical name ("Tampa Electric Company") also used
+        # by historical_import.py's PSC-report data for this same real
+        # entity, so both representations share one name.
+        # reason_category/status_category: a derived, best-effort label
+        # alongside the raw free text, not a replacement for it.
+        for column in ('utility', 'status_category', 'reason_category', 'county'):
+            _ensure_column(cursor, 'teco_incidents', column)
 
         # TECO incident lifecycle tracking - unlike FPL, TECO gives us a
         # real incident_id directly, so we don't need to infer continuity
@@ -142,15 +160,20 @@ class OutageDatabase:
             CREATE TABLE IF NOT EXISTS teco_incident_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 incident_id TEXT NOT NULL,
+                utility TEXT,
                 county TEXT,
                 start_time TEXT NOT NULL,
                 end_time TEXT,
                 peak_customer_count INTEGER,
                 reason TEXT,
+                reason_category TEXT,
                 lat REAL,
                 lon REAL
             )
         ''')
+
+        for column in ('utility', 'reason_category'):
+            _ensure_column(cursor, 'teco_incident_events', column)
 
         # Create indexes
         cursor.execute('''
@@ -475,7 +498,8 @@ class OutageDatabase:
         Insert TECO live outage incidents (from fetch_teco_outages.py).
 
         Args:
-            records: list of dicts with keys: incident_id, status, reason,
+            records: list of dicts with keys: incident_id, utility, status,
+                     status_category, reason, reason_category,
                      customer_count, lat, lon, county, update_time,
                      estimated_restoration
         """
@@ -486,7 +510,9 @@ class OutageDatabase:
 
         rows = [
             (
-                r['incident_id'], fetched_at, r.get('status'), r.get('reason'),
+                r['incident_id'], fetched_at, r.get('utility'),
+                r.get('status'), r.get('status_category'),
+                r.get('reason'), r.get('reason_category'),
                 r.get('customer_count'), r.get('lat'), r.get('lon'), r.get('county'),
                 r.get('update_time'), r.get('estimated_restoration'),
             )
@@ -495,8 +521,10 @@ class OutageDatabase:
 
         cursor.executemany('''
             INSERT OR IGNORE INTO teco_incidents
-                (incident_id, fetched_at, status, reason, customer_count, lat, lon, county, update_time, estimated_restoration)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (incident_id, fetched_at, utility, status, status_category,
+                 reason, reason_category, customer_count, lat, lon, county,
+                 update_time, estimated_restoration)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', rows)
 
         conn.commit()
@@ -538,11 +566,13 @@ class OutageDatabase:
             if open_event is None:
                 cursor.execute('''
                     INSERT OR IGNORE INTO teco_incident_events
-                        (incident_id, county, start_time, end_time, peak_customer_count, reason, lat, lon)
-                    VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
+                        (incident_id, utility, county, start_time, end_time,
+                         peak_customer_count, reason, reason_category, lat, lon)
+                    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
                 ''', (
-                    r['incident_id'], r.get('county'), timestamp,
-                    r.get('customer_count'), r.get('reason'), r.get('lat'), r.get('lon'),
+                    r['incident_id'], r.get('utility'), r.get('county'), timestamp,
+                    r.get('customer_count'), r.get('reason'), r.get('reason_category'),
+                    r.get('lat'), r.get('lon'),
                 ))
                 if cursor.rowcount > 0:
                     opened += 1
@@ -550,9 +580,14 @@ class OutageDatabase:
                 peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
                 cursor.execute('''
                     UPDATE teco_incident_events
-                    SET peak_customer_count = ?, reason = ?, lat = ?, lon = ?
+                    SET peak_customer_count = ?, utility = ?, county = ?,
+                        reason = ?, reason_category = ?, lat = ?, lon = ?
                     WHERE id = ?
-                ''', (peak, r.get('reason'), r.get('lat'), r.get('lon'), open_event['id']))
+                ''', (
+                    peak, r.get('utility'), r.get('county'),
+                    r.get('reason'), r.get('reason_category'),
+                    r.get('lat'), r.get('lon'), open_event['id'],
+                ))
 
         cursor.execute('SELECT id, incident_id FROM teco_incident_events WHERE end_time IS NULL')
         for row in cursor.fetchall():
