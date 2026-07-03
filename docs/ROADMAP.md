@@ -14,19 +14,33 @@
 - [x] Second live Florida utility integrated end-to-end (incident-level
       data, richer than FPL's — real cause, live status, and an actual
       restoration estimate)
-- [x] Historical storm data backfilled (two major hurricanes, every
-      utility per storm, not just one) — kept private, not on GitHub
+- [x] Historical storm data backfilled — 9 storms so far (2022-2025),
+      every utility per storm, not just one — kept private, not on GitHub
 - [x] Historical severity data layered in from an independent public
-      source, cross-checked against our own outage numbers
+      source, cross-checked against our own outage numbers, extended
+      to cover winter events (snow/ice/wind-chill) and severe
+      thunderstorm/tornado events, not just tropical systems
 - [x] Data integrity pass — idempotent writes across every table, so
       re-running any collector can't silently duplicate data
 - [ ] Correlation confidence scoring (see PRD — proposed, not designed
       in detail yet)
 - [ ] More Florida utilities, one at a time, same proven pattern as the
-      first two (Duke Energy is next)
+      first two (Duke Energy is next — its live map blocks a plain
+      automated fetch with a 403, so this one needs a human driving a
+      real browser through devtools, same as how TECO's was found)
 
 ## Phase 3: Predictive (Blocked on data, not code)
 - [ ] Restoration-time estimation from historical patterns
+- [ ] Connect live data to the historical storm dataset — e.g. "current
+      live weather severity resembles what we saw during Storm X in
+      this county, which took about Y hours to restore." Explicitly
+      deferred, not just unstarted: needs (1) running the same
+      severity extractors against live weather alert text, not just
+      historical NOAA narratives; (2) a real decision on querying
+      across 9 separate storm databases vs. consolidating them into
+      one; (3) enough live volume that "closest historical match" is
+      more than 1-2 data points per county. Revisit once Phase 3's
+      data-volume bar (below) is actually met.
 
 This phase is **not a normal engineering task with a schedulable
 timeline.** It requires enough accumulated real outage-duration data
@@ -35,9 +49,11 @@ shortens that. Rough real numbers as of this writing: FPL alone is
 producing on the order of dozens of resolved outages per day live, so
 "enough for a first rough look" is more like weeks, "enough to trust"
 is more like a month or two, and that's still only one season's worth
-of conditions. Historical storm data (2 major hurricanes so far)
+of conditions. Historical storm data (9 storms so far, 2022-2025)
 covers a different, rarer category of outage entirely and doesn't
-substitute for everyday-outage volume.
+substitute for everyday-outage volume — and even across 9 storms, most
+individual counties only show up in 2-4 of them, so it's still a thin
+sample per county, not something to treat as a reliable average yet.
 
 ## Phase 4: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida
