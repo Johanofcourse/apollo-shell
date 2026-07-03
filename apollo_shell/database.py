@@ -239,6 +239,17 @@ class OutageDatabase:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_weather_alerts_unique
             ON weather_alerts(alert_id)
         ''')
+
+        # storm_severity was missed when this idempotency pass was first
+        # done - relied on manually clearing the table before every
+        # re-import instead of real protection. Natural identity of a
+        # matched NOAA record: which storm, which county, which zone
+        # (multiple zones can map to one county), which event type, and
+        # when it began.
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_storm_severity_unique
+            ON storm_severity(storm_name, county, zone_name, event_type, begin_time)
+        ''')
         
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_county 
@@ -545,7 +556,7 @@ class OutageDatabase:
         ]
 
         cursor.executemany('''
-            INSERT INTO storm_severity
+            INSERT OR IGNORE INTO storm_severity
                 (storm_name, county, zone_name, event_type, begin_time, end_time,
                  reported_wind_mph, snow_inches, ice_inches, wind_chill_f, narrative)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
