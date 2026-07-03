@@ -142,7 +142,7 @@
   {% endif %}
   </div>
 
-  <h2>Weather / Outage Correlation</h2>
+  <h2>Weather / Outage Correlation (FPL)</h2>
   <div class="wrap">
   {% if correlation %}
     <table>
@@ -158,6 +158,69 @@
     </table>
   {% else %}
     <div class="empty">No correlated outage/weather events right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>TECO — Currently Open Incidents ({{ teco_open_events|length }})</h2>
+  <div class="wrap">
+  {% if teco_open_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Customers</th><th>Reason</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in teco_open_events %}
+      <tr>
+        <td>{{ e.incident_id }}</td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
+        <td>{{ e.estimated_restoration or "—" }}</td>
+        <td>{{ e.start_time }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open TECO incidents right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>TECO — Recently Resolved</h2>
+  <div class="wrap">
+  {% if teco_closed_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Reason</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in teco_closed_events %}
+      <tr>
+        <td>{{ e.incident_id }}</td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-ok">{{ e.peak_customer_count }}</td>
+        <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
+        <td>{{ e.start_time }}</td>
+        <td>{{ e.end_time }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h2>Weather / Outage Correlation (TECO)</h2>
+  <div class="wrap">
+  {% if teco_correlation %}
+    <table>
+      <tr><th>County</th><th>Correlated Incidents</th><th>Max Customers</th><th>Alert Types</th></tr>
+      {% for county, stats in teco_correlation.items() %}
+      <tr>
+        <td>{{ county }}</td>
+        <td>{{ stats.incident_count }}</td>
+        <td>{{ stats.max_customer_count }}</td>
+        <td>{{ stats.alert_types_display }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No correlated TECO incident/weather events right now.</div>
   {% endif %}
   </div>
 </body>

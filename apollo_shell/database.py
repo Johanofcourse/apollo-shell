@@ -464,6 +464,38 @@ class OutageDatabase:
         return [dict(row) for row in cursor.fetchall()]
 
 
+    def get_teco_open_events(self):
+        """
+        Return currently open teco_incident_events (end_time IS NULL),
+        worst (by peak customer count) first.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM teco_incident_events
+            WHERE end_time IS NULL
+            ORDER BY peak_customer_count DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_teco_recent_closed_events(self, limit=10):
+        """
+        Return the most recently closed teco_incident_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM teco_incident_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
     def get_recent_weather_alerts(self, limit=10):
         """
         Return the most recently logged weather alerts.

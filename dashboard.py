@@ -7,7 +7,10 @@ from flask import Flask, render_template
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
 from database import OutageDatabase
-from correlate import find_correlations, correlation_summary
+from correlate import (
+    find_correlations, correlation_summary,
+    find_teco_correlations, teco_correlation_summary,
+)
 
 
 app = Flask(__name__)
@@ -51,6 +54,8 @@ def index():
     open_events = db.get_open_events()
     closed_events = db.get_recent_closed_events(limit=10)
     weather_alerts = db.get_recent_weather_alerts(limit=10)
+    teco_open_events = db.get_teco_open_events()
+    teco_closed_events = db.get_teco_recent_closed_events(limit=10)
 
     db.close()
 
@@ -58,10 +63,19 @@ def index():
         event["duration"] = _duration_since(event["start_time"])
     for event in closed_events:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
+    for event in teco_open_events:
+        event["duration"] = _duration_since(event["start_time"])
+    for event in teco_closed_events:
+        event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
     matches = find_correlations(db_path)
     correlation = correlation_summary(matches)
     for stats in correlation.values():
+        stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
+
+    teco_matches = find_teco_correlations(db_path)
+    teco_correlation = teco_correlation_summary(teco_matches)
+    for stats in teco_correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
 
     return render_template(
@@ -71,6 +85,9 @@ def index():
         closed_events=closed_events,
         weather_alerts=weather_alerts,
         correlation=correlation,
+        teco_open_events=teco_open_events,
+        teco_closed_events=teco_closed_events,
+        teco_correlation=teco_correlation,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 
