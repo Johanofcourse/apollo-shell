@@ -115,6 +115,19 @@ class OutageDatabase:
             CREATE INDEX IF NOT EXISTS idx_outage_events_open
             ON outage_events(utility, county, end_time)
         ''')
+
+        # Uniqueness guards so re-running an import (e.g. replaying the same
+        # historical report series twice) can't silently duplicate rows -
+        # INSERT OR IGNORE relies on these to make re-imports a safe no-op
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_outages_unique
+            ON outages(timestamp, utility, county)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_outage_events_unique
+            ON outage_events(utility, county, start_time)
+        ''')
         
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_county 
@@ -186,7 +199,7 @@ class OutageDatabase:
         print(f"DEBUG: First record: {records[0] if records else 'NONE'}")
         
         cursor.executemany('''
-            INSERT INTO outages (timestamp, utility, county, customers_out, customers_served, percentage_out)
+            INSERT OR IGNORE INTO outages (timestamp, utility, county, customers_out, customers_served, percentage_out)
             VALUES (?, ?, ?, ?, ?, ?)
         ''', records)
         
@@ -234,11 +247,15 @@ class OutageDatabase:
             if customers_out > 0:
                 if open_event is None:
                     cursor.execute('''
-                        INSERT INTO outage_events
+                        INSERT OR IGNORE INTO outage_events
                             (utility, county, start_time, end_time, peak_customers_out, peak_percentage_out, customers_served)
                         VALUES (?, ?, ?, NULL, ?, ?, ?)
                     ''', (utility, county, timestamp, customers_out, percentage_out, customers_served))
-                    opened += 1
+                    # rowcount is 0 if a row with this (utility, county,
+                    # start_time) already existed and the insert was
+                    # ignored - e.g. replaying an already-imported report
+                    if cursor.rowcount > 0:
+                        opened += 1
                 elif customers_out > open_event['peak_customers_out']:
                     cursor.execute('''
                         UPDATE outage_events
