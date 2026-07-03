@@ -8,7 +8,10 @@ import requests
 from database import OutageDatabase
 
 
-HURRICANE_EVENT_TYPES = {"Hurricane (Typhoon)", "Tropical Storm", "Tropical Depression"}
+SEVERE_WEATHER_EVENT_TYPES = {
+    "Hurricane (Typhoon)", "Tropical Storm", "Tropical Depression",
+    "Winter Storm", "Ice Storm", "Extreme Cold/Wind Chill", "Heavy Snow",
+}
 WIND_RE = re.compile(r"(\d{2,3})\s*mph", re.IGNORECASE)
 
 
@@ -90,7 +93,7 @@ def extract_storm_severity(csv_path, storm_name, start_time, end_time, counties,
         for row in reader:
             if row['STATE'] != 'FLORIDA':
                 continue
-            if row['EVENT_TYPE'] not in HURRICANE_EVENT_TYPES:
+            if row['EVENT_TYPE'] not in SEVERE_WEATHER_EVENT_TYPES:
                 continue
 
             begin = _parse_noaa_datetime(row['BEGIN_DATE_TIME'])
