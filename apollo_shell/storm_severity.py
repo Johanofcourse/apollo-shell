@@ -104,7 +104,13 @@ def extract_storm_severity(csv_path, storm_name, start_time, end_time, counties,
             if matched_county is None:
                 continue
 
-            narrative = row['EVENT_NARRATIVE'] or row['EPISODE_NARRATIVE']
+            # EVENT_NARRATIVE is specific to this zone/record. EPISODE_NARRATIVE
+            # is a storm-wide summary repeated across every record in the
+            # episode (e.g. landfall intensity, which may be from a county
+            # 100+ miles away) - never use it as a stand-in for this zone's
+            # own conditions, or it misattributes the storm's peak landfall
+            # wind to every county touched by the episode.
+            narrative = row['EVENT_NARRATIVE']
             records.append({
                 'storm_name': storm_name,
                 'county': matched_county,

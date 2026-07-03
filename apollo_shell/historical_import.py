@@ -126,6 +126,13 @@ def parse_esf12_report(pdf_path):
         if match is None or not _is_real_county(county):
             continue
 
+        if customers_out > customers_served:
+            # Occasionally a real data-entry error in the source report
+            # itself (not a parsing bug) - e.g. more customers reported
+            # out than the utility serves in that county at all. Not
+            # physically possible, so the row isn't trustworthy.
+            continue
+
         utility = match.group("provider").strip()
         if not utility or not utility[0].isupper():
             # Broken table extraction in some PDFs truncates the provider
