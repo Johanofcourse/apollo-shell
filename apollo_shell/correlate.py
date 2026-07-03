@@ -85,6 +85,84 @@ def find_correlations(db_path="outages.db"):
     return matches
 
 
+def find_teco_correlations(db_path="outages.db"):
+    """
+    Match TECO incidents to weather alerts active in the same county at
+    the same time. Same logic as find_correlations(), adapted for TECO's
+    incident-level schema (county + update_time instead of a plain
+    county-rollup timestamp).
+
+    Returns a list of {"incident": {...}, "alert": {...}} dicts.
+    """
+    db = OutageDatabase(db_path)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT * FROM teco_incidents')
+    incidents = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute('SELECT * FROM weather_alerts')
+    alerts = [dict(row) for row in cursor.fetchall()]
+
+    db.close()
+
+    matches = []
+    for incident in incidents:
+        if not incident.get('county'):
+            continue
+
+        incident_time = _parse_timestamp(incident.get('update_time'))
+        if incident_time is None:
+            continue
+
+        for alert in alerts:
+            if not _county_in_alert(incident['county'], alert['areas']):
+                continue
+
+            effective = _parse_timestamp(alert.get('effective'))
+            expires = _parse_timestamp(alert.get('expires'))
+
+            if _alert_covers_time(effective, expires, incident_time):
+                matches.append({"incident": incident, "alert": alert})
+
+    return matches
+
+
+def teco_correlation_summary(matches):
+    """
+    Aggregate correlated TECO incident/alert pairs by county.
+
+    Returns a dict keyed by county:
+        {
+            "<county>": {
+                "incident_count": int,
+                "max_customer_count": int,
+                "alert_types": {"Tornado Warning": 2, ...},
+            },
+            ...
+        }
+    """
+    summary = {}
+
+    for match in matches:
+        county = match["incident"]["county"]
+        entry = summary.setdefault(county, {
+            "incident_count": 0,
+            "max_customer_count": 0,
+            "alert_types": {},
+        })
+
+        entry["incident_count"] += 1
+        entry["max_customer_count"] = max(
+            entry["max_customer_count"], match["incident"]["customer_count"] or 0
+        )
+
+        event_type = match["alert"]["event_type"]
+        entry["alert_types"][event_type] = entry["alert_types"].get(event_type, 0) + 1
+
+    return summary
+
+
 def correlation_summary(matches):
     """
     Aggregate correlated outage/alert pairs by county.

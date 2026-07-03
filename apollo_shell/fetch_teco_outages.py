@@ -63,10 +63,42 @@ def fetch_teco_outages(bounding_box=None):
         return []
 
 
+def lookup_county(lat, lon):
+    """
+    Reverse-geocode a coordinate to a Florida county name using the FCC's
+    free public Census API - TECO's incidents only have coordinates, but
+    our weather-alert correlation logic is entirely county-based, so this
+    is the bridge between the two.
+
+    Returns a county name like "Hillsborough" (no "County" suffix, to
+    match the naming already used elsewhere in this project), or None on
+    failure.
+    """
+    if lat is None or lon is None:
+        return None
+
+    try:
+        url = f"https://geo.fcc.gov/api/census/area?lat={lat}&lon={lon}&format=json"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        results = response.json().get("results", [])
+        if not results:
+            return None
+
+        county_name = results[0].get("county_name", "")
+        return county_name.replace(" County", "").strip() or None
+
+    except requests.exceptions.RequestException as e:
+        print(f"County lookup failed for ({lat}, {lon}): {e}")
+        return None
+
+
 def parse_incidents(hits):
     """
     Convert raw Elasticsearch hits into a flat list of dicts ready for
-    OutageDatabase.log_teco_incidents().
+    OutageDatabase.log_teco_incidents(), including a reverse-geocoded
+    county for each one.
     """
     records = []
     for hit in hits:
@@ -80,6 +112,7 @@ def parse_incidents(hits):
             "customer_count": source.get("customerCount"),
             "lat": lat,
             "lon": lon,
+            "county": lookup_county(lat, lon),
             "update_time": source.get("updateTime"),
             "estimated_restoration": source.get("estimatedTimeOfRestoration"),
         })
@@ -114,7 +147,7 @@ def main():
             print(f"    Reason: {incident['reason']}")
             print(f"    Status: {incident['status']}")
             print(f"    ETR: {incident['estimated_restoration']}")
-            print(f"    Location: {incident['lat']}, {incident['lon']}")
+            print(f"    Location: {incident['lat']}, {incident['lon']} ({incident['county']} County)")
             print()
 
     print("=" * 70)

@@ -119,8 +119,36 @@ class OutageDatabase:
                 customer_count INTEGER,
                 lat REAL,
                 lon REAL,
+                county TEXT,
                 update_time TEXT,
                 estimated_restoration TEXT
+            )
+        ''')
+
+        # Safe migration for databases created before the county column
+        # existed (CREATE TABLE IF NOT EXISTS won't retroactively add it)
+        cursor.execute("PRAGMA table_info(teco_incidents)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        if 'county' not in existing_columns:
+            cursor.execute("ALTER TABLE teco_incidents ADD COLUMN county TEXT")
+
+        # TECO incident lifecycle tracking - unlike FPL, TECO gives us a
+        # real incident_id directly, so we don't need to infer continuity
+        # from county-level number crossing zero. An event opens the
+        # first time we see an incident_id, and closes when that id stops
+        # appearing in a poll (TECO's feed only lists currently-active
+        # incidents, so disappearing is our only signal of resolution).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS teco_incident_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                county TEXT,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customer_count INTEGER,
+                reason TEXT,
+                lat REAL,
+                lon REAL
             )
         ''')
 
@@ -133,6 +161,11 @@ class OutageDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_outage_events_open
             ON outage_events(utility, county, end_time)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_teco_incident_events_open
+            ON teco_incident_events(incident_id, end_time)
         ''')
 
         # Uniqueness guards so re-running an import (e.g. replaying the same
@@ -151,6 +184,11 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_teco_incidents_unique
             ON teco_incidents(incident_id, update_time)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_teco_incident_events_unique
+            ON teco_incident_events(incident_id, start_time)
         ''')
         
         cursor.execute('''
@@ -438,7 +476,7 @@ class OutageDatabase:
 
         Args:
             records: list of dicts with keys: incident_id, status, reason,
-                     customer_count, lat, lon, update_time,
+                     customer_count, lat, lon, county, update_time,
                      estimated_restoration
         """
         conn = self.connect()
@@ -449,7 +487,7 @@ class OutageDatabase:
         rows = [
             (
                 r['incident_id'], fetched_at, r.get('status'), r.get('reason'),
-                r.get('customer_count'), r.get('lat'), r.get('lon'),
+                r.get('customer_count'), r.get('lat'), r.get('lon'), r.get('county'),
                 r.get('update_time'), r.get('estimated_restoration'),
             )
             for r in records
@@ -457,12 +495,75 @@ class OutageDatabase:
 
         cursor.executemany('''
             INSERT OR IGNORE INTO teco_incidents
-                (incident_id, fetched_at, status, reason, customer_count, lat, lon, update_time, estimated_restoration)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (incident_id, fetched_at, status, reason, customer_count, lat, lon, county, update_time, estimated_restoration)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', rows)
 
         conn.commit()
         print(f"Logged {len(rows)} TECO incident records")
+
+
+    def sync_teco_incident_events(self, records, timestamp=None):
+        """
+        Track TECO incident lifecycle. Unlike sync_outage_events (which has
+        to infer continuity from county-level numbers crossing zero), TECO
+        gives us a real incident_id directly:
+        - first time an incident_id is seen, open an event
+        - while it's still being reported, keep peak_customer_count and
+          reason/location updated to the latest known values
+        - once an incident_id that was open stops appearing in a poll at
+          all, close it (TECO's feed only lists currently-active
+          incidents, so disappearing is our only signal of resolution)
+
+        Args:
+            records: list of dicts as returned by fetch_teco_outages.parse_incidents()
+            timestamp: ISO timestamp for this poll; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        current_ids = {r['incident_id'] for r in records}
+
+        opened = 0
+        closed = 0
+
+        for r in records:
+            cursor.execute('''
+                SELECT id, peak_customer_count FROM teco_incident_events
+                WHERE incident_id = ? AND end_time IS NULL
+            ''', (r['incident_id'],))
+            open_event = cursor.fetchone()
+
+            if open_event is None:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO teco_incident_events
+                        (incident_id, county, start_time, end_time, peak_customer_count, reason, lat, lon)
+                    VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
+                ''', (
+                    r['incident_id'], r.get('county'), timestamp,
+                    r.get('customer_count'), r.get('reason'), r.get('lat'), r.get('lon'),
+                ))
+                if cursor.rowcount > 0:
+                    opened += 1
+            else:
+                peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
+                cursor.execute('''
+                    UPDATE teco_incident_events
+                    SET peak_customer_count = ?, reason = ?, lat = ?, lon = ?
+                    WHERE id = ?
+                ''', (peak, r.get('reason'), r.get('lat'), r.get('lon'), open_event['id']))
+
+        cursor.execute('SELECT id, incident_id FROM teco_incident_events WHERE end_time IS NULL')
+        for row in cursor.fetchall():
+            if row['incident_id'] not in current_ids:
+                cursor.execute('''
+                    UPDATE teco_incident_events SET end_time = ? WHERE id = ?
+                ''', (timestamp, row['id']))
+                closed += 1
+
+        conn.commit()
+        print(f"TECO incident events: {opened} opened, {closed} closed this cycle")
 
 
 				

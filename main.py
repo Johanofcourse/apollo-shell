@@ -9,7 +9,10 @@ from database import OutageDatabase
 from fetch_poweroutage import fetch_fpl_outages, outages_to_records
 from fetch_weather import get_alerts_summary
 from fetch_teco_outages import get_incidents_summary
-from correlate import find_correlations, correlation_summary
+from correlate import (
+    find_correlations, correlation_summary,
+    find_teco_correlations, teco_correlation_summary,
+)
 
 
 POLL_INTERVAL_SECONDS = 15 * 60
@@ -45,34 +48,47 @@ def run_weather_cycle(db):
 
 def run_teco_cycle(db):
     """
-    Fetch TECO's live outage incidents and save them - a separate,
-    incident-level feed from a different utility, not part of the
-    FPL/outage_events pipeline.
+    Fetch TECO's live outage incidents, save them, and update
+    teco_incident_events lifecycle tracking (start/end per incident).
     """
     incidents = get_incidents_summary()
     if not incidents:
         print("Skipping TECO save - no active incidents")
         return
 
+    timestamp = datetime.now().isoformat()
     db.log_teco_incidents(incidents)
+    db.sync_teco_incident_events(incidents, timestamp=timestamp)
 
 
 def run_correlation_cycle():
     """
-    Compute current outage/weather correlations and log a summary.
+    Compute current outage/weather correlations (FPL and TECO) and log a
+    summary.
     """
     matches = find_correlations()
     if not matches:
-        print("Correlation: no matches this cycle")
-        return
+        print("FPL correlation: no matches this cycle")
+    else:
+        summary = correlation_summary(matches)
+        print(f"FPL correlation: {len(matches)} matches across {len(summary)} counties")
+        for county, stats in summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}"
+            )
 
-    summary = correlation_summary(matches)
-    print(f"Correlation: {len(matches)} matches across {len(summary)} counties")
-    for county, stats in summary.items():
-        print(
-            f"  {county}: {stats['outage_count']} outage(s), "
-            f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}"
-        )
+    teco_matches = find_teco_correlations()
+    if not teco_matches:
+        print("TECO correlation: no matches this cycle")
+    else:
+        teco_summary = teco_correlation_summary(teco_matches)
+        print(f"TECO correlation: {len(teco_matches)} matches across {len(teco_summary)} counties")
+        for county, stats in teco_summary.items():
+            print(
+                f"  {county}: {stats['incident_count']} incident(s), "
+                f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}"
+            )
 
 
 def main():
