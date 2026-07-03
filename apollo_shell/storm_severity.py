@@ -11,6 +11,7 @@ from database import OutageDatabase
 SEVERE_WEATHER_EVENT_TYPES = {
     "Hurricane (Typhoon)", "Tropical Storm", "Tropical Depression",
     "Winter Storm", "Ice Storm", "Extreme Cold/Wind Chill", "Heavy Snow",
+    "Thunderstorm Wind", "Tornado", "Hail", "Funnel Cloud", "High Wind",
 }
 WIND_RE = re.compile(r"(\d{2,3})\s*mph", re.IGNORECASE)
 
