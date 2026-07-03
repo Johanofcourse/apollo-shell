@@ -88,6 +88,23 @@ class OutageDatabase:
             )
         ''')
 
+        # Storm severity table - NOAA Storm Events records matched to a
+        # storm's outage_events by county/date-window, for comparing
+        # reported storm intensity against actual outage duration
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS storm_severity (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                storm_name TEXT NOT NULL,
+                county TEXT NOT NULL,
+                zone_name TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                begin_time TEXT,
+                end_time TEXT,
+                reported_wind_mph INTEGER,
+                narrative TEXT
+            )
+        ''')
+
         # Create indexes
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_timestamp
@@ -341,6 +358,37 @@ class OutageDatabase:
             LIMIT ?
         ''', (limit,))
         return [dict(row) for row in cursor.fetchall()]
+
+
+    def log_storm_severity(self, records):
+        """
+        Insert NOAA Storm Events records matched to a storm's outage data.
+
+        Args:
+            records: list of dicts with keys: storm_name, county, zone_name,
+                     event_type, begin_time, end_time, reported_wind_mph,
+                     narrative
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        rows = [
+            (
+                r['storm_name'], r['county'], r['zone_name'], r['event_type'],
+                r.get('begin_time'), r.get('end_time'),
+                r.get('reported_wind_mph'), r.get('narrative'),
+            )
+            for r in records
+        ]
+
+        cursor.executemany('''
+            INSERT INTO storm_severity
+                (storm_name, county, zone_name, event_type, begin_time, end_time, reported_wind_mph, narrative)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+
+        conn.commit()
+        print(f"Logged {len(rows)} storm severity records")
 
 
 				
