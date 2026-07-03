@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apo
 from database import OutageDatabase
 from fetch_poweroutage import fetch_fpl_outages, outages_to_records
 from fetch_weather import get_alerts_summary
+from fetch_teco_outages import get_incidents_summary
 from correlate import find_correlations, correlation_summary
 
 
@@ -40,6 +41,20 @@ def run_weather_cycle(db):
         return
 
     db.log_weather_alerts(summary['alerts'])
+
+
+def run_teco_cycle(db):
+    """
+    Fetch TECO's live outage incidents and save them - a separate,
+    incident-level feed from a different utility, not part of the
+    FPL/outage_events pipeline.
+    """
+    incidents = get_incidents_summary()
+    if not incidents:
+        print("Skipping TECO save - no active incidents")
+        return
+
+    db.log_teco_incidents(incidents)
 
 
 def run_correlation_cycle():
@@ -84,6 +99,11 @@ def main():
                 run_weather_cycle(db)
             except Exception as e:
                 print(f"Weather fetch cycle failed: {e}")
+
+            try:
+                run_teco_cycle(db)
+            except Exception as e:
+                print(f"TECO fetch cycle failed: {e}")
 
             try:
                 run_correlation_cycle()
