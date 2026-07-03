@@ -63,7 +63,27 @@
   <h1>Apollo Sentinel — Live Status</h1>
   <div class="meta">Generated {{ generated_at }} · refreshes every 60s</div>
 
-  <h2>Currently Open Outages ({{ open_events|length }})</h2>
+  <h2>All Utilities — Currently Open ({{ unified_open|length }})</h2>
+  <div class="wrap">
+  {% if unified_open %}
+    <table>
+      <tr><th>Utility</th><th>County</th><th>Customers Affected</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in unified_open %}
+      <tr>
+        <td>{{ e.utility }}</td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-bad">{{ "{:,}".format(e.customers or 0) }}</td>
+        <td>{{ e.start_time }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing open right now, across any utility.</div>
+  {% endif %}
+  </div>
+
+  <h2>FPL — Currently Open Outages ({{ open_events|length }})</h2>
   <div class="wrap">
   {% if open_events %}
     <table>
@@ -83,7 +103,7 @@
   {% endif %}
   </div>
 
-  <h2>Latest Snapshot — Counties With Customers Out</h2>
+  <h2>FPL — Latest Snapshot</h2>
   <div class="wrap">
   {% if snapshot %}
     <table>
@@ -102,7 +122,7 @@
   {% endif %}
   </div>
 
-  <h2>Recently Resolved</h2>
+  <h2>FPL — Recently Resolved</h2>
   <div class="wrap">
   {% if closed_events %}
     <table>

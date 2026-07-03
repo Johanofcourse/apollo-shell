@@ -45,6 +45,40 @@ def _format_alert_types(alert_types):
     return ", ".join(f"{name} ×{count}" for name, count in alert_types.items())
 
 
+def _build_unified_view(open_events, teco_open_events):
+    """
+    Normalize FPL's county-level outage_events and TECO's incident-level
+    teco_incident_events into one common shape for an at-a-glance,
+    all-utilities table. Deliberately keeps only the fields that both
+    sources actually have (utility, county, customers affected, when it
+    started, how long it's been going) - the richer per-source fields
+    (TECO's cause/ETR, FPL's percentage-of-county) stay in their own
+    detailed sections below, not squeezed in here.
+    """
+    unified = []
+
+    for e in open_events:
+        unified.append({
+            "utility": e["utility"],
+            "county": e["county"],
+            "customers": e["peak_customers_out"],
+            "start_time": e["start_time"],
+            "duration": e["duration"],
+        })
+
+    for e in teco_open_events:
+        unified.append({
+            "utility": e["utility"],
+            "county": e["county"],
+            "customers": e["peak_customer_count"],
+            "start_time": e["start_time"],
+            "duration": e["duration"],
+        })
+
+    unified.sort(key=lambda row: row["customers"] or 0, reverse=True)
+    return unified
+
+
 @app.route("/")
 def index():
     db = OutageDatabase()
@@ -78,6 +112,8 @@ def index():
     for stats in teco_correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
 
+    unified_open = _build_unified_view(open_events, teco_open_events)
+
     return render_template(
         "dashboard.html",
         snapshot=snapshot,
@@ -88,6 +124,7 @@ def index():
         teco_open_events=teco_open_events,
         teco_closed_events=teco_closed_events,
         teco_correlation=teco_correlation,
+        unified_open=unified_open,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 
