@@ -46,8 +46,9 @@ def parse_alert(alert):
         Dictionary with cleaned alert data
     """
     props = alert.get('properties', {})
-    
+
     return {
+        'id': props.get('id'),  # NWS's own permanent alert ID
         'event': props.get('event'),  # e.g., "Wind Advisory"
         'headline': props.get('headline'),
         'severity': props.get('severity'),  # e.g., "Moderate", "Severe"

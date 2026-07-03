@@ -73,6 +73,7 @@ class OutageDatabase:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS weather_alerts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_id TEXT,
                 timestamp TEXT NOT NULL,
                 event_type TEXT NOT NULL,
                 severity TEXT,
@@ -84,7 +85,10 @@ class OutageDatabase:
                 description TEXT
             )
         ''')
-        
+
+        # Safe migration for databases created before alert_id existed
+        _ensure_column(cursor, 'weather_alerts', 'alert_id')
+
         # Outage events table - tracks when an outage starts and ends per
         # county/utility, derived from the outages snapshot table
         cursor.execute('''
@@ -212,6 +216,17 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_teco_incident_events_unique
             ON teco_incident_events(incident_id, start_time)
+        ''')
+
+        # NWS's own alert id is the real identity of an alert - re-polling
+        # the same still-active alert every cycle was silently re-inserting
+        # it every time, since the old schema only had our own polling
+        # timestamp, which is different every cycle by definition. NULLs
+        # (older rows imported before this existed) are exempt from a
+        # SQLite UNIQUE constraint, so this only blocks genuine repeats.
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_weather_alerts_unique
+            ON weather_alerts(alert_id)
         ''')
         
         cursor.execute('''
@@ -364,7 +379,7 @@ class OutageDatabase:
 
         Args:
             alert_list: List of dicts as returned by fetch_weather.parse_alert()
-                        (keys: event, headline, severity, urgency, areas,
+                        (keys: id, event, headline, severity, urgency, areas,
                         effective, expires, description)
         """
         conn = self.connect()
@@ -375,6 +390,7 @@ class OutageDatabase:
         records = []
         for alert in alert_list:
             records.append((
+                alert.get('id'),
                 timestamp,
                 alert['event'],
                 alert.get('severity'),
@@ -387,12 +403,13 @@ class OutageDatabase:
             ))
 
         cursor.executemany('''
-            INSERT INTO weather_alerts (timestamp, event_type, severity, urgency, areas, effective, expires, headline, description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR IGNORE INTO weather_alerts
+                (alert_id, timestamp, event_type, severity, urgency, areas, effective, expires, headline, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', records)
 
         conn.commit()
-        print(f"Logged {len(records)} weather alert records")
+        print(f"Weather alerts: {cursor.rowcount} new (of {len(records)} currently active)")
 
 
     def get_latest_snapshot(self):
