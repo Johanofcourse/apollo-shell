@@ -105,6 +105,25 @@ class OutageDatabase:
             )
         ''')
 
+        # TECO incident-level outages - a genuinely different shape than
+        # the county-rollup outages table: individual incidents with real
+        # coordinates, cause, crew status, and an actual restoration-time
+        # estimate, from TECO's own live outage-map backend
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS teco_incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                status TEXT,
+                reason TEXT,
+                customer_count INTEGER,
+                lat REAL,
+                lon REAL,
+                update_time TEXT,
+                estimated_restoration TEXT
+            )
+        ''')
+
         # Create indexes
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_timestamp
@@ -127,6 +146,11 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_outage_events_unique
             ON outage_events(utility, county, start_time)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_teco_incidents_unique
+            ON teco_incidents(incident_id, update_time)
         ''')
         
         cursor.execute('''
@@ -406,6 +430,39 @@ class OutageDatabase:
 
         conn.commit()
         print(f"Logged {len(rows)} storm severity records")
+
+
+    def log_teco_incidents(self, records):
+        """
+        Insert TECO live outage incidents (from fetch_teco_outages.py).
+
+        Args:
+            records: list of dicts with keys: incident_id, status, reason,
+                     customer_count, lat, lon, update_time,
+                     estimated_restoration
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        fetched_at = datetime.now().isoformat()
+
+        rows = [
+            (
+                r['incident_id'], fetched_at, r.get('status'), r.get('reason'),
+                r.get('customer_count'), r.get('lat'), r.get('lon'),
+                r.get('update_time'), r.get('estimated_restoration'),
+            )
+            for r in records
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO teco_incidents
+                (incident_id, fetched_at, status, reason, customer_count, lat, lon, update_time, estimated_restoration)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+
+        conn.commit()
+        print(f"Logged {len(rows)} TECO incident records")
 
 
 				
