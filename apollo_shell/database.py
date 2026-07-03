@@ -117,9 +117,20 @@ class OutageDatabase:
                 begin_time TEXT,
                 end_time TEXT,
                 reported_wind_mph INTEGER,
+                snow_inches REAL,
+                ice_inches REAL,
+                wind_chill_f REAL,
                 narrative TEXT
             )
         ''')
+
+        # Safe migration for databases created before these columns
+        # existed - winter-event severity metrics, added after realizing
+        # wind speed alone means nothing for ice/snow/extreme-cold events
+        for column, coltype in (
+            ('snow_inches', 'REAL'), ('ice_inches', 'REAL'), ('wind_chill_f', 'REAL')
+        ):
+            _ensure_column(cursor, 'storm_severity', column, coltype)
 
         # TECO incident-level outages - a genuinely different shape than
         # the county-rollup outages table: individual incidents with real
@@ -518,7 +529,7 @@ class OutageDatabase:
         Args:
             records: list of dicts with keys: storm_name, county, zone_name,
                      event_type, begin_time, end_time, reported_wind_mph,
-                     narrative
+                     snow_inches, ice_inches, wind_chill_f, narrative
         """
         conn = self.connect()
         cursor = conn.cursor()
@@ -527,15 +538,17 @@ class OutageDatabase:
             (
                 r['storm_name'], r['county'], r['zone_name'], r['event_type'],
                 r.get('begin_time'), r.get('end_time'),
-                r.get('reported_wind_mph'), r.get('narrative'),
+                r.get('reported_wind_mph'), r.get('snow_inches'),
+                r.get('ice_inches'), r.get('wind_chill_f'), r.get('narrative'),
             )
             for r in records
         ]
 
         cursor.executemany('''
             INSERT INTO storm_severity
-                (storm_name, county, zone_name, event_type, begin_time, end_time, reported_wind_mph, narrative)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (storm_name, county, zone_name, event_type, begin_time, end_time,
+                 reported_wind_mph, snow_inches, ice_inches, wind_chill_f, narrative)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', rows)
 
         conn.commit()

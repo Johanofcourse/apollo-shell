@@ -14,6 +14,10 @@ SEVERE_WEATHER_EVENT_TYPES = {
     "Thunderstorm Wind", "Tornado", "Hail", "Funnel Cloud", "High Wind",
 }
 WIND_RE = re.compile(r"(\d{2,3})\s*mph", re.IGNORECASE)
+SNOW_RE = re.compile(r"between\s+(\d+)\s+and\s+(\d+)\s+inches?\s+of\s+snow", re.IGNORECASE)
+WIND_CHILL_RE = re.compile(r"wind\s*chills?\s+of\s+(-?\d+)\s*-\s*(-?\d+)\s+degrees", re.IGNORECASE)
+ICE_RE = re.compile(r"(?:a |an )?(quarter|half|three.quarters|\d+(?:\.\d+)?)\s*inch(?:es)?\s+of\s+ice", re.IGNORECASE)
+ICE_WORD_VALUES = {"quarter": 0.25, "half": 0.5, "three quarters": 0.75, "three-quarters": 0.75}
 
 
 def download_storm_events_csv(url, dest_path):
@@ -62,6 +66,47 @@ def extract_wind_mph(narrative):
     if not matches:
         return None
     return max(int(m) for m in matches)
+
+
+def extract_snow_inches(narrative):
+    """
+    Upper bound of a reported snowfall range, e.g. "between 4 and 6
+    inches of snow" -> 6.0. Worse = higher, same convention as wind.
+    """
+    match = SNOW_RE.search(narrative or "")
+    if not match:
+        return None
+    return float(match.group(2))
+
+
+def extract_ice_inches(narrative):
+    """
+    Reported ice accretion thickness, e.g. "a quarter inch of ice" ->
+    0.25. NOAA narratives describe this in words ("quarter", "half"),
+    not always digits, so both forms are handled.
+    """
+    match = ICE_RE.search(narrative or "")
+    if not match:
+        return None
+    value = match.group(1).lower()
+    if value in ICE_WORD_VALUES:
+        return ICE_WORD_VALUES[value]
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def extract_wind_chill_f(narrative):
+    """
+    Lower bound of a reported wind chill range, e.g. "wind chills of
+    10-15 degrees" -> 10.0. Worse = lower here, opposite convention
+    from wind/snow, since colder is more severe.
+    """
+    match = WIND_CHILL_RE.search(narrative or "")
+    if not match:
+        return None
+    return float(min(int(match.group(1)), int(match.group(2))))
 
 
 def extract_storm_severity(csv_path, storm_name, start_time, end_time, counties, buffer_days=1):
@@ -123,6 +168,9 @@ def extract_storm_severity(csv_path, storm_name, start_time, end_time, counties,
                 'begin_time': row['BEGIN_DATE_TIME'],
                 'end_time': row['END_DATE_TIME'],
                 'reported_wind_mph': extract_wind_mph(narrative),
+                'snow_inches': extract_snow_inches(narrative),
+                'ice_inches': extract_ice_inches(narrative),
+                'wind_chill_f': extract_wind_chill_f(narrative),
                 'narrative': (narrative or '')[:500],
             })
 
