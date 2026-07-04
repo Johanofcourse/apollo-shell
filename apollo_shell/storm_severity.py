@@ -13,7 +13,42 @@ SEVERE_WEATHER_EVENT_TYPES = {
     "Winter Storm", "Ice Storm", "Extreme Cold/Wind Chill", "Heavy Snow",
     "Thunderstorm Wind", "Tornado", "Hail", "Funnel Cloud", "High Wind",
 }
+# NOAA also legitimately writes "peak intensity of NN mph" for real local
+# damage-survey wind estimates (e.g. a tornado's EF-rating "determined by
+# the roof decking damage here" - a real find while fixing this), so
+# excluding that exact phrase generically was tried first and was wrong -
+# it would have thrown out real local readings too. A looser "wind figure
+# paired with a pressure figure within N characters" heuristic was also
+# tried and was *worse* - checked against every already-imported storm and
+# it wrongly nulled out dozens of genuine local readings, because two
+# unrelated numbers often land within a few dozen characters of each
+# other in a long narrative purely by coincidence. Both attempts are kept
+# here as a lesson: the fix has to be a specific, anchored phrase, not a
+# proximity heuristic, however tempting the "just look nearby" shortcut
+# seems.
+#
+# Elsa's Pinellas County records had three *distinct* storm-history
+# figures in the same narrative, each describing the storm-as-a-system at
+# some point in its own track, never a local station: "peak intensity of
+# 85 mph and 991 mb" (still in the Caribbean), "a second peak of 75 mph
+# and 995 mb" (still offshore), and "maximum sustained winds of 65 mph and
+# a minimum central pressure of 999 mb" (Taylor County's actual landfall -
+# real, but misattributed when this same paragraph is repeated for other
+# counties' records too). Real local readings in this same narrative
+# style look like "ASOS site KSPG ... reported a 52 mph wind gust" - no
+# pressure figure anywhere near them. Each known bad phrasing gets its own
+# explicit pattern below - if a differently-worded false positive shows up
+# for a future storm, add another explicit pattern the same way rather
+# than generalizing into a proximity check again.
 WIND_RE = re.compile(r"(\d{2,3})\s*mph", re.IGNORECASE)
+STORM_HISTORY_WIND_PATTERNS = [
+    re.compile(r"peak intensity of\s+(\d{2,3})\s*mph\s+and\s+\d+\s*mb", re.IGNORECASE),
+    re.compile(r"second peak of\s+(\d{2,3})\s*mph\s+and\s+\d+\s*mb", re.IGNORECASE),
+    re.compile(
+        r"sustained winds? of\s+(\d{2,3})\s*mph\s+and\s+a\s+minimum\s+central\s+pressure\s+of\s+\d+\s*mb",
+        re.IGNORECASE,
+    ),
+]
 SNOW_RE = re.compile(r"between\s+(\d+)\s+and\s+(\d+)\s+inches?\s+of\s+snow", re.IGNORECASE)
 WIND_CHILL_RE = re.compile(r"wind\s*chills?\s+of\s+(-?\d+)\s*-\s*(-?\d+)\s+degrees", re.IGNORECASE)
 ICE_RE = re.compile(r"(?:a |an )?(quarter|half|three.quarters|\d+(?:\.\d+)?)\s*inch(?:es)?\s+of\s+ice", re.IGNORECASE)
@@ -61,8 +96,23 @@ def extract_wind_mph(narrative):
     Pull the highest "NN mph" figure mentioned in a narrative, if any.
     Narratives are free text, so this is a best-effort extraction, not a
     guaranteed structured field - many records won't have one at all.
+
+    Excludes matches that are actually a storm-history recap of the
+    system's own historical peak (see STORM_HISTORY_WIND_PATTERNS) rather
+    than a local reading - excluded by exact character span, not by
+    value, so a real local reading with the same number elsewhere in the
+    same narrative still counts.
     """
-    matches = WIND_RE.findall(narrative or "")
+    narrative = narrative or ""
+    excluded_spans = {
+        m.span(1)
+        for pattern in STORM_HISTORY_WIND_PATTERNS
+        for m in pattern.finditer(narrative)
+    }
+    matches = [
+        m.group(1) for m in WIND_RE.finditer(narrative)
+        if m.span(1) not in excluded_spans
+    ]
     if not matches:
         return None
     return max(int(m) for m in matches)
