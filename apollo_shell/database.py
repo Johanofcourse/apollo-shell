@@ -949,7 +949,7 @@ class OutageDatabase:
         ''', rows)
 
         conn.commit()
-        print(f"Logged {cursor.rowcount} new Duke system alert records (of {len(rows)} active)")
+        print(f"Logged {cursor.rowcount} new Duke system alert records (of {len(rows)} fetched)")
 
 
     def get_duke_open_events(self):

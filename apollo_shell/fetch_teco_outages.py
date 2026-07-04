@@ -23,7 +23,14 @@ REASON_CATEGORIES = [
     ("animal", ["squirrel", "animal", "wildlife", "bird", "snake", "critter", "raccoon"]),
     ("vegetation", ["tree", "limb", "branch", "vegetation", "foliage"]),
     ("vehicle", ["vehicle", "car", "truck", "accident", "collision", "crash"]),
-    ("weather", ["storm", "wind", "lightning", "flood", "hurricane", "ice", "rain", "heat"]),
+    # "storm" is included both standalone and as an explicit suffix
+    # (thunderstorm/windstorm/etc.) - word-boundary matching only checks
+    # the leading edge of a keyword, so "storm" alone would not match
+    # inside "thunderstorm" (no boundary between "thunder" and "storm").
+    ("weather", [
+        "storm", "thunderstorm", "windstorm", "rainstorm", "hailstorm",
+        "wind", "lightning", "flood", "hurricane", "ice", "rain", "heat",
+    ]),
     ("equipment", ["equipment", "transformer", "pole", "wire", "line", "fuse", "breaker", "damage"]),
     ("planned", ["planned", "maintenance", "scheduled"]),
     ("pending", ["pending", "investigat", "assessing", "unknown"]),
