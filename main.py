@@ -6,7 +6,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
 from database import OutageDatabase
-from fetch_poweroutage import fetch_fpl_outages, outages_to_records
+from fetch_fpl_outages import fetch_fpl_outages, outages_to_records
 from fetch_weather import get_alerts_summary
 from fetch_teco_outages import get_incidents_summary
 from fetch_duke_outages import (
