@@ -24,10 +24,13 @@
       re-running any collector can't silently duplicate data
 - [ ] Correlation confidence scoring (see PRD — proposed, not designed
       in detail yet)
-- [ ] More Florida utilities, one at a time, same proven pattern as the
-      first two (Duke Energy is next — its live map blocks a plain
-      automated fetch with a 403, so this one needs a human driving a
-      real browser through devtools, same as how TECO's was found)
+- [x] Third live Florida utility integrated end-to-end — Duke Energy,
+      same pattern as TECO (incident-level data, live county rollups,
+      system alerts, correlation). Its live map blocks a plain
+      automated fetch, so this one needed a human driving a real
+      browser through devtools to find, same as how TECO's was found
+- [ ] More Florida utilities beyond FPL/TECO/Duke, one at a time, same
+      proven pattern
 
 ## Phase 3: Predictive (Blocked on data, not code)
 - [ ] Restoration-time estimation from historical patterns

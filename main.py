@@ -9,9 +9,15 @@ from database import OutageDatabase
 from fetch_poweroutage import fetch_fpl_outages, outages_to_records
 from fetch_weather import get_alerts_summary
 from fetch_teco_outages import get_incidents_summary
+from fetch_duke_outages import (
+    get_incidents_summary as get_duke_incidents_summary,
+    get_counties_summary as get_duke_counties_summary,
+    get_system_alerts_summary as get_duke_system_alerts_summary,
+)
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
+    find_duke_correlations, duke_correlation_summary,
 )
 
 
@@ -61,10 +67,35 @@ def run_teco_cycle(db):
     db.sync_teco_incident_events(incidents, timestamp=timestamp)
 
 
+def run_duke_cycle(db):
+    """
+    Fetch Duke Energy's live outage incidents, county rollups, and system
+    alerts; save them, and update duke_incident_events lifecycle tracking
+    (start/end per incident).
+    """
+    incidents = get_duke_incidents_summary()
+    timestamp = datetime.now().isoformat()
+    if incidents:
+        db.log_duke_incidents(incidents)
+        db.sync_duke_incident_events(incidents, timestamp=timestamp)
+    else:
+        print("Skipping Duke incident save - no active incidents")
+
+    counties = get_duke_counties_summary()
+    if counties:
+        db.log_duke_counties(counties)
+    else:
+        print("Skipping Duke county save - no county data fetched")
+
+    alerts = get_duke_system_alerts_summary()
+    if alerts:
+        db.log_duke_system_alerts(alerts)
+
+
 def run_correlation_cycle():
     """
-    Compute current outage/weather correlations (FPL and TECO) and log a
-    summary.
+    Compute current outage/weather correlations (FPL, TECO, and Duke) and
+    log a summary.
     """
     matches = find_correlations()
     if not matches:
@@ -85,6 +116,18 @@ def run_correlation_cycle():
         teco_summary = teco_correlation_summary(teco_matches)
         print(f"TECO correlation: {len(teco_matches)} matches across {len(teco_summary)} counties")
         for county, stats in teco_summary.items():
+            print(
+                f"  {county}: {stats['incident_count']} incident(s), "
+                f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}"
+            )
+
+    duke_matches = find_duke_correlations()
+    if not duke_matches:
+        print("Duke correlation: no matches this cycle")
+    else:
+        duke_summary = duke_correlation_summary(duke_matches)
+        print(f"Duke correlation: {len(duke_matches)} matches across {len(duke_summary)} counties")
+        for county, stats in duke_summary.items():
             print(
                 f"  {county}: {stats['incident_count']} incident(s), "
                 f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}"
@@ -120,6 +163,11 @@ def main():
                 run_teco_cycle(db)
             except Exception as e:
                 print(f"TECO fetch cycle failed: {e}")
+
+            try:
+                run_duke_cycle(db)
+            except Exception as e:
+                print(f"Duke fetch cycle failed: {e}")
 
             try:
                 run_correlation_cycle()

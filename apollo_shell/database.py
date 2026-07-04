@@ -190,6 +190,88 @@ class OutageDatabase:
         for column in ('utility', 'reason_category'):
             _ensure_column(cursor, 'teco_incident_events', column)
 
+        # Duke Energy raw incident snapshots - Duke's live feed gives no
+        # per-incident "last updated" field (unlike TECO's update_time), so
+        # unlike teco_incidents this table just logs one fresh row per
+        # incident per poll cycle, same as the plain outages table does.
+        # The derived lifecycle lives in duke_incident_events below.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS duke_incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                utility TEXT,
+                customer_count INTEGER,
+                lat REAL,
+                lon REAL,
+                county TEXT,
+                cause TEXT,
+                cause_category TEXT
+            )
+        ''')
+
+        # Duke Energy incident lifecycle tracking - same approach as
+        # teco_incident_events: an event opens the first time an incident_id
+        # is seen and closes when that id stops appearing in a poll (Duke's
+        # feed, like TECO's, only lists currently-active incidents).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS duke_incident_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                utility TEXT,
+                county TEXT,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customer_count INTEGER,
+                cause TEXT,
+                cause_category TEXT,
+                lat REAL,
+                lon REAL
+            )
+        ''')
+
+        # Duke Energy county rollups - a different shape than individual
+        # incidents: per-county totals plus ETR/cause/crew overrides that
+        # only populate during a real declared event. Duke's own
+        # last_updated field is the real identity of a row here, same
+        # principle as weather_alerts using NWS's own alert_id.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS duke_counties (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fetched_at TEXT NOT NULL,
+                utility TEXT,
+                county TEXT,
+                area_of_interest_id TEXT,
+                customers_served INTEGER,
+                etr_override TEXT,
+                cause_code_override TEXT,
+                crew_status_override TEXT,
+                customers_affected_override INTEGER,
+                max_customers_affected INTEGER,
+                active_events_count INTEGER,
+                restored_events_count INTEGER,
+                last_updated TEXT
+            )
+        ''')
+
+        # Duke Energy system alerts - notifications about the outage map's
+        # own data reliability (e.g. "data may be delayed"), not weather
+        # alerts. Duke's own numeric id is the real identity, same
+        # principle as weather_alerts using NWS's own alert_id.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS duke_system_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                duke_alert_id TEXT,
+                fetched_at TEXT NOT NULL,
+                title TEXT,
+                description TEXT,
+                active_indicator INTEGER,
+                alert_type TEXT,
+                start_time TEXT,
+                end_time TEXT
+            )
+        ''')
+
         # Create indexes
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_timestamp
@@ -204,6 +286,11 @@ class OutageDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_teco_incident_events_open
             ON teco_incident_events(incident_id, end_time)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_duke_incident_events_open
+            ON duke_incident_events(incident_id, end_time)
         ''')
 
         # Uniqueness guards so re-running an import (e.g. replaying the same
@@ -250,7 +337,33 @@ class OutageDatabase:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_storm_severity_unique
             ON storm_severity(storm_name, county, zone_name, event_type, begin_time)
         ''')
-        
+
+        # Applying the idempotency lesson from the start this time, not
+        # after the fact. duke_incidents has no natural content-identity
+        # (no per-record update_time from Duke), so this guard is mostly
+        # defensive against a literal double-run within the same cycle;
+        # duke_incident_events and duke_system_alerts have real identity
+        # keys, same as their teco/weather_alerts counterparts.
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_duke_incidents_unique
+            ON duke_incidents(incident_id, fetched_at)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_duke_incident_events_unique
+            ON duke_incident_events(incident_id, start_time)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_duke_counties_unique
+            ON duke_counties(county, last_updated)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_duke_system_alerts_unique
+            ON duke_system_alerts(duke_alert_id)
+        ''')
+
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_county 
             ON outages(county)
@@ -672,6 +785,203 @@ class OutageDatabase:
 
         conn.commit()
         print(f"TECO incident events: {opened} opened, {closed} closed this cycle")
+
+
+    def log_duke_incidents(self, records):
+        """
+        Insert Duke Energy live outage incidents (from fetch_duke_outages.py).
+
+        Args:
+            records: list of dicts with keys: incident_id, utility,
+                     customer_count, lat, lon, county, cause, cause_category
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        fetched_at = datetime.now().isoformat()
+
+        rows = [
+            (
+                r['incident_id'], fetched_at, r.get('utility'),
+                r.get('customer_count'), r.get('lat'), r.get('lon'),
+                r.get('county'), r.get('cause'), r.get('cause_category'),
+            )
+            for r in records
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO duke_incidents
+                (incident_id, fetched_at, utility, customer_count, lat, lon,
+                 county, cause, cause_category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+
+        conn.commit()
+        print(f"Logged {len(rows)} Duke Energy incident records")
+
+
+    def sync_duke_incident_events(self, records, timestamp=None):
+        """
+        Track Duke Energy incident lifecycle. Same approach as
+        sync_teco_incident_events: an event opens the first time an
+        incident_id is seen, stays updated with the latest known values
+        while still being reported, and closes once an incident_id that
+        was open stops appearing in a poll at all (Duke's feed, like
+        TECO's, only lists currently-active incidents).
+
+        Args:
+            records: list of dicts as returned by fetch_duke_outages.parse_incidents()
+            timestamp: ISO timestamp for this poll; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        current_ids = {r['incident_id'] for r in records}
+
+        opened = 0
+        closed = 0
+
+        for r in records:
+            cursor.execute('''
+                SELECT id, peak_customer_count FROM duke_incident_events
+                WHERE incident_id = ? AND end_time IS NULL
+            ''', (r['incident_id'],))
+            open_event = cursor.fetchone()
+
+            if open_event is None:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO duke_incident_events
+                        (incident_id, utility, county, start_time, end_time,
+                         peak_customer_count, cause, cause_category, lat, lon)
+                    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
+                ''', (
+                    r['incident_id'], r.get('utility'), r.get('county'), timestamp,
+                    r.get('customer_count'), r.get('cause'), r.get('cause_category'),
+                    r.get('lat'), r.get('lon'),
+                ))
+                if cursor.rowcount > 0:
+                    opened += 1
+            else:
+                peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
+                cursor.execute('''
+                    UPDATE duke_incident_events
+                    SET peak_customer_count = ?, utility = ?, county = ?,
+                        cause = ?, cause_category = ?, lat = ?, lon = ?
+                    WHERE id = ?
+                ''', (
+                    peak, r.get('utility'), r.get('county'),
+                    r.get('cause'), r.get('cause_category'),
+                    r.get('lat'), r.get('lon'), open_event['id'],
+                ))
+
+        cursor.execute('SELECT id, incident_id FROM duke_incident_events WHERE end_time IS NULL')
+        for row in cursor.fetchall():
+            if row['incident_id'] not in current_ids:
+                cursor.execute('''
+                    UPDATE duke_incident_events SET end_time = ? WHERE id = ?
+                ''', (timestamp, row['id']))
+                closed += 1
+
+        conn.commit()
+        print(f"Duke incident events: {opened} opened, {closed} closed this cycle")
+
+
+    def log_duke_counties(self, records):
+        """
+        Insert Duke Energy county rollup snapshots (from
+        fetch_duke_outages.py's parse_counties()).
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        fetched_at = datetime.now().isoformat()
+
+        rows = [
+            (
+                fetched_at, r.get('utility'), r.get('county'),
+                r.get('area_of_interest_id'), r.get('customers_served'),
+                r.get('etr_override'), r.get('cause_code_override'),
+                r.get('crew_status_override'), r.get('customers_affected_override'),
+                r.get('max_customers_affected'), r.get('active_events_count'),
+                r.get('restored_events_count'), r.get('last_updated'),
+            )
+            for r in records
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO duke_counties
+                (fetched_at, utility, county, area_of_interest_id, customers_served,
+                 etr_override, cause_code_override, crew_status_override,
+                 customers_affected_override, max_customers_affected,
+                 active_events_count, restored_events_count, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+
+        conn.commit()
+        print(f"Logged {cursor.rowcount} new Duke county records (of {len(rows)} counties)")
+
+
+    def log_duke_system_alerts(self, records):
+        """
+        Insert Duke Energy system alerts (from fetch_duke_outages.py's
+        parse_system_alerts()) - map-data-reliability notices, not weather.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        fetched_at = datetime.now().isoformat()
+
+        rows = [
+            (
+                r.get('duke_alert_id'), fetched_at, r.get('title'),
+                r.get('description'), int(bool(r.get('active_indicator'))),
+                r.get('alert_type'), r.get('start_time'), r.get('end_time'),
+            )
+            for r in records
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO duke_system_alerts
+                (duke_alert_id, fetched_at, title, description,
+                 active_indicator, alert_type, start_time, end_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+
+        conn.commit()
+        print(f"Logged {cursor.rowcount} new Duke system alert records (of {len(rows)} active)")
+
+
+    def get_duke_open_events(self):
+        """
+        Return currently open duke_incident_events (end_time IS NULL),
+        worst (by peak customer count) first.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM duke_incident_events
+            WHERE end_time IS NULL
+            ORDER BY peak_customer_count DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_duke_recent_closed_events(self, limit=10):
+        """
+        Return the most recently closed duke_incident_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM duke_incident_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
 
 
 				

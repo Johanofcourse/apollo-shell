@@ -1,3 +1,4 @@
+import re
 import requests
 from datetime import datetime
 
@@ -41,13 +42,18 @@ def _categorize(text, categories):
     Best-effort keyword match against a free-text field. Returns the
     first matching category name, or "other" if nothing matches, or
     "unknown" if there was no text to check at all.
+
+    Matches on word boundaries, not plain substrings - naive substring
+    matching classified Duke Energy's "unplanned" cause as "planned"
+    (the word "planned" is a substring of "unplanned"), silently
+    inverting its real meaning.
     """
     if not text:
         return "unknown"
 
     lowered = text.lower()
     for category, keywords in categories:
-        if any(keyword in lowered for keyword in keywords):
+        if any(re.search(rf"\b{re.escape(keyword)}", lowered) for keyword in keywords):
             return category
 
     return "other"
