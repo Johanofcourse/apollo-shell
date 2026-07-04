@@ -6,7 +6,7 @@
 - [x] Web dashboard (`dashboard.py`, localhost only — not public-facing)
 - [x] NWS weather integration (fetching + storing active alerts)
 - [x] Basic weather/outage correlation — see
-      [`docs/PRD-weather-correlation.md`](./PRD-weather-correlation.md)
+      [`docs/product-review-weather-correlation.md`](./product-review-weather-correlation.md)
       for what's built vs. still proposed here (e.g. confidence
       scoring is not built yet, don't check that off based on this file)
 
@@ -22,7 +22,7 @@
       thunderstorm/tornado events, not just tropical systems
 - [x] Data integrity pass — idempotent writes across every table, so
       re-running any collector can't silently duplicate data
-- [ ] Correlation confidence scoring (see PRD — proposed, not designed
+- [ ] Correlation confidence scoring (see product review doc — proposed, not designed
       in detail yet)
 - [x] Third live Florida utility integrated end-to-end — Duke Energy,
       same pattern as TECO (incident-level data, live county rollups,

@@ -1,9 +1,9 @@
-# PRD: Weather/Outage Correlation
+# Product Review Doc: Weather/Outage Correlation
 
 ## Status
 Partially built. Most of the underlying mechanism already exists
 (`apollo_shell/correlate.py`); the new proposed work is a confidence
-scheme and display layer. This PRD describes the feature as a whole,
+scheme and display layer. This doc reviews the feature as a whole,
 not a from-scratch build.
 
 ## Problem
@@ -50,7 +50,7 @@ usage.
 - **Display layer.** Show the matched weather type and confidence
   level alongside an outage, wherever outages are shown to a user.
 
-## Explicitly out of scope for this PRD
+## Explicitly out of scope for this review
 - Non-weather causes (equipment failure, vehicle accidents, etc.) —
   a different utility's live feed already gives us a stated cause for
   some outages, but folding that in is a separate piece of work, not
@@ -66,7 +66,7 @@ usage.
   percentage of outages actually correlate with weather is real
   information about the data — it should be reported honestly, not
   optimized toward a predetermined number. (An earlier draft of this
-  PRD set an 80% target; dropped, since real data collected so far
+  doc set an 80% target; dropped, since real data collected so far
   suggests most routine outages are *not* weather-related, and treating
   that as a goal to hit would incentivize inflating matches rather than
   reporting reality.)
