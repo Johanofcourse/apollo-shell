@@ -1,25 +1,38 @@
+import os
 import requests
 import json
 from datetime import datetime
+from dotenv import load_dotenv
 from database import OutageDatabase
+
+load_dotenv()
+
+# Kept out of the committed code (this repo is public), loaded from .env
+# instead of hardcoded as a literal string, same as TECO/Duke.
+FPL_API_URL = os.environ.get("FPL_API_URL")
+FPL_API_ORIGIN = os.environ.get("FPL_API_ORIGIN")
 
 
 def fetch_fpl_outages():
     """
-    Fetches live outage data from FPL's CountyOutages.json endpoint
+    Fetches live outage data from FPL's outage-map JSON endpoint
     Returns the parsed JSON data
     """
-    url = "https://www.fplmaps.com/customer/outage/CountyOutages.json"
-    
+    if not FPL_API_URL or not FPL_API_ORIGIN:
+        raise RuntimeError(
+            "FPL_API_URL / FPL_API_ORIGIN are not set. Copy .env.example "
+            "to .env and fill in the real values."
+        )
+
     try:
         print("Fetching FPL outage data...")
-        
+
         headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://www.fplmaps.com/'
+            'Referer': f'{FPL_API_ORIGIN}/'
         }
         
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(FPL_API_URL, headers=headers, timeout=10)
         response.raise_for_status()
         
         # Debug: print what we actually got

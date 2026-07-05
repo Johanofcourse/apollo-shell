@@ -1,9 +1,16 @@
+import os
 import re
 import requests
 from datetime import datetime
+from dotenv import load_dotenv
 
+load_dotenv()
 
-TECO_OUTAGE_TILES_URL = "https://outage-data-prod-hrcadje2h9aje9c9.a03.azurefd.net/api/v1/outage-tiles"
+# Found via browser devtools, not officially documented - kept out of the
+# committed code (this repo is public) the same way Duke's auth token is,
+# loaded from .env instead of hardcoded as a literal string.
+TECO_OUTAGE_TILES_URL = os.environ.get("TECO_API_URL")
+TECO_API_ORIGIN = os.environ.get("TECO_API_ORIGIN")
 
 # The canonical utility name, matching the exact string this same real
 # entity is stored as in historical_import.py's PSC-report data (where
@@ -91,13 +98,19 @@ def fetch_teco_outages(bounding_box=None):
     Returns the raw list of Elasticsearch "hits" (each one a single
     outage incident), or an empty list on failure.
     """
+    if not TECO_OUTAGE_TILES_URL or not TECO_API_ORIGIN:
+        raise RuntimeError(
+            "TECO_API_URL / TECO_API_ORIGIN are not set. Copy .env.example "
+            "to .env and fill in the real values (found via browser devtools)."
+        )
+
     bounding_box = bounding_box or FLORIDA_BOUNDING_BOX
 
     headers = {
         "Content-Type": "application/json",
         "Accept": "*/*",
-        "Origin": "https://outage.tecoenergy.com",
-        "Referer": "https://outage.tecoenergy.com/",
+        "Origin": TECO_API_ORIGIN,
+        "Referer": f"{TECO_API_ORIGIN}/",
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5.2 Safari/605.1.15",
     }

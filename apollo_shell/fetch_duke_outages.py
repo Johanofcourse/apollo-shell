@@ -7,21 +7,26 @@ from fetch_teco_outages import lookup_county, categorize_reason
 
 load_dotenv()
 
-DUKE_API_BASE = "https://prod.apigee.duke-energy.app/outage-maps/v1"
+# Found via browser devtools, not officially documented - kept out of the
+# committed code (this repo is public) the same way the auth token below
+# is, loaded from .env instead of hardcoded as a literal string.
+DUKE_API_BASE = os.environ.get("DUKE_API_BASE")
+DUKE_API_ORIGIN = os.environ.get("DUKE_API_ORIGIN")
 JURISDICTION = "DEF"  # Duke's internal code for their Florida jurisdiction
 UTILITY_NAME = "Duke Energy"
 
 
 def _headers():
     token = os.environ.get("DUKE_ENERGY_API_AUTH")
-    if not token:
+    if not token or not DUKE_API_BASE or not DUKE_API_ORIGIN:
         raise RuntimeError(
-            "DUKE_ENERGY_API_AUTH is not set. Copy .env.example to .env "
-            "and fill in the real value (found via browser devtools)."
+            "DUKE_ENERGY_API_AUTH / DUKE_API_BASE / DUKE_API_ORIGIN are not "
+            "set. Copy .env.example to .env and fill in the real values "
+            "(found via browser devtools)."
         )
     return {
         "Accept": "application/json, text/plain, */*",
-        "Origin": "https://outagemap.duke-energy.com",
+        "Origin": DUKE_API_ORIGIN,
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5.2 Safari/605.1.15",
         "Authorization": token,
