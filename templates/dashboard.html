@@ -166,13 +166,14 @@
   <div class="wrap">
   {% if correlation %}
     <table>
-      <tr><th>County</th><th>Correlated Outages</th><th>Peak % Out</th><th>Alert Types</th></tr>
+      <tr><th>County</th><th>Correlated Outages</th><th>Peak % Out</th><th>Alert Types</th><th>Confidence</th></tr>
       {% for county, stats in correlation.items() %}
       <tr>
         <td>{{ county }}</td>
         <td>{{ stats.outage_count }}</td>
         <td>{{ "%.2f"|format(stats.max_percentage_out) }}%</td>
         <td>{{ stats.alert_types_display }}</td>
+        <td>{{ stats.confidence_display }}</td>
       </tr>
       {% endfor %}
     </table>
@@ -229,18 +230,82 @@
   <div class="wrap">
   {% if teco_correlation %}
     <table>
-      <tr><th>County</th><th>Correlated Incidents</th><th>Max Customers</th><th>Alert Types</th></tr>
+      <tr><th>County</th><th>Correlated Incidents</th><th>Max Customers</th><th>Alert Types</th><th>Confidence</th></tr>
       {% for county, stats in teco_correlation.items() %}
       <tr>
         <td>{{ county }}</td>
         <td>{{ stats.incident_count }}</td>
         <td>{{ stats.max_customer_count }}</td>
         <td>{{ stats.alert_types_display }}</td>
+        <td>{{ stats.confidence_display }}</td>
       </tr>
       {% endfor %}
     </table>
   {% else %}
     <div class="empty">No correlated TECO incident/weather events right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>Duke — Currently Open Incidents ({{ duke_open_events|length }})</h2>
+  <div class="wrap">
+  {% if duke_open_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Customers</th><th>Cause</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in duke_open_events %}
+      <tr>
+        <td>{{ e.incident_id }}</td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
+        <td>{{ e.start_time }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open Duke incidents right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>Duke — Recently Resolved</h2>
+  <div class="wrap">
+  {% if duke_closed_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Cause</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in duke_closed_events %}
+      <tr>
+        <td>{{ e.incident_id }}</td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-ok">{{ e.peak_customer_count }}</td>
+        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
+        <td>{{ e.start_time }}</td>
+        <td>{{ e.end_time }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h2>Weather / Outage Correlation (Duke)</h2>
+  <div class="wrap">
+  {% if duke_correlation %}
+    <table>
+      <tr><th>County</th><th>Correlated Incidents</th><th>Max Customers</th><th>Alert Types</th><th>Confidence</th></tr>
+      {% for county, stats in duke_correlation.items() %}
+      <tr>
+        <td>{{ county }}</td>
+        <td>{{ stats.incident_count }}</td>
+        <td>{{ stats.max_customer_count }}</td>
+        <td>{{ stats.alert_types_display }}</td>
+        <td>{{ stats.confidence_display }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No correlated Duke incident/weather events right now.</div>
   {% endif %}
   </div>
 </body>

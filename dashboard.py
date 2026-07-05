@@ -10,6 +10,7 @@ from database import OutageDatabase
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
+    find_duke_correlations, duke_correlation_summary,
 )
 
 
@@ -45,15 +46,26 @@ def _format_alert_types(alert_types):
     return ", ".join(f"{name} ×{count}" for name, count in alert_types.items())
 
 
-def _build_unified_view(open_events, teco_open_events):
+def _format_confidence(confidence_breakdown):
     """
-    Normalize FPL's county-level outage_events and TECO's incident-level
-    teco_incident_events into one common shape for an at-a-glance,
-    all-utilities table. Deliberately keeps only the fields that both
-    sources actually have (utility, county, customers affected, when it
-    started, how long it's been going) - the richer per-source fields
-    (TECO's cause/ETR, FPL's percentage-of-county) stay in their own
-    detailed sections below, not squeezed in here.
+    Turn {"high": 3, "medium": 5, "low": 2} into "high ×3, medium ×5, low ×2",
+    always in high/medium/low order regardless of dict insertion order.
+    """
+    order = ["high", "medium", "low"]
+    return ", ".join(
+        f"{tier} ×{confidence_breakdown[tier]}" for tier in order if tier in confidence_breakdown
+    )
+
+
+def _build_unified_view(open_events, teco_open_events, duke_open_events):
+    """
+    Normalize FPL's county-level outage_events and TECO's/Duke's
+    incident-level *_incident_events into one common shape for an at-a-
+    glance, all-utilities table. Deliberately keeps only the fields all
+    three sources actually have (utility, county, customers affected,
+    when it started, how long it's been going) - the richer per-source
+    fields (TECO's/Duke's cause/ETR, FPL's percentage-of-county) stay in
+    their own detailed sections below, not squeezed in here.
     """
     unified = []
 
@@ -67,6 +79,15 @@ def _build_unified_view(open_events, teco_open_events):
         })
 
     for e in teco_open_events:
+        unified.append({
+            "utility": e["utility"],
+            "county": e["county"],
+            "customers": e["peak_customer_count"],
+            "start_time": e["start_time"],
+            "duration": e["duration"],
+        })
+
+    for e in duke_open_events:
         unified.append({
             "utility": e["utility"],
             "county": e["county"],
@@ -90,6 +111,8 @@ def index():
     weather_alerts = db.get_recent_weather_alerts(limit=10)
     teco_open_events = db.get_teco_open_events()
     teco_closed_events = db.get_teco_recent_closed_events(limit=10)
+    duke_open_events = db.get_duke_open_events()
+    duke_closed_events = db.get_duke_recent_closed_events(limit=10)
 
     db.close()
 
@@ -101,18 +124,30 @@ def index():
         event["duration"] = _duration_since(event["start_time"])
     for event in teco_closed_events:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
+    for event in duke_open_events:
+        event["duration"] = _duration_since(event["start_time"])
+    for event in duke_closed_events:
+        event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
     matches = find_correlations(db_path)
     correlation = correlation_summary(matches)
     for stats in correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
+        stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
 
     teco_matches = find_teco_correlations(db_path)
     teco_correlation = teco_correlation_summary(teco_matches)
     for stats in teco_correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
+        stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
 
-    unified_open = _build_unified_view(open_events, teco_open_events)
+    duke_matches = find_duke_correlations(db_path)
+    duke_correlation = duke_correlation_summary(duke_matches)
+    for stats in duke_correlation.values():
+        stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
+        stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
+
+    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events)
 
     return render_template(
         "dashboard.html",
@@ -124,6 +159,9 @@ def index():
         teco_open_events=teco_open_events,
         teco_closed_events=teco_closed_events,
         teco_correlation=teco_correlation,
+        duke_open_events=duke_open_events,
+        duke_closed_events=duke_closed_events,
+        duke_correlation=duke_correlation,
         unified_open=unified_open,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
