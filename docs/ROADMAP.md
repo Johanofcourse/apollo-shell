@@ -14,7 +14,7 @@
 - [x] Second live Florida utility integrated end-to-end (incident-level
       data, richer than FPL's — real cause, live status, and an actual
       restoration estimate)
-- [x] Historical storm data backfilled — 14 storms so far (2020-2025),
+- [x] Historical storm data backfilled — 15 storms so far (2019-2025),
       every utility per storm, not just one — kept private, not on GitHub
 - [x] Historical severity data layered in from an independent public
       source, cross-checked against our own outage numbers, extended
@@ -57,7 +57,7 @@
       deferred, not just unstarted: needs (1) running the same
       severity extractors against live weather alert text, not just
       historical NOAA narratives; (2) a real decision on querying
-      across separate storm databases (14 so far) vs. consolidating
+      across separate storm databases (15 so far) vs. consolidating
       them into one; (3) enough live volume that "closest historical match" is
       more than 1-2 data points per county. Revisit once Phase 3's
       data-volume bar (below) is actually met.
@@ -69,9 +69,9 @@ shortens that. Rough real numbers as of this writing: FPL alone is
 producing on the order of dozens of resolved outages per day live, so
 "enough for a first rough look" is more like weeks, "enough to trust"
 is more like a month or two, and that's still only one season's worth
-of conditions. Historical storm data (14 storms so far, 2020-2025)
+of conditions. Historical storm data (15 storms so far, 2019-2025)
 covers a different, rarer category of outage entirely and doesn't
-substitute for everyday-outage volume — and even across 14 storms, most
+substitute for everyday-outage volume — and even across 15 storms, most
 individual counties only show up in a handful of them, so it's still a
 thin sample per county, not something to treat as a reliable average yet.
 
