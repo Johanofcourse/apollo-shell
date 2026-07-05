@@ -151,12 +151,100 @@ def parse_esf12_report(pdf_path):
     return report_timestamp, records
 
 
-def import_report_series(pdf_paths, db_path):
+# County-only summary format seen in Sally's 2020 reports - a single row
+# per county combining every utility serving it into one number, unlike
+# every other storm (including Eta, the very next one that same year),
+# which breaks outages down by utility. No per-utility split exists to
+# recover from this format, so parse_county_summary_report() below uses a
+# fixed placeholder utility name instead - a real, accepted gap (Sally's
+# data can only be sliced by county, not by utility, unlike every other
+# storm), not an oversight.
+COUNTY_SUMMARY_ROW_RE = re.compile(
+    r"^(?P<county>[A-Z][A-Z.\s]*[A-Z])\s+(?P<served>[\d,]+)\s+(?P<out>[\d,]+)\s+(?P<pct>[\d.]+)%"
+)
+COMBINED_UTILITY_LABEL = "All Utilities Combined"
+
+FILENAME_TIMESTAMP_RE = re.compile(r"(\d{2})-(\d{2})-(\d{2})_(\d{2})(\d{2})_([AP]M)")
+
+
+def _parse_timestamp_from_filename(pdf_path):
+    """
+    Fall back to deriving a report's timestamp from its filename (e.g.
+    "Sally_09-16-20_0600_AM.pdf") - needed because the county-summary
+    format has no embedded date/time header anywhere in the PDF's text
+    layer at all, unlike every other report format.
+    """
+    filename = os.path.basename(pdf_path)
+    match = FILENAME_TIMESTAMP_RE.search(filename)
+    if not match:
+        return None
+    month, day, year, hour, minute, ampm = match.groups()
+    return datetime.strptime(
+        f"{month}/{day}/20{year} {hour}:{minute}{ampm}", "%m/%d/%Y %I:%M%p"
+    )
+
+
+def parse_county_summary_report(pdf_path):
+    """
+    Parse a county-only PSC situation report (see COUNTY_SUMMARY_ROW_RE
+    comment above). Returns the same (report_timestamp, records) shape as
+    parse_esf12_report(), so it can be passed as import_report_series()'s
+    parser argument.
+
+    Doesn't capture the "Estimated Restoration (Hours)" column some of
+    these reports include (e.g. "72*", ">72 *, **") - real, useful data,
+    but inconsistently formatted with footnote markers, and this format
+    is a one-storm exception already accepted as imperfect, not worth a
+    schema change to normalize. Still recoverable from the raw PDFs later
+    if wanted.
+    """
+    with open(pdf_path, "rb") as f:
+        header = f.read(5)
+    if header != b"%PDF-":
+        return None, []
+
+    reader = PdfReader(pdf_path)
+    full_text = "\n".join(page.extract_text() for page in reader.pages)
+
+    report_timestamp = parse_report_timestamp(full_text) or _parse_timestamp_from_filename(pdf_path)
+
+    records = []
+    for line in full_text.split("\n"):
+        line = line.strip()
+        match = COUNTY_SUMMARY_ROW_RE.match(line)
+        if not match:
+            continue
+
+        county = match.group("county").strip()
+        if not _is_real_county(county):
+            continue
+
+        customers_served = _parse_int(match.group("served"))
+        customers_out = _parse_int(match.group("out"))
+
+        if customers_out > customers_served:
+            continue
+
+        records.append({
+            "utility": COMBINED_UTILITY_LABEL,
+            "county": county,
+            "customers_out": customers_out,
+            "customers_served": customers_served,
+        })
+
+    return report_timestamp, records
+
+
+def import_report_series(pdf_paths, db_path, parser=parse_esf12_report):
     """
     Parse a series of ESF12 report PDFs (any order) and replay them in
     chronological order into db_path, building real outage_events history
     for every utility in the reports (not just FPL), exactly the way the
     live poller does cycle by cycle.
+
+    parser: which parsing function to use - defaults to the normal
+    per-utility parse_esf12_report(), pass parse_county_summary_report
+    for reports in that different, utility-less format (see its docstring).
 
     Returns a summary dict: {"reports_parsed", "reports_skipped", "counties_seen", "utilities_seen"}
     """
@@ -164,7 +252,7 @@ def import_report_series(pdf_paths, db_path):
     skipped = []
 
     for path in pdf_paths:
-        timestamp, records = parse_esf12_report(path)
+        timestamp, records = parser(path)
         if timestamp is None or not records:
             skipped.append(path)
             continue
