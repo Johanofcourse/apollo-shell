@@ -144,3 +144,17 @@ assumed familiarity with web-app conventions, not designed around
 tech-savvy habits (hover-only reveals, icon-only controls, jargon).
 Nothing from this session is in the live app yet — porting the
 settled design into the real dashboard is the deliberate next step.
+
+## An old quirk, revisited: Elsa's storm-history recaps
+A much earlier bug got a proper look back: NOAA's narrative text for
+Hurricane Elsa sometimes restated the storm's own historical peak wind
+(from days earlier, out in the Caribbean) in the same paragraph as the
+real local reading for whatever county the record actually described -
+and the original wind extractor, which just grabbed the biggest number
+in the text, couldn't tell the two apart. Checking directly against the
+data: this touched 21 records across 10 counties (Pinellas hit hardest,
+plus Charlotte, Sarasota, Hillsborough, Polk, Manatee, Hernando, Lee,
+Levy, Citrus) - but only in Elsa's dataset. None of the other 16
+storms have this pattern at all. A quirk of how that one storm's
+narratives happened to get written, not a systemic problem across the
+whole historical archive.
