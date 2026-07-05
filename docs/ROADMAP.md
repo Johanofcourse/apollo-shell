@@ -8,8 +8,8 @@
 - [x] Basic weather/outage correlation — see
       [`docs/product-review-weather-correlation.md`](./product-review-weather-correlation.md)
       for what's built vs. still proposed (weather-match confidence
-      scoring is now built too, see Phase 2 below; restoration
-      confidence and the display layer are not)
+      scoring and its display layer are now built too, see Phase 2
+      below; restoration confidence is the remaining proposed piece)
 
 ## Phase 2: Multi-Source Intelligence (In Progress)
 - [x] Second live Florida utility integrated end-to-end (incident-level
@@ -39,8 +39,8 @@
       is **not** confidence about how long the outage will take to fix,
       which is a separate, later thing (see "restoration confidence" in
       Phase 3) - easy to conflate these two, worth keeping distinct on
-      purpose. Display layer (showing the label in `dashboard.py`) is
-      still proposed, not built.
+      purpose. Display layer (confidence bars + severity badges +
+      a KPI summary strip in `dashboard.py`) is now built too.
 - [x] Third live Florida utility integrated end-to-end — Duke Energy,
       same pattern as TECO (incident-level data, live county rollups,
       system alerts, correlation). Its live map blocks a plain
@@ -48,6 +48,42 @@
       browser through devtools to find, same as how TECO's was found
 - [ ] More Florida utilities beyond FPL/TECO/Duke, one at a time, same
       proven pattern
+
+## Phase 2.5: Dashboard Redesign (In progress — design exploration)
+- [x] Visual direction settled on, explored entirely in an isolated
+      Claude Artifact sandbox (never connected to live data, never
+      touching the real app) before any porting work: a flat,
+      typographic, Swiss/wayfinding-instrumentation dark-mode look -
+      signal colors (magenta/yellow/lime/cyan) coded as status
+      indicators, separate from any single decorative accent hue.
+      Includes a telemetry sidebar, a plain-English explainer for the
+      confidence label, and the full county log (all 22 tracked
+      counties) sorted worst-verdict-first.
+- [x] A real Florida county map, colored by verdict - went through
+      several iterations (a gauge, a simplified region grid, two
+      hand-traced attempts) before landing on actual US Census county
+      boundary data, projected and simplified with code rather than
+      approximated by eye. Correctly shows multi-part counties (Monroe
+      mainland + its real Keys islands, Lee's barrier islands, etc.)
+      because the underlying data is real, not guessed.
+- [ ] **Design philosophy, explicit and binding on this work:** built
+      for an average, non-technical person, not tech-savvy assumptions
+      (hover-only reveals, icon-only controls, jargon). A real tension
+      already identified - the current sandbox build leans on hover
+      (map tooltips, the confidence explainer, expand-for-detail county
+      rows), which has no equivalent on a touchscreen. This needs to
+      become tap-to-reveal or always-visible before a mobile pass, not
+      retrofitted after.
+- [ ] Planned interaction, not yet built: clicking a county on the map
+      should link/scroll to that same county's row in the county log -
+      currently two unlinked views of the same 22 counties.
+- [ ] Port the settled design from the Artifact sandbox into the real
+      `dashboard.py`/`templates/dashboard.html` - not started. The
+      sandbox is exploration only; nothing here is live yet.
+- [ ] Eventual mobile browser/app version - explicitly named as the
+      harder problem this desktop redesign is meant to prepare for.
+      Not scoped yet, deliberately - revisit once the desktop version
+      is actually settled and ported.
 
 ## Phase 3: Predictive (Blocked on data, not code)
 - [ ] **Restoration-time estimation with its own confidence** ("there's

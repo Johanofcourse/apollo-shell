@@ -1,11 +1,12 @@
 # Product Review Doc: Weather/Outage Correlation
 
 ## Status
-Partially built. The matching mechanism and a real weather-match
-confidence label both exist now (`apollo_shell/correlate.py`); a
-second, different confidence concept (restoration confidence) and a
-display layer are the remaining proposed work. This doc reviews the
-feature as a whole, not a from-scratch build.
+Mostly built. The matching mechanism, a real weather-match confidence
+label, and a display layer for both all exist now
+(`apollo_shell/correlate.py`, `dashboard.py`); a second, different
+confidence concept (restoration confidence) is the remaining proposed
+work. This doc reviews the feature as a whole, not a from-scratch
+build.
 
 ## Problem
 Outage data and weather data are collected separately, with no
@@ -52,6 +53,11 @@ usage.
   correlation "matches" that were entirely Rip Current Statements,
   indistinguishable in the old summary output from a genuine severe-
   weather match.
+- **Display layer.** The matched weather type and confidence level now
+  show up alongside outages in `dashboard.py`/`templates/
+  dashboard.html` - confidence bars and color-coded severity badges on
+  FPL's, TECO's, and Duke's tables, plus a KPI summary strip at the top
+  of the page for an at-a-glance read before scrolling into detail.
 
 ## Proposed new work
 - **Restoration confidence.** Not yet built, and not just unstarted -
@@ -62,10 +68,13 @@ usage.
   "roughly a 50% chance this is fixed within a day"). Needs real
   restoration-time history to be believable - see the Phase 3 timeline
   discussion in `docs/ROADMAP.md`.
-- **Display layer.** Show the matched weather type and confidence
-  level alongside an outage, wherever outages are shown to a user -
-  not built yet, dashboard currently shows alert types but not the new
-  confidence label.
+- **A more intuitive presentation of both confidence labels**, once
+  restoration confidence exists too - see the dashboard redesign work
+  in `docs/ROADMAP.md` (Phase 2.5). The current bars/badges are a
+  developer-legible first pass; the explicit design goal going forward
+  is legibility for a non-technical person with no assumed familiarity
+  with dashboards or web-app conventions, not just "technically
+  displayed somewhere."
 
 ## Explicitly out of scope for this review
 - Non-weather causes (equipment failure, vehicle accidents, etc.) —
