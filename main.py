@@ -106,7 +106,8 @@ def run_correlation_cycle():
         for county, stats in summary.items():
             print(
                 f"  {county}: {stats['outage_count']} outage(s), "
-                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}"
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
             )
 
     teco_matches = find_teco_correlations()
@@ -118,7 +119,8 @@ def run_correlation_cycle():
         for county, stats in teco_summary.items():
             print(
                 f"  {county}: {stats['incident_count']} incident(s), "
-                f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}"
+                f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
             )
 
     duke_matches = find_duke_correlations()
@@ -130,7 +132,8 @@ def run_correlation_cycle():
         for county, stats in duke_summary.items():
             print(
                 f"  {county}: {stats['incident_count']} incident(s), "
-                f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}"
+                f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
             )
 
 

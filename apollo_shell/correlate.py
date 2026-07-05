@@ -47,6 +47,91 @@ def _alert_covers_time(effective, expires, outage_time):
     return True
 
 
+# Weather-match confidence: how likely a matched alert actually explains
+# an outage, vs. being coincidental overlap in county + time. Event-type
+# plausibility is the primary driver, not NWS's own severity field - a
+# "Severe" Rip Current Statement should never outrank a "Moderate"
+# Tornado Warning, since only one of them can physically cause a power
+# outage at all. Grounded in event types actually observed in our own
+# weather_alerts data (Special Weather Statement, Flood Advisory, Severe
+# Thunderstorm Warning, Rip Current Statement, Heat Advisory all really
+# showed up), extended to cover other realistic Florida hazards seen in
+# the historical storm dataset but not yet live (hurricane/tropical,
+# winter weather, wind). Unrecognized event types default to "medium" -
+# an unfamiliar type shouldn't be assumed confidently relevant OR
+# confidently irrelevant.
+EVENT_TYPE_PLAUSIBILITY = {
+    # High: direct wind/ice/tree-damage risk
+    "Tornado Warning": "high",
+    "Tornado Watch": "high",
+    "Severe Thunderstorm Warning": "high",
+    "Severe Thunderstorm Watch": "high",
+    "Hurricane Warning": "high",
+    "Hurricane Watch": "high",
+    "Hurricane Force Wind Warning": "high",
+    "Tropical Storm Warning": "high",
+    "Tropical Storm Watch": "high",
+    "Extreme Wind Warning": "high",
+    "High Wind Warning": "high",
+    "Ice Storm Warning": "high",
+    "Winter Storm Warning": "high",
+    "Storm Warning": "high",
+
+    # Medium: can contribute, or a milder/earlier-stage version of a
+    # high-tier hazard
+    "Special Weather Statement": "medium",
+    "Flood Advisory": "medium",
+    "Flood Warning": "medium",
+    "Flash Flood Warning": "medium",
+    "Flash Flood Watch": "medium",
+    "Coastal Flood Warning": "medium",
+    "Wind Advisory": "medium",
+    "High Wind Watch": "medium",
+    "Winter Weather Advisory": "medium",
+    "Winter Storm Watch": "medium",
+    "Freeze Warning": "medium",
+    "Hard Freeze Warning": "medium",
+    "Storm Watch": "medium",
+
+    # Low: no meaningful physical connection to power outages
+    "Rip Current Statement": "low",
+    "Beach Hazards Statement": "low",
+    "Coastal Flood Advisory": "low",
+    "Heat Advisory": "low",
+    "Excessive Heat Warning": "low",
+    "Air Quality Alert": "low",
+    "Small Craft Advisory": "low",
+    "Dense Fog Advisory": "low",
+    "Frost Advisory": "low",
+    "Marine Warning": "low",
+    "Gale Warning": "low",
+}
+DEFAULT_EVENT_TYPE_PLAUSIBILITY = "medium"
+
+# NWS's own severity field - a secondary modifier, only applied within a
+# plausibility tier (never lets severity alone override plausibility).
+SEVERITY_SCORE = {"Extreme": 2, "Severe": 2, "Moderate": 1, "Minor": 0, "Unknown": 0}
+
+
+def weather_match_confidence(event_type, severity):
+    """
+    Label ("high"/"medium"/"low") for how much a matched weather alert
+    should be trusted as a real explanation for an outage. Deliberately a
+    label, not a numeric percentage - the underlying signal (county +
+    time overlap, plus NWS's own event-type/severity fields) doesn't
+    support that kind of false precision.
+    """
+    plausibility = EVENT_TYPE_PLAUSIBILITY.get(event_type, DEFAULT_EVENT_TYPE_PLAUSIBILITY)
+    severity_score = SEVERITY_SCORE.get(severity, 0)
+
+    if plausibility == "low":
+        return "low"
+    if plausibility == "high":
+        return "high" if severity_score >= 2 else "medium"
+    # plausibility == "medium"
+    return "medium" if severity_score >= 1 else "low"
+
+
 def find_correlations(db_path="outages.db"):
     """
     Match outage records to weather alerts active in the same county at the
@@ -80,7 +165,8 @@ def find_correlations(db_path="outages.db"):
             expires = _parse_timestamp(alert.get('expires'))
 
             if _alert_covers_time(effective, expires, outage_time):
-                matches.append({"outage": outage, "alert": alert})
+                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
+                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
 
     return matches
 
@@ -123,7 +209,8 @@ def find_teco_correlations(db_path="outages.db"):
             expires = _parse_timestamp(alert.get('expires'))
 
             if _alert_covers_time(effective, expires, incident_time):
-                matches.append({"incident": incident, "alert": alert})
+                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
+                matches.append({"incident": incident, "alert": alert, "confidence": confidence})
 
     return matches
 
@@ -138,6 +225,7 @@ def teco_correlation_summary(matches):
                 "incident_count": int,
                 "max_customer_count": int,
                 "alert_types": {"Tornado Warning": 2, ...},
+                "confidence_breakdown": {"high": 1, "medium": 2, "low": 3},
             },
             ...
         }
@@ -150,6 +238,7 @@ def teco_correlation_summary(matches):
             "incident_count": 0,
             "max_customer_count": 0,
             "alert_types": {},
+            "confidence_breakdown": {},
         })
 
         entry["incident_count"] += 1
@@ -159,6 +248,9 @@ def teco_correlation_summary(matches):
 
         event_type = match["alert"]["event_type"]
         entry["alert_types"][event_type] = entry["alert_types"].get(event_type, 0) + 1
+
+        confidence = match["confidence"]
+        entry["confidence_breakdown"][confidence] = entry["confidence_breakdown"].get(confidence, 0) + 1
 
     return summary
 
@@ -202,7 +294,8 @@ def find_duke_correlations(db_path="outages.db"):
             expires = _parse_timestamp(alert.get('expires'))
 
             if _alert_covers_time(effective, expires, incident_time):
-                matches.append({"incident": incident, "alert": alert})
+                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
+                matches.append({"incident": incident, "alert": alert, "confidence": confidence})
 
     return matches
 
@@ -217,6 +310,7 @@ def duke_correlation_summary(matches):
                 "incident_count": int,
                 "max_customer_count": int,
                 "alert_types": {"Tornado Warning": 2, ...},
+                "confidence_breakdown": {"high": 1, "medium": 2, "low": 3},
             },
             ...
         }
@@ -229,6 +323,7 @@ def duke_correlation_summary(matches):
             "incident_count": 0,
             "max_customer_count": 0,
             "alert_types": {},
+            "confidence_breakdown": {},
         })
 
         entry["incident_count"] += 1
@@ -238,6 +333,9 @@ def duke_correlation_summary(matches):
 
         event_type = match["alert"]["event_type"]
         entry["alert_types"][event_type] = entry["alert_types"].get(event_type, 0) + 1
+
+        confidence = match["confidence"]
+        entry["confidence_breakdown"][confidence] = entry["confidence_breakdown"].get(confidence, 0) + 1
 
     return summary
 
@@ -252,6 +350,7 @@ def correlation_summary(matches):
                 "outage_count": int,
                 "max_percentage_out": float,
                 "alert_types": {"Tornado Warning": 2, ...},
+                "confidence_breakdown": {"high": 1, "medium": 2, "low": 3},
             },
             ...
         }
@@ -264,6 +363,7 @@ def correlation_summary(matches):
             "outage_count": 0,
             "max_percentage_out": 0.0,
             "alert_types": {},
+            "confidence_breakdown": {},
         })
 
         entry["outage_count"] += 1
@@ -273,6 +373,9 @@ def correlation_summary(matches):
 
         event_type = match["alert"]["event_type"]
         entry["alert_types"][event_type] = entry["alert_types"].get(event_type, 0) + 1
+
+        confidence = match["confidence"]
+        entry["confidence_breakdown"][confidence] = entry["confidence_breakdown"].get(confidence, 0) + 1
 
     return summary
 
@@ -304,6 +407,7 @@ def main():
         print(f"  Correlated outage records: {stats['outage_count']}")
         print(f"  Peak percentage out: {stats['max_percentage_out']:.2f}%")
         print(f"  Alert types: {stats['alert_types']}")
+        print(f"  Confidence breakdown: {stats['confidence_breakdown']}")
         print()
 
     print("=" * 70)
