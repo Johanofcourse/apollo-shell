@@ -14,7 +14,7 @@
 - [x] Second live Florida utility integrated end-to-end (incident-level
       data, richer than FPL's — real cause, live status, and an actual
       restoration estimate)
-- [x] Historical storm data backfilled — 16 storms so far (2018-2025),
+- [x] Historical storm data backfilled — 17 storms so far (2018-2025),
       every utility per storm, not just one — kept private, not on GitHub
 - [x] Historical severity data layered in from an independent public
       source, cross-checked against our own outage numbers, extended
@@ -22,11 +22,12 @@
       thunderstorm/tornado events, not just tropical systems
 - [x] Data integrity pass — idempotent writes across every table, so
       re-running any collector can't silently duplicate data
-- [ ] Historical storm backfill continuing back to 2018 (Alberto,
-      5/27-5/29/2018, is the earliest PSC ESF12 report available) - the
-      real target for "storm data acquisition," not an open-ended
-      commitment. New storms keep getting added going forward too, as
-      PSC publishes reports for them.
+- [x] Historical storm backfill reached 2018 (Alberto, 5/27-5/29/2018,
+      the earliest PSC ESF12 report available) - the "storm data
+      acquisition" target is now complete: 17 storms, 2018-2025, every
+      hurricane/tropical storm/major weather event PSC has a report
+      series for. New storms keep getting added going forward too, as
+      PSC publishes reports for them - not a one-time milestone.
 - [ ] **Weather-match confidence scoring** (see product review doc —
       proposed, not designed in detail yet). This is confidence that a
       given outage is genuinely weather-related at all (e.g. a match
@@ -57,7 +58,7 @@
       deferred, not just unstarted: needs (1) running the same
       severity extractors against live weather alert text, not just
       historical NOAA narratives; (2) a real decision on querying
-      across separate storm databases (16 so far) vs. consolidating
+      across separate storm databases (17 so far) vs. consolidating
       them into one; (3) enough live volume that "closest historical match" is
       more than 1-2 data points per county. Revisit once Phase 3's
       data-volume bar (below) is actually met.
@@ -69,9 +70,9 @@ shortens that. Rough real numbers as of this writing: FPL alone is
 producing on the order of dozens of resolved outages per day live, so
 "enough for a first rough look" is more like weeks, "enough to trust"
 is more like a month or two, and that's still only one season's worth
-of conditions. Historical storm data (16 storms so far, 2018-2025)
+of conditions. Historical storm data (17 storms so far, 2018-2025)
 covers a different, rarer category of outage entirely and doesn't
-substitute for everyday-outage volume — and even across 16 storms, most
+substitute for everyday-outage volume — and even across 17 storms, most
 individual counties only show up in a handful of them, so it's still a
 thin sample per county, not something to treat as a reliable average yet.
 
