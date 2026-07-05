@@ -1,10 +1,11 @@
 # Product Review Doc: Weather/Outage Correlation
 
 ## Status
-Partially built. Most of the underlying mechanism already exists
-(`apollo_shell/correlate.py`); the new proposed work is a confidence
-scheme and display layer. This doc reviews the feature as a whole,
-not a from-scratch build.
+Partially built. The matching mechanism and a real weather-match
+confidence label both exist now (`apollo_shell/correlate.py`); a
+second, different confidence concept (restoration confidence) and a
+display layer are the remaining proposed work. This doc reviews the
+feature as a whole, not a from-scratch build.
 
 ## Problem
 Outage data and weather data are collected separately, with no
@@ -39,16 +40,32 @@ usage.
   overlap
 - Weather event type available per match (e.g. "Severe Thunderstorm
   Warning," "Flood Advisory")
+- **Weather-match confidence** (`weather_match_confidence()` in
+  `correlate.py`) - a high/medium/low label on every match, computed
+  on the fly rather than stored. Driven primarily by whether the
+  matched alert's event type could plausibly cause a power outage at
+  all, not by NWS's own severity field alone: a "Severe" Rip Current
+  Statement (a real ocean-safety alert with zero physical connection to
+  outages) never outranks a "Moderate" Tornado Warning. Severity is a
+  secondary modifier, only applied within an event type that's already
+  plausible. Caught a real problem in the process - one county had 268
+  correlation "matches" that were entirely Rip Current Statements,
+  indistinguishable in the old summary output from a genuine severe-
+  weather match.
 
 ## Proposed new work
-- **Correlation confidence.** Not yet defined or built. Proposed
-  starting point: derive an initial confidence level directly from
-  NWS's own alert severity field (already captured, not something we'd
-  be inventing) — e.g. a match against a "Severe" alert is higher
-  confidence than a match against a "Minor" one. This needs real design
-  work before it's buildable, not just a checkbox.
+- **Restoration confidence.** Not yet built, and not just unstarted -
+  explicitly blocked on data volume, not a design or code problem. This
+  is a different confidence concept from weather-match confidence
+  above: that one asks "was this outage really weather-related," this
+  one would ask "how long is this outage likely to take to fix" (e.g.
+  "roughly a 50% chance this is fixed within a day"). Needs real
+  restoration-time history to be believable - see the Phase 3 timeline
+  discussion in `docs/ROADMAP.md`.
 - **Display layer.** Show the matched weather type and confidence
-  level alongside an outage, wherever outages are shown to a user.
+  level alongside an outage, wherever outages are shown to a user -
+  not built yet, dashboard currently shows alert types but not the new
+  confidence label.
 
 ## Explicitly out of scope for this review
 - Non-weather causes (equipment failure, vehicle accidents, etc.) —

@@ -7,8 +7,9 @@
 - [x] NWS weather integration (fetching + storing active alerts)
 - [x] Basic weather/outage correlation — see
       [`docs/product-review-weather-correlation.md`](./product-review-weather-correlation.md)
-      for what's built vs. still proposed here (e.g. confidence
-      scoring is not built yet, don't check that off based on this file)
+      for what's built vs. still proposed (weather-match confidence
+      scoring is now built too, see Phase 2 below; restoration
+      confidence and the display layer are not)
 
 ## Phase 2: Multi-Source Intelligence (In Progress)
 - [x] Second live Florida utility integrated end-to-end (incident-level
@@ -28,14 +29,18 @@
       hurricane/tropical storm/major weather event PSC has a report
       series for. New storms keep getting added going forward too, as
       PSC publishes reports for them - not a one-time milestone.
-- [ ] **Weather-match confidence scoring** (see product review doc —
-      proposed, not designed in detail yet). This is confidence that a
-      given outage is genuinely weather-related at all (e.g. a match
-      against a "Severe" NWS alert is stronger evidence than a match
-      against a "Minor" one) - **not** confidence about how long the
-      outage will take to fix, which is a separate, later thing (see
-      "restoration confidence" in Phase 3). Easy to conflate these two,
-      worth keeping distinct on purpose.
+- [x] **Weather-match confidence scoring** (see product review doc for
+      the full writeup). Confidence that a given outage is genuinely
+      weather-related at all - driven primarily by whether the matched
+      alert's event type could plausibly cause an outage (a "Severe"
+      Rip Current Statement never outranks a "Moderate" Tornado
+      Warning), with NWS's own severity field as a secondary modifier.
+      Output is a high/medium/low label, not a numeric percentage. This
+      is **not** confidence about how long the outage will take to fix,
+      which is a separate, later thing (see "restoration confidence" in
+      Phase 3) - easy to conflate these two, worth keeping distinct on
+      purpose. Display layer (showing the label in `dashboard.py`) is
+      still proposed, not built.
 - [x] Third live Florida utility integrated end-to-end — Duke Energy,
       same pattern as TECO (incident-level data, live county rollups,
       system alerts, correlation). Its live map blocks a plain
@@ -88,10 +93,10 @@ thin sample per county, not something to treat as a reliable average yet.
       to show precisely because it can't just be re-scraped in an
       afternoon.
 - Gated on all three of:
-  1. Historical storm backfill reaching 2018 (Phase 2)
-  2. Weather-match confidence scoring actually built, not just proposed
-     (Phase 2)
-  3. Enough live volume for restoration confidence to mean anything
+  1. [x] Historical storm backfill reaching 2018 (Phase 2) - done
+  2. [x] Weather-match confidence scoring actually built, not just
+     proposed (Phase 2) - done
+  3. [ ] Enough live volume for restoration confidence to mean anything
      (Phase 3's data-volume bar)
 - Not scoped in detail yet - revisit once the above are real, not before.
 
