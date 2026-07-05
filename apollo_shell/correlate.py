@@ -92,13 +92,18 @@ EVENT_TYPE_PLAUSIBILITY = {
     "Freeze Warning": "medium",
     "Hard Freeze Warning": "medium",
     "Storm Watch": "medium",
+    # Sustained extreme heat (not routine hot weather) has a real, if
+    # indirect, grid-strain mechanism - peak AC demand pushing capacity,
+    # plus genuine equipment thermal stress - distinct from wind/ice
+    # storm damage but not "no connection" either. "Heat Advisory" below
+    # is the routine/lower-threshold version and stays low.
+    "Excessive Heat Warning": "medium",
 
     # Low: no meaningful physical connection to power outages
     "Rip Current Statement": "low",
     "Beach Hazards Statement": "low",
     "Coastal Flood Advisory": "low",
     "Heat Advisory": "low",
-    "Excessive Heat Warning": "low",
     "Air Quality Alert": "low",
     "Small Craft Advisory": "low",
     "Dense Fog Advisory": "low",
