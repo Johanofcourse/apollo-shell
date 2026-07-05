@@ -118,6 +118,63 @@ outright fabricated) to confirm were real and usable.
   interactive shell — is still quietly benched. Turns out "map power
   outages against weather" was the more interesting rabbit hole.
 
+## The 2018-2025 backfill, and the confidence label
+A later session, all business: went back through the archive and
+pulled every remaining storm PSC has a report series for, one at a
+time, all the way back to Alberto in May 2018 — 17 storms total now,
+every utility per storm, each one independently sanity-checked before
+being trusted (this is where the two-utility-name-mismatch bug turned
+out to be a recurring species, not a one-off — same fix needed for
+FPL, TECO, and Duke in turn, plus a PDF-extraction truncation that
+mangled a real co-op's name). A full cross-storm sweep afterward,
+comparing every (utility, county) pair against every other storm's,
+caught the last couple of stragglers without needing to already know
+Florida utility geography by heart.
+
+On top of that: a real weather-match confidence label
+(`weather_match_confidence()`), separate from NWS's own severity
+field on purpose — a "Severe" Rip Current Statement should never
+outrank a "Moderate" Tornado Warning, so event-type plausibility
+drives the label first, severity only nudges it within an
+already-plausible type. Landed as high/medium/low, not a percentage,
+and shipped straight into the real dashboard alongside confidence
+bars, severity badges, and a KPI strip up top.
+
+## The design detour
+Then a very different kind of session: less "fix a bug," more "what
+should this thing actually look like." Used Claude's Artifact tool as
+a disconnected sandbox — never touching the real dashboard or live
+data — to iterate on a visual language before touching
+`dashboard.py`/`templates/dashboard.html` for real.
+
+Went through a real pivot partway through: started bright and
+Big-Sur-icon bold, then scrapped that for something closer to Swiss
+wayfinding-system instrumentation — flat, typographic, dark mode,
+signal colors (magenta/yellow/lime/cyan) doing double duty as status
+lamps. Added a telemetry sidebar, an explainer for what the confidence
+label actually means in plain English, and expanded the county log
+from a curated handful to all 22 tracked counties, sorted worst-verdict-first.
+
+The map, though, was its own saga. Tried a gauge (looked empty, cut).
+Tried a simplified 6-region isometric grid (too blocky, didn't read as
+Florida). Tried hand-tracing a real Florida county map, twice — first
+from memory, which looked "like a bad steak" by the account of the
+person watching it render; second from an actual reference image,
+which was better but still visibly hand-eyeballed, gaps and all. The
+real fix: pulled actual US Census county boundary data (a public
+GeoJSON, not a picture) and wrote a script to project and simplify it
+— Douglas-Peucker, not a human's steady hand. That's when Monroe's
+seven separate landmasses (mainland plus six real Keys islands), and
+Lee's, Pinellas's, and Franklin's barrier islands, showed up
+correctly for the first time, because they're just... actually there
+in the data. Ended on a flat, north-up, real county map with a subtle
+raised-slab shadow and a plain grid backdrop — genuinely accurate this
+time, not approximated.
+
+Nothing here touched the live app yet. That's the deliberate next
+step, not started: port the agreed-on look from the sandbox into the
+real dashboard once it's actually settled.
+
 ## End of a long one
 Real late-night session, this one. Went from "let's re-explain the
 correlation logic" to reverse-engineering a live utility API through
