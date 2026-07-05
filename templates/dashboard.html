@@ -13,6 +13,8 @@
       --muted: #8b98a5;
       --accent: #e8734a;
       --ok: #3fb950;
+      --warn: #d29922;
+      --crit: #f85149;
     }
     * { box-sizing: border-box; }
     body {
@@ -57,11 +59,110 @@
     .pct-bad { color: var(--accent); font-weight: 600; }
     .pct-ok { color: var(--ok); }
     .wrap { max-width: 100%; overflow-x: auto; }
+
+    /* KPI summary strip - a fast, at-a-glance read before the detail tables */
+    .kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .kpi-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+    .kpi-label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.35rem;
+    }
+    .kpi-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+    }
+    .kpi-sub {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 0.25rem;
+    }
+
+    /* Stacked confidence bar: proportional segments, always high/medium/low
+       left-to-right so it reads best-to-worst at a glance */
+    .conf-bar {
+      display: flex;
+      height: 14px;
+      width: 140px;
+      border-radius: 3px;
+      overflow: hidden;
+      background: var(--border);
+    }
+    .conf-seg-high { background: var(--ok); }
+    .conf-seg-medium { background: var(--warn); }
+    .conf-seg-low { background: var(--accent); }
+    .conf-caption {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.3rem;
+    }
+
+    /* Severity badge for peak % out - a discrete tier reads better than a
+       proportional bar here, since real FL outage percentages rarely pass
+       20-30% outside a major hurricane, so a linear 0-100 bar would look
+       nearly empty for almost every real row */
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .badge-critical { background: rgba(248, 81, 73, 0.18); color: var(--crit); }
+    .badge-high { background: rgba(232, 115, 74, 0.18); color: var(--accent); }
+    .badge-medium { background: rgba(210, 153, 34, 0.18); color: var(--warn); }
+    .badge-low { background: rgba(63, 185, 80, 0.18); color: var(--ok); }
+    .badge-unknown { background: rgba(139, 152, 165, 0.18); color: var(--muted); }
   </style>
 </head>
 <body>
   <h1>Apollo Sentinel — Live Status</h1>
   <div class="meta">Generated {{ generated_at }} · refreshes every 60s</div>
+
+  <div class="kpi-strip">
+    <div class="kpi-card">
+      <div class="kpi-label">Customers Affected (All Utilities)</div>
+      <div class="kpi-value">{{ "{:,}".format(total_customers_affected) }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Open Incidents (All Utilities)</div>
+      <div class="kpi-value">{{ unified_open|length }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Worst Right Now</div>
+      {% if worst_row %}
+      <div class="kpi-value" style="font-size: 1.1rem;">{{ worst_row.county }}</div>
+      <div class="kpi-sub">{{ worst_row.utility }} · {{ "{:,}".format(worst_row.customers or 0) }} customers</div>
+      {% else %}
+      <div class="kpi-value" style="font-size: 1.1rem; color: var(--muted);">All clear</div>
+      {% endif %}
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Weather-Match Confidence (Statewide)</div>
+      {% if combined_confidence_bar %}
+      <div class="conf-bar">
+        {% for seg in combined_confidence_bar %}
+        <div class="conf-seg-{{ seg.tier }}" style="width: {{ seg.pct }}%;" title="{{ seg.tier }} ×{{ seg.count }}"></div>
+        {% endfor %}
+      </div>
+      <div class="conf-caption">{{ combined_confidence_display }}</div>
+      {% else %}
+      <div class="kpi-sub">No correlated matches right now.</div>
+      {% endif %}
+    </div>
+  </div>
 
   <h2>All Utilities — Currently Open ({{ unified_open|length }})</h2>
   <div class="wrap">
@@ -91,7 +192,7 @@
       {% for e in open_events %}
       <tr>
         <td>{{ e.county }}</td>
-        <td class="pct-bad">{{ "%.2f"|format(e.peak_percentage_out) }}%</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
         <td>{{ e.start_time }}</td>
         <td>{{ e.duration }}</td>
@@ -130,7 +231,7 @@
       {% for e in closed_events %}
       <tr>
         <td>{{ e.county }}</td>
-        <td class="pct-ok">{{ "%.2f"|format(e.peak_percentage_out) }}%</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ e.start_time }}</td>
         <td>{{ e.end_time }}</td>
         <td>{{ e.duration }}</td>
@@ -173,7 +274,16 @@
         <td>{{ stats.outage_count }}</td>
         <td>{{ "%.2f"|format(stats.max_percentage_out) }}%</td>
         <td>{{ stats.alert_types_display }}</td>
-        <td>{{ stats.confidence_display }}</td>
+        <td>
+          {% if stats.confidence_bar %}
+          <div class="conf-bar">
+            {% for seg in stats.confidence_bar %}
+            <div class="conf-seg-{{ seg.tier }}" style="width: {{ seg.pct }}%;" title="{{ seg.tier }} ×{{ seg.count }}"></div>
+            {% endfor %}
+          </div>
+          <div class="conf-caption">{{ stats.confidence_display }}</div>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </table>
@@ -237,7 +347,16 @@
         <td>{{ stats.incident_count }}</td>
         <td>{{ stats.max_customer_count }}</td>
         <td>{{ stats.alert_types_display }}</td>
-        <td>{{ stats.confidence_display }}</td>
+        <td>
+          {% if stats.confidence_bar %}
+          <div class="conf-bar">
+            {% for seg in stats.confidence_bar %}
+            <div class="conf-seg-{{ seg.tier }}" style="width: {{ seg.pct }}%;" title="{{ seg.tier }} ×{{ seg.count }}"></div>
+            {% endfor %}
+          </div>
+          <div class="conf-caption">{{ stats.confidence_display }}</div>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </table>
@@ -300,7 +419,16 @@
         <td>{{ stats.incident_count }}</td>
         <td>{{ stats.max_customer_count }}</td>
         <td>{{ stats.alert_types_display }}</td>
-        <td>{{ stats.confidence_display }}</td>
+        <td>
+          {% if stats.confidence_bar %}
+          <div class="conf-bar">
+            {% for seg in stats.confidence_bar %}
+            <div class="conf-seg-{{ seg.tier }}" style="width: {{ seg.pct }}%;" title="{{ seg.tier }} ×{{ seg.count }}"></div>
+            {% endfor %}
+          </div>
+          <div class="conf-caption">{{ stats.confidence_display }}</div>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </table>

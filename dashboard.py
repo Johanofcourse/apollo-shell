@@ -57,6 +57,56 @@ def _format_confidence(confidence_breakdown):
     )
 
 
+def _confidence_bar_segments(confidence_breakdown):
+    """
+    Convert a {"high": 5, "medium": 19, "low": 81} breakdown into a list
+    of {"tier", "count", "pct"} dicts for a stacked bar's segment widths
+    (pct of the total), always in high/medium/low order so the bar reads
+    best-to-worst left to right. Empty list if there's nothing to show.
+    """
+    order = ["high", "medium", "low"]
+    total = sum(confidence_breakdown.values())
+    if total == 0:
+        return []
+    return [
+        {"tier": tier, "count": confidence_breakdown[tier], "pct": confidence_breakdown[tier] / total * 100}
+        for tier in order if tier in confidence_breakdown
+    ]
+
+
+def _combine_confidence_breakdowns(*match_lists):
+    """
+    Merge confidence counts across multiple correlation match lists
+    (FPL + TECO + Duke) into one combined breakdown, for a single
+    state-wide summary bar.
+    """
+    combined = {}
+    for matches in match_lists:
+        for match in matches:
+            confidence = match["confidence"]
+            combined[confidence] = combined.get(confidence, 0) + 1
+    return combined
+
+
+def _percentage_tier(percentage_out):
+    """
+    Bucket a peak-percentage-out value into a severity tier for a
+    colored badge. Real Florida outage percentages are rarely above
+    20-30% outside of a major hurricane, so a plain 0-100 linear bar
+    would look nearly empty for almost every real row - a discrete tier
+    badge reads much better than a proportional bar at these scales.
+    """
+    if percentage_out is None:
+        return "unknown"
+    if percentage_out >= 30:
+        return "critical"
+    if percentage_out >= 10:
+        return "high"
+    if percentage_out >= 2:
+        return "medium"
+    return "low"
+
+
 def _build_unified_view(open_events, teco_open_events, duke_open_events):
     """
     Normalize FPL's county-level outage_events and TECO's/Duke's
@@ -134,20 +184,36 @@ def index():
     for stats in correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
+        stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
     teco_matches = find_teco_correlations(db_path)
     teco_correlation = teco_correlation_summary(teco_matches)
     for stats in teco_correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
+        stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
     duke_matches = find_duke_correlations(db_path)
     duke_correlation = duke_correlation_summary(duke_matches)
     for stats in duke_correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
+        stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
     unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events)
+
+    for event in open_events:
+        event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
+    for event in closed_events:
+        event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
+
+    # KPI summary strip at the top of the page - a fast, at-a-glance
+    # read before scrolling into the detailed per-utility tables below.
+    total_customers_affected = sum(row["customers"] or 0 for row in unified_open)
+    worst_row = unified_open[0] if unified_open else None
+    combined_confidence = _combine_confidence_breakdowns(matches, teco_matches, duke_matches)
+    combined_confidence_bar = _confidence_bar_segments(combined_confidence)
+    combined_confidence_display = _format_confidence(combined_confidence)
 
     return render_template(
         "dashboard.html",
@@ -163,6 +229,10 @@ def index():
         duke_closed_events=duke_closed_events,
         duke_correlation=duke_correlation,
         unified_open=unified_open,
+        total_customers_affected=total_customers_affected,
+        worst_row=worst_row,
+        combined_confidence_bar=combined_confidence_bar,
+        combined_confidence_display=combined_confidence_display,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 
