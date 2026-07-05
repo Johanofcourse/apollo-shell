@@ -98,7 +98,7 @@ def parse_esf12_report(pdf_path):
     reader = PdfReader(pdf_path)
     full_text = "\n".join(page.extract_text() for page in reader.pages)
 
-    report_timestamp = parse_report_timestamp(full_text)
+    report_timestamp = parse_report_timestamp(full_text) or _parse_timestamp_from_filename(pdf_path)
 
     records = []
     for line in full_text.split("\n"):
@@ -164,24 +164,44 @@ COUNTY_SUMMARY_ROW_RE = re.compile(
 )
 COMBINED_UTILITY_LABEL = "All Utilities Combined"
 
-FILENAME_TIMESTAMP_RE = re.compile(r"(\d{2})-(\d{2})-(\d{2})_(\d{2})(\d{2})_([AP]M)")
+FILENAME_TIMESTAMP_AMPM_RE = re.compile(r"(\d{1,2})-(\d{1,2})-(\d{2})_(\d{2})(\d{2})_([AP]M)")
+# Michael's filenames have no AM/PM at all - straight 24-hour time - and
+# sometimes drop the leading zero on single-digit days ("10-9-18" vs
+# "10-09-18"). The negative lookahead stops this from matching a
+# filename that failed the AM/PM pattern above for some other reason
+# (e.g. a truncated/malformed name), since a real 24-hour filename is
+# never immediately followed by "_AM"/"_PM".
+FILENAME_TIMESTAMP_24H_RE = re.compile(r"(\d{1,2})-(\d{1,2})-(\d{2})_(\d{2})(\d{2})(?!_)")
 
 
 def _parse_timestamp_from_filename(pdf_path):
     """
-    Fall back to deriving a report's timestamp from its filename (e.g.
-    "Sally_09-16-20_0600_AM.pdf") - needed because the county-summary
-    format has no embedded date/time header anywhere in the PDF's text
-    layer at all, unlike every other report format.
+    Fall back to deriving a report's timestamp from its filename when the
+    PDF's own text has no usable embedded date/time header. Needed for
+    Sally's county-summary format (missing entirely) and for some of
+    Michael's reports (present in most, but not found reliably in a few -
+    often the ones with an extra wide-matrix summary page ahead of the
+    real data). Handles both known filename conventions: "..._HHMM_AM/PM.pdf"
+    (Sally, Fred, Elsa, etc.) and 24-hour "..._HHMM.pdf" with no AM/PM at
+    all (Michael).
     """
     filename = os.path.basename(pdf_path)
-    match = FILENAME_TIMESTAMP_RE.search(filename)
-    if not match:
-        return None
-    month, day, year, hour, minute, ampm = match.groups()
-    return datetime.strptime(
-        f"{month}/{day}/20{year} {hour}:{minute}{ampm}", "%m/%d/%Y %I:%M%p"
-    )
+
+    match = FILENAME_TIMESTAMP_AMPM_RE.search(filename)
+    if match:
+        month, day, year, hour, minute, ampm = match.groups()
+        return datetime.strptime(
+            f"{month}/{day}/20{year} {hour}:{minute}{ampm}", "%m/%d/%Y %I:%M%p"
+        )
+
+    match = FILENAME_TIMESTAMP_24H_RE.search(filename)
+    if match:
+        month, day, year, hour, minute = match.groups()
+        return datetime.strptime(
+            f"{month}/{day}/20{year} {hour}:{minute}", "%m/%d/%Y %H:%M"
+        )
+
+    return None
 
 
 def parse_county_summary_report(pdf_path):
