@@ -12,6 +12,15 @@ load_dotenv()
 FPL_API_URL = os.environ.get("FPL_API_URL")
 FPL_API_ORIGIN = os.environ.get("FPL_API_ORIGIN")
 
+# The canonical utility name, matching the exact string historical PSC-
+# report data uses for this same real entity ("Florida Power and Light
+# Company") - same fix already applied to TECO and Duke, just missed for
+# FPL originally since it was the first utility integrated, before that
+# pattern existed. Live data previously used the short "FPL" instead,
+# which meant live and historical FPL records couldn't be matched by
+# utility name at all.
+UTILITY_NAME = "Florida Power and Light Company"
+
 
 def fetch_fpl_outages():
     """
@@ -139,7 +148,7 @@ def main():
     print(f"DEBUG: Prepared {len(outage_list)} records to save")
 
     # Log all counties at once
-    db.log_multiple_outages('FPL', outage_list)
+    db.log_multiple_outages(UTILITY_NAME, outage_list)
     db.close()
 
     print("✓ Data saved to database!")

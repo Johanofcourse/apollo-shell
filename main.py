@@ -6,7 +6,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
 from database import OutageDatabase
-from fetch_fpl_outages import fetch_fpl_outages, outages_to_records
+from fetch_fpl_outages import fetch_fpl_outages, outages_to_records, UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_weather import get_alerts_summary
 from fetch_teco_outages import get_incidents_summary
 from fetch_duke_outages import (
@@ -36,8 +36,8 @@ def run_outage_cycle(db):
 
     records = outages_to_records(data)
     timestamp = datetime.now().isoformat()
-    db.log_multiple_outages('FPL', records, timestamp=timestamp)
-    db.sync_outage_events('FPL', records, timestamp=timestamp)
+    db.log_multiple_outages(FPL_UTILITY_NAME, records, timestamp=timestamp)
+    db.sync_outage_events(FPL_UTILITY_NAME, records, timestamp=timestamp)
 
 
 def run_weather_cycle(db):
