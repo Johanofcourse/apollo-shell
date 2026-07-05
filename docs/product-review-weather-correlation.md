@@ -29,6 +29,11 @@ that.
 > severe weather in my area, so I can tell whether it was part of a
 > broader weather event or more likely an isolated local issue.
 
+Credit where it's due: this was the original framing, suggested by
+the developer's mom back in this project's early stages, well before
+"weather correlation" was a defined feature — the whole thing turned
+out to be built around her question.
+
 Note: there is currently no end-user-facing product — the only
 consumer of this data today is a localhost-only personal dashboard.
 This user story describes an intended future direction, not current
