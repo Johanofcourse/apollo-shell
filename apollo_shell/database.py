@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 
 
@@ -473,8 +473,59 @@ class OutageDatabase:
             }
 
         return health
-    
-    
+
+    def get_heat_advisory_summary(self, reference_date=None):
+        """
+        "Heat this month" summary for the dashboard strip. Heat Advisory
+        and Excessive Heat Warning are ordinary NWS event types already
+        flowing through the generic weather_alerts table (see
+        fetch_weather.py) - no separate heat-specific pipeline exists or
+        is needed, this just aggregates what's already there.
+
+        Counts distinct calendar days (by the alert's own `effective`
+        date, which is already in local Eastern time as published by
+        NWS) rather than raw alert rows, since NWS splits one advisory
+        into several zone-specific rows covering the same day.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        reference = reference_date or datetime.now()
+        month_prefix = reference.strftime('%Y-%m')
+
+        cursor.execute('''
+            SELECT event_type, effective, expires, areas FROM weather_alerts
+            WHERE event_type IN ('Heat Advisory', 'Excessive Heat Warning')
+              AND effective LIKE ?
+        ''', (f'{month_prefix}%',))
+        rows = cursor.fetchall()
+
+        days_covered = set()
+        tier_counts = {"Heat Advisory": 0, "Excessive Heat Warning": 0}
+        active_areas = set()
+        now_utc = datetime.now(timezone.utc)
+
+        for row in rows:
+            tier_counts[row["event_type"]] = tier_counts.get(row["event_type"], 0) + 1
+            if row["effective"]:
+                days_covered.add(row["effective"][:10])
+
+            if row["effective"] and row["expires"]:
+                effective_dt = datetime.fromisoformat(row["effective"])
+                expires_dt = datetime.fromisoformat(row["expires"])
+                if effective_dt <= now_utc <= expires_dt:
+                    active_areas.update(a.strip() for a in row["areas"].split(";"))
+
+        return {
+            "month_label": reference.strftime('%B %Y'),
+            "days_with_advisory": len(days_covered),
+            "days_elapsed_this_month": reference.day,
+            "heat_advisory_count": tier_counts["Heat Advisory"],
+            "excessive_heat_warning_count": tier_counts["Excessive Heat Warning"],
+            "currently_active": len(active_areas) > 0,
+            "active_area_count": len(active_areas),
+        }
+
     def log_outage(self, utility, county, customers_out, customers_served):
         """
         Insert a single outage record into the database

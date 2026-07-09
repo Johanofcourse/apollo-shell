@@ -184,6 +184,33 @@
       color: var(--text);
       margin-top: 0.15rem;
     }
+
+    /* Heat this month strip - Heat Advisory/Excessive Heat Warning are
+       ordinary NWS alerts already flowing through weather_alerts; this
+       just surfaces the frequency, which the raw alert list buries. */
+    .heat-strip {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.85rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .heat-strip-active { border-color: var(--warn); }
+    .heat-icon { font-size: 1.4rem; line-height: 1; }
+    .heat-strip-main { font-size: 0.9rem; font-weight: 600; }
+    .heat-strip-sub { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+    .heat-now-badge {
+      margin-left: auto;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--warn);
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
   </style>
 </head>
 <body>
@@ -218,6 +245,29 @@
       </div>
       {% endfor %}
     </div>
+  </div>
+
+  <div class="heat-strip {{ 'heat-strip-active' if heat_summary.currently_active else '' }}">
+    <div class="heat-icon">&#9728;</div>
+    <div>
+      {% if heat_summary.heat_advisory_count or heat_summary.excessive_heat_warning_count %}
+      <div class="heat-strip-main">
+        Heat this month ({{ heat_summary.month_label }}): {{ heat_summary.days_with_advisory }} of
+        {{ heat_summary.days_elapsed_this_month }} days had an advisory somewhere in Florida
+      </div>
+      <div class="heat-strip-sub">
+        {{ heat_summary.heat_advisory_count }} Heat Advisory
+        {% if heat_summary.excessive_heat_warning_count %}
+        &middot; {{ heat_summary.excessive_heat_warning_count }} Excessive Heat Warning
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="heat-strip-main" style="color: var(--muted); font-weight: normal;">No heat advisories logged yet this month</div>
+      {% endif %}
+    </div>
+    {% if heat_summary.currently_active %}
+    <div class="heat-now-badge">&#9888; Active now &mdash; {{ heat_summary.active_area_count }} zone{{ "s" if heat_summary.active_area_count != 1 else "" }}</div>
+    {% endif %}
   </div>
 
   <div class="kpi-strip">

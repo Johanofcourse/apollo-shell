@@ -96,6 +96,15 @@
       before this. Includes a direct regression test for the replay bug
       above, verified to actually catch it (reverted the fix, watched
       3/4 tests fail, restored it, watched them pass).
+- [x] **"Heat this month" dashboard strip.** Heat Advisory/Excessive Heat
+      Warning were already flowing into `weather_alerts` like any other
+      NWS alert, just never surfaced as their own thing -
+      `OutageDatabase.get_heat_advisory_summary()` counts distinct
+      calendar days (not raw rows - NWS splits one advisory into several
+      zone-specific rows per day) with an active advisory this month,
+      plus a live "active now" badge. First step toward the user's
+      actual ask: a public-facing heat-advisory view, not just internal
+      awareness - see Phase 4.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration)
 - [x] Visual direction settled on, explored entirely in an isolated
@@ -184,6 +193,22 @@ thin sample per county, not something to treat as a reliable average yet.
   3. [ ] Enough live volume for restoration confidence to mean anything
      (Phase 3's data-volume bar)
 - Not scoped in detail yet - revisit once the above are real, not before.
+- [ ] **Public-facing heat advisory view.** Different risk profile than
+      the outage/utility data this whole gate exists for - heat
+      advisories are NWS's own already-public alerts, not a reverse-
+      engineered utility feed, so this one doesn't carry the same
+      re-scraping risk Phase 4's gate is mainly guarding against. Still
+      not started; the internal dashboard strip (Phase 2, above) is the
+      only piece that exists today.
+- [ ] **Natural-language query over the historical/derived data** ("dumb
+      AI" - user's term, h/t Halo's dumb AIs: narrow, task-scoped,
+      no pretense of general intelligence) - a cheap LLM (user mentioned
+      DeepSeek for cost) answering plain-English questions against the
+      accumulated historical/derived tables, not the live raw feeds.
+      Purely conceptual right now - no design work done yet on scope
+      (what it's allowed to query), grounding (how it avoids inventing
+      numbers not actually in the data), or cost/abuse controls for a
+      public-facing LLM endpoint. Revisit once Phase 4's gates are met.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida

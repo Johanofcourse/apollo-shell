@@ -187,3 +187,25 @@ fixes (a NULL-id gap in weather alerts, a sloppy regex in the ice
 detector) plus the thing this project never had before - an actual
 integrity-check script and a real pytest suite, including a test that
 reproduces the replay bug itself and proves the fix actually holds.
+
+## Heat gets its own moment
+A simple question - "do we track heat advisories?" - turned out to have
+a one-word answer (yes, already, for free) and a more interesting
+follow-up. Heat Advisory and Excessive Heat Warning are just ordinary
+NWS alert types, already flowing through the same `weather_alerts` table
+as every flood/wind/tornado alert since day one. Checking the real
+numbers: 20 Heat Advisory alerts logged since July 4th, covering 6 of
+the first 9 days of July somewhere in Florida - zero Excessive Heat
+Warnings yet. The data was never missing, just never surfaced as its
+own thing.
+
+Shipped a small "heat this month" strip on the internal dashboard -
+days-with-advisory count, a tier breakdown, and a live "active now"
+badge - as the first, smallest piece of a bigger idea the user's after:
+eventually a genuinely public-facing heat advisory view (a much lower-
+risk thing to publish than the outage data, since it's just re-surfacing
+NWS's own already-public alerts), and further out, a natural-language
+query interface over the historical data - a "dumb AI" in the user's
+own words, narrow and task-scoped on purpose, likely backed by a cheap
+model like DeepSeek rather than anything general-purpose. Both are real
+ideas now on the roadmap (Phase 4), neither started.

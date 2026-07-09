@@ -166,6 +166,7 @@ def index():
     duke_closed_events = db.get_duke_recent_closed_events(limit=10)
 
     pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "correlation"])
+    heat_summary = db.get_heat_advisory_summary()
 
     db.close()
 
@@ -259,6 +260,7 @@ def index():
         combined_confidence_display=combined_confidence_display,
         pipeline_health_list=pipeline_health_list,
         any_pipeline_issue=any_pipeline_issue,
+        heat_summary=heat_summary,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 
