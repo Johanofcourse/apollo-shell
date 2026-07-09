@@ -551,6 +551,20 @@ class OutageDatabase:
         its peak if this snapshot is worse. If customers_out == 0 and an
         event is open, close it.
 
+        NOT SAFE TO REPLAY: this decides "is an event currently open" by
+        querying live database state, which only makes sense if calls
+        arrive in real chronological order from wherever history actually
+        left off (true for the live poller, one cycle at a time). Calling
+        this again with an earlier batch on top of data that already
+        covers that period - replaying a historical report series a
+        second time, for instance - gets confused by events left open
+        from the end of the previous run and fabricates spurious extra
+        open/close cycles. Found the hard way 2026-07-08; the fix for
+        historical replays was making import_report_series() wipe
+        outage_events before every run, not changing this function's own
+        behavior. If a similar historical-replay use case is ever built
+        for this table directly, wipe first, the same way.
+
         Args:
             utility: Name of utility (e.g., "FPL")
             outage_list: List of dicts with keys: county, customers_out, customers_served
@@ -826,6 +840,19 @@ class OutageDatabase:
           all, close it (TECO's feed only lists currently-active
           incidents, so disappearing is our only signal of resolution)
 
+        NOT SAFE TO REPLAY - same characteristic as sync_outage_events
+        (see its docstring): "is this incident currently open" is decided
+        by querying live database state, which only holds up for calls
+        arriving in real chronological order, one live poll at a time.
+        Nothing replays this today - TECO's historical storm data lives
+        in the generic outage_events table via the PSC PDF importer, not
+        here, since this table only exists for the live incident-level
+        feed's shape. But if a future historical TECO incident backfill
+        ever calls this function with a batch of past records, wipe
+        teco_incident_events for that period first, the same way
+        import_report_series() now always wipes outage_events before
+        replaying a storm's reports.
+
         Args:
             records: list of dicts as returned by fetch_teco_outages.parse_incidents()
             timestamp: ISO timestamp for this poll; defaults to now
@@ -925,6 +952,15 @@ class OutageDatabase:
         while still being reported, and closes once an incident_id that
         was open stops appearing in a poll at all (Duke's feed, like
         TECO's, only lists currently-active incidents).
+
+        NOT SAFE TO REPLAY - same characteristic as sync_outage_events and
+        sync_teco_incident_events (see their docstrings): only safe for
+        calls arriving in real chronological order, one live poll at a
+        time. Nothing replays this today - Duke's historical storm data
+        lives in the generic outage_events table via the PSC PDF
+        importer, not here. If a future historical Duke incident backfill
+        ever calls this with a batch of past records, wipe
+        duke_incident_events for that period first.
 
         Args:
             records: list of dicts as returned by fetch_duke_outages.parse_incidents()

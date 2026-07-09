@@ -108,6 +108,20 @@ def parse_esf12_report(pdf_path):
 
     report_timestamp = parse_report_timestamp(full_text) or _parse_timestamp_from_filename(pdf_path)
 
+    # Skip counters, surfaced at the end instead of silently vanishing -
+    # this is exactly the blind spot that let the Miami-Dade hyphen bug
+    # hide for as long as it did: every rejection here used to just be a
+    # bare `continue`, with nothing counting or reporting how many lines
+    # got dropped or why. `no_match_candidates` is deliberately narrower
+    # than "every line that didn't match any regex" - most of a PDF's
+    # text is headers/whitespace/footers that were never a data row to
+    # begin with, and counting all of those would bury the real signal
+    # in noise. A line containing a "%" is a strong proxy for "this was
+    # probably supposed to be a data row" (every real row format has a
+    # percentage column) without needing to guess at every non-table
+    # line in the document.
+    skip_counts = {"no_match_candidates": 0, "invalid_county": 0, "impossible_values": 0, "truncated_provider": 0}
+
     records = []
     for line in full_text.split("\n"):
         line = line.strip()
@@ -131,7 +145,13 @@ def parse_esf12_report(pdf_path):
                     customers_out = _parse_int(match.group("out"))
                     customers_served = _parse_int(match.group("customers"))
 
-        if match is None or not _is_real_county(county):
+        if match is None:
+            if "%" in line:
+                skip_counts["no_match_candidates"] += 1
+            continue
+
+        if not _is_real_county(county):
+            skip_counts["invalid_county"] += 1
             continue
 
         if customers_out > customers_served:
@@ -139,6 +159,7 @@ def parse_esf12_report(pdf_path):
             # itself (not a parsing bug) - e.g. more customers reported
             # out than the utility serves in that county at all. Not
             # physically possible, so the row isn't trustworthy.
+            skip_counts["impossible_values"] += 1
             continue
 
         utility = match.group("provider").strip()
@@ -147,6 +168,7 @@ def parse_esf12_report(pdf_path):
             # column mid-word (e.g. "mpa Electric Comp" from "Tampa
             # Electric Company") - a real utility name always starts
             # with a capital letter, a truncated fragment never does.
+            skip_counts["truncated_provider"] += 1
             continue
 
         records.append({
@@ -155,6 +177,12 @@ def parse_esf12_report(pdf_path):
             "customers_out": customers_out,
             "customers_served": customers_served,
         })
+
+    total_skipped = sum(skip_counts.values())
+    if total_skipped:
+        detail = ", ".join(f"{v} {k}" for k, v in skip_counts.items() if v)
+        print(f"parse_esf12_report({pdf_path}): {len(records)} records, "
+              f"{total_skipped} line(s) skipped ({detail})")
 
     return report_timestamp, records
 
@@ -236,21 +264,27 @@ def parse_county_summary_report(pdf_path):
 
     report_timestamp = parse_report_timestamp(full_text) or _parse_timestamp_from_filename(pdf_path)
 
+    skip_counts = {"no_match_candidates": 0, "invalid_county": 0, "impossible_values": 0}
+
     records = []
     for line in full_text.split("\n"):
         line = line.strip()
         match = COUNTY_SUMMARY_ROW_RE.match(line)
         if not match:
+            if "%" in line:
+                skip_counts["no_match_candidates"] += 1
             continue
 
         county = match.group("county").strip()
         if not _is_real_county(county):
+            skip_counts["invalid_county"] += 1
             continue
 
         customers_served = _parse_int(match.group("served"))
         customers_out = _parse_int(match.group("out"))
 
         if customers_out > customers_served:
+            skip_counts["impossible_values"] += 1
             continue
 
         records.append({
@@ -259,6 +293,12 @@ def parse_county_summary_report(pdf_path):
             "customers_out": customers_out,
             "customers_served": customers_served,
         })
+
+    total_skipped = sum(skip_counts.values())
+    if total_skipped:
+        detail = ", ".join(f"{v} {k}" for k, v in skip_counts.items() if v)
+        print(f"parse_county_summary_report({pdf_path}): {len(records)} records, "
+              f"{total_skipped} line(s) skipped ({detail})")
 
     return report_timestamp, records
 
@@ -273,6 +313,22 @@ def import_report_series(pdf_paths, db_path, parser=parse_esf12_report):
     parser: which parsing function to use - defaults to the normal
     per-utility parse_esf12_report(), pass parse_county_summary_report
     for reports in that different, utility-less format (see its docstring).
+
+    Always wipes outage_events in db_path before replaying, unconditionally
+    - not a flag, not opt-in. Found the hard way (2026-07-08, while
+    backfilling a Miami-Dade parsing fix): outage_events tracks "is there
+    currently an open event" by querying live database state, which is
+    correct for the live poller (always moving forward in time) but
+    replaying a full historical series on top of data that's already
+    there gets confused by events left open from the tail of the
+    previous run, and fabricates spurious extra open/close cycles - not
+    a duplicate-row problem a unique index catches, a silently wrong-data
+    problem. A per-storm database's outage_events should only ever
+    reflect exactly the report series just parsed, never a partial layer
+    on top of whatever ran before - there's no legitimate reason to
+    replay incrementally, so this isn't offered as a choice. The raw
+    `outages` snapshot table is untouched by this wipe; its own
+    uniqueness guard already makes it safe to replay as-is.
 
     Returns a summary dict: {"reports_parsed", "reports_skipped", "counties_seen", "utilities_seen"}
     """
@@ -289,6 +345,17 @@ def import_report_series(pdf_paths, db_path, parser=parse_esf12_report):
     parsed.sort(key=lambda item: item[0])
 
     db = OutageDatabase(db_path)
+    conn = db.connect()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM outage_events')
+    existing_count = cursor.fetchone()[0]
+    if existing_count:
+        print(f"import_report_series: wiping {existing_count} existing outage_events "
+              f"row(s) in {db_path} before replaying - always safe here, since a "
+              f"per-storm database should only ever reflect its own report series.")
+        cursor.execute('DELETE FROM outage_events')
+        conn.commit()
+
     counties_seen = set()
     utilities_seen = set()
 
