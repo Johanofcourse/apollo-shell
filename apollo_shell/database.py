@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 
 
@@ -365,17 +365,114 @@ class OutageDatabase:
         ''')
 
         cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_county 
+            CREATE INDEX IF NOT EXISTS idx_county
             ON outages(county)
         ''')
-        
+
         cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_weather_timestamp 
+            CREATE INDEX IF NOT EXISTS idx_weather_timestamp
             ON weather_alerts(timestamp)
         ''')
-        
+
+        # Every cycle in main.py is already wrapped in its own try/except so
+        # one source failing doesn't take down the others - this table is
+        # where those caught exceptions actually get recorded, instead of
+        # only ever existing as a print() line in a growing text log file
+        # nobody's watching. source is the cycle name (fpl/weather/teco/
+        # duke/correlation), matching main.py's own naming.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pipeline_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                source TEXT NOT NULL,
+                error_message TEXT NOT NULL
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_pipeline_errors_source_timestamp
+            ON pipeline_errors(source, timestamp)
+        ''')
+
         conn.commit()
         print(f"Database initialized: {self.db_path}")
+
+    def log_pipeline_error(self, source, error_message, timestamp=None):
+        """
+        Record a caught pipeline failure (a fetch cycle, a correlation
+        pass, etc.) so it's queryable later, not just a line in a text
+        log. Deliberately not idempotency-guarded like the data tables -
+        every failure is a real, distinct event worth keeping, even if
+        the message text happens to repeat cycle to cycle.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        timestamp = timestamp or datetime.now().isoformat()
+        cursor.execute('''
+            INSERT INTO pipeline_errors (timestamp, source, error_message)
+            VALUES (?, ?, ?)
+        ''', (timestamp, source, error_message))
+        conn.commit()
+
+    def get_pipeline_health(self, sources=None, warning_window_hours=24, critical_window_hours=1, critical_count=3):
+        """
+        Per-source health summary for the dashboard: status ("healthy" /
+        "warning" / "critical"), most recent error (if any), and failure
+        counts over a short window (default 1h) and a longer one
+        (default 24h).
+
+        Thresholds are about *sustained* failure, not a single blip - a
+        source polled every 15 min has ~4 chances an hour, so
+        `critical_count` failures within `critical_window_hours` means
+        it's failing nearly every cycle right now, not just once.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        if sources is None:
+            cursor.execute('SELECT DISTINCT source FROM pipeline_errors')
+            sources = sorted(row[0] for row in cursor.fetchall())
+
+        now = datetime.now()
+        warning_cutoff = (now - timedelta(hours=warning_window_hours)).isoformat()
+        critical_cutoff = (now - timedelta(hours=critical_window_hours)).isoformat()
+
+        health = {}
+        for source in sources:
+            cursor.execute('''
+                SELECT timestamp, error_message FROM pipeline_errors
+                WHERE source = ? ORDER BY timestamp DESC LIMIT 1
+            ''', (source,))
+            last_row = cursor.fetchone()
+
+            cursor.execute('''
+                SELECT COUNT(*) FROM pipeline_errors
+                WHERE source = ? AND timestamp >= ?
+            ''', (source, warning_cutoff))
+            count_warning_window = cursor.fetchone()[0]
+
+            cursor.execute('''
+                SELECT COUNT(*) FROM pipeline_errors
+                WHERE source = ? AND timestamp >= ?
+            ''', (source, critical_cutoff))
+            count_critical_window = cursor.fetchone()[0]
+
+            if count_critical_window >= critical_count:
+                status = "critical"
+            elif count_warning_window > 0:
+                status = "warning"
+            else:
+                status = "healthy"
+
+            health[source] = {
+                "status": status,
+                "last_error_time": last_row["timestamp"] if last_row else None,
+                "last_error_message": last_row["error_message"] if last_row else None,
+                "count_recent": count_critical_window,
+                "count_today": count_warning_window,
+            }
+
+        return health
     
     
     def log_outage(self, utility, county, customers_out, customers_served):

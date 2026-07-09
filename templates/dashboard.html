@@ -125,11 +125,100 @@
     .badge-medium { background: rgba(210, 153, 34, 0.18); color: var(--warn); }
     .badge-low { background: rgba(63, 185, 80, 0.18); color: var(--ok); }
     .badge-unknown { background: rgba(139, 152, 165, 0.18); color: var(--muted); }
+
+    /* Pipeline health strip - surfaces caught fetch/correlation failures
+       that used to only ever exist as a print() line in a growing text
+       log file nobody was watching. Quiet when everything's fine, a
+       visibly different (not just differently-colored) card border when
+       a source has failed enough times recently to look like a real
+       problem rather than one transient blip. */
+    .pipeline-health {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.85rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .pipeline-health-issue {
+      border-color: var(--warn);
+    }
+    .pipeline-health-header {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--ok);
+      margin-bottom: 0.6rem;
+    }
+    .pipeline-health-issue .pipeline-health-header {
+      color: var(--warn);
+    }
+    .pipeline-health-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem;
+    }
+    .pipeline-source {
+      border-left: 3px solid var(--border);
+      padding: 0.2rem 0 0.2rem 0.65rem;
+    }
+    .pipeline-source-critical { border-left-color: var(--crit); }
+    .pipeline-source-warning { border-left-color: var(--warn); }
+    .pipeline-source-healthy { border-left-color: var(--ok); }
+    .pipeline-source-name {
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .pipeline-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .pipeline-dot-healthy { background: var(--ok); }
+    .pipeline-dot-warning { background: var(--warn); }
+    .pipeline-dot-critical { background: var(--crit); }
+    .pipeline-source-detail {
+      font-size: 0.75rem;
+      color: var(--text);
+      margin-top: 0.15rem;
+    }
   </style>
 </head>
 <body>
   <h1>Apollo Sentinel — Live Status</h1>
   <div class="meta">Generated {{ generated_at }} · refreshes every 60s · <a href="/history" style="color: var(--accent);">County storm history &rarr;</a></div>
+
+  <div class="pipeline-health {{ 'pipeline-health-issue' if any_pipeline_issue else '' }}">
+    <div class="pipeline-health-header">
+      {% if any_pipeline_issue %}
+        &#9888; Pipeline has caught failures - see below
+      {% else %}
+        &#10003; Pipeline healthy - no caught failures in the last 24h
+      {% endif %}
+    </div>
+    <div class="pipeline-health-row">
+      {% for source in pipeline_health_list %}
+      <div class="pipeline-source pipeline-source-{{ source.status }}">
+        <div class="pipeline-source-name">
+          <span class="pipeline-dot pipeline-dot-{{ source.status }}"></span>{{ source.display_name }}
+        </div>
+        {% if source.status == "healthy" %}
+        <div class="pipeline-source-detail">No failures in 24h</div>
+        {% else %}
+        <div class="pipeline-source-detail">
+          {{ source.count_today }} failure{{ "s" if source.count_today != 1 else "" }} in 24h
+          {% if source.count_recent >= 3 %}({{ source.count_recent }} in the last hour){% endif %}
+        </div>
+        <div class="pipeline-source-detail" style="color: var(--muted);">
+          Last: {{ source.last_error_ago }} ago &mdash; {{ source.last_error_message }}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
 
   <div class="kpi-strip">
     <div class="kpi-card">

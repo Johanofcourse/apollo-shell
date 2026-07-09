@@ -156,26 +156,31 @@ def main():
                 run_outage_cycle(db)
             except Exception as e:
                 print(f"Outage fetch cycle failed: {e}")
+                db.log_pipeline_error("fpl", str(e))
 
             try:
                 run_weather_cycle(db)
             except Exception as e:
                 print(f"Weather fetch cycle failed: {e}")
+                db.log_pipeline_error("weather", str(e))
 
             try:
                 run_teco_cycle(db)
             except Exception as e:
                 print(f"TECO fetch cycle failed: {e}")
+                db.log_pipeline_error("teco", str(e))
 
             try:
                 run_duke_cycle(db)
             except Exception as e:
                 print(f"Duke fetch cycle failed: {e}")
+                db.log_pipeline_error("duke", str(e))
 
             try:
                 run_correlation_cycle()
             except Exception as e:
                 print(f"Correlation cycle failed: {e}")
+                db.log_pipeline_error("correlation", str(e))
 
             print(f"Cycle complete. Sleeping {POLL_INTERVAL_SECONDS}s...")
             time.sleep(POLL_INTERVAL_SECONDS)

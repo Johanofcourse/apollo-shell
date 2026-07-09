@@ -165,6 +165,8 @@ def index():
     duke_open_events = db.get_duke_open_events()
     duke_closed_events = db.get_duke_recent_closed_events(limit=10)
 
+    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "correlation"])
+
     db.close()
 
     for event in open_events:
@@ -208,6 +210,27 @@ def index():
     for event in closed_events:
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
 
+    # Pipeline health strip - surfaces caught fetch/correlation failures
+    # (see OutageDatabase.log_pipeline_error/get_pipeline_health) that
+    # used to only ever exist as a print() line in a growing text log
+    # file nobody was watching.
+    source_display_names = {
+        "fpl": "FPL",
+        "weather": "NWS Weather",
+        "teco": "TECO",
+        "duke": "Duke Energy",
+        "correlation": "Correlation",
+    }
+    for source, info in pipeline_health.items():
+        info["display_name"] = source_display_names.get(source, source.title())
+        info["last_error_ago"] = _duration_since(info["last_error_time"]) if info["last_error_time"] else None
+    pipeline_status_order = {"critical": 0, "warning": 1, "healthy": 2}
+    pipeline_health_list = sorted(
+        pipeline_health.values(),
+        key=lambda info: pipeline_status_order[info["status"]],
+    )
+    any_pipeline_issue = any(info["status"] != "healthy" for info in pipeline_health_list)
+
     # KPI summary strip at the top of the page - a fast, at-a-glance
     # read before scrolling into the detailed per-utility tables below.
     total_customers_affected = sum(row["customers"] or 0 for row in unified_open)
@@ -234,6 +257,8 @@ def index():
         worst_row=worst_row,
         combined_confidence_bar=combined_confidence_bar,
         combined_confidence_display=combined_confidence_display,
+        pipeline_health_list=pipeline_health_list,
+        any_pipeline_issue=any_pipeline_issue,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 

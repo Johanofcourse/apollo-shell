@@ -64,6 +64,19 @@
       one shared `outage_events` shape. This is explicitly an internal
       tool right now, not a public feature - see Phase 4 for what
       actually opening it up would require.
+- [x] **Pipeline error alerting**, tied to the dashboard. Every fetch
+      cycle already had its own try/except so one source failing
+      couldn't crash the others, but the only record was a print() line
+      into a growing text log nobody was watching. Now every caught
+      failure lands in a real `pipeline_errors` table, with a per-source
+      health status (healthy / warning / critical - critical means 3+
+      failures in the last hour, i.e. failing nearly every 15-minute
+      cycle right now, not just a one-off blip) surfaced as a strip at
+      the top of the dashboard. Deliberately doesn't cover the FCC
+      geocoding timeouts found while building this (TECO/Duke's lat/lon
+      -> county lookups) - that failure already degrades gracefully
+      three layers deep with no database handle in scope, not worth the
+      refactor unless it gets a lot worse.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration)
 - [x] Visual direction settled on, explored entirely in an isolated
