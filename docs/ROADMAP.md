@@ -105,6 +105,15 @@
       plus a live "active now" badge. First step toward the user's
       actual ask: a public-facing heat-advisory view, not just internal
       awareness - see Phase 4.
+- [x] **Heat zone drill-down + plain-English timestamps.** Two small
+      follow-ups after actually looking at the dashboard: the "active
+      now - N zones" badge is now a link to a new `/heat` page listing
+      the actual NWS forecast zones under an active advisory (with a
+      plain-language explainer of what a "zone" is, since it's finer-
+      grained than a county); and every raw ISO timestamp shown on the
+      dashboard/history pages (`2026-07-02T01:19:57.483375`) now renders
+      through a `humanize` Jinja filter as prose (`July 2, 2026, 1:19
+      AM`) instead of the raw machine format.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration)
 - [x] Visual direction settled on, explored entirely in an isolated

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Apollo Sentinel — Heat Advisories</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #161d27;
+      --border: #26313f;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --accent: #e8734a;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --crit: #f85149;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 2rem;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+    .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
+    .meta a { color: var(--accent); }
+    h2 {
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-top: 2rem;
+    }
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      padding: 0.75rem 0;
+    }
+    .explainer {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .explainer strong { color: var(--text); }
+    .summary-row {
+      display: flex;
+      gap: 2rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .summary-item .label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.3rem;
+    }
+    .summary-item .value { font-size: 1.3rem; font-weight: 700; }
+    .alert-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--warn);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .alert-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.2rem; }
+    .alert-window { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.75rem; }
+    .zone-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .zone-chip {
+      background: rgba(210, 153, 34, 0.12);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.2rem 0.65rem;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Heat Advisories</h1>
+  <div class="meta"><a href="/">&larr; Back to live status</a></div>
+
+  <div class="explainer">
+    <strong>What's a "zone"?</strong> NWS doesn't issue heat alerts per county - it splits Florida into
+    finer-grained forecast zones (coastal vs. inland vs. metro areas within the same county, for example
+    "Coastal Broward County" and "Inland Broward County" are two separate zones). One advisory usually
+    covers many zones at once, and a county can have more than one zone active while its neighbor has none -
+    that's why the count on the dashboard can look larger than the number of counties actually affected.
+  </div>
+
+  <div class="summary-row">
+    <div class="summary-item">
+      <div class="label">{{ heat_summary.month_label }}</div>
+      <div class="value">{{ heat_summary.days_with_advisory }} of {{ heat_summary.days_elapsed_this_month }} days</div>
+    </div>
+    <div class="summary-item">
+      <div class="label">Heat Advisory</div>
+      <div class="value">{{ heat_summary.heat_advisory_count }}</div>
+    </div>
+    <div class="summary-item">
+      <div class="label">Excessive Heat Warning</div>
+      <div class="value">{{ heat_summary.excessive_heat_warning_count }}</div>
+    </div>
+  </div>
+
+  <h2>Active Right Now {{ '(' ~ heat_summary.active_area_count ~ ' zones)' if heat_summary.currently_active else '' }}</h2>
+  {% if heat_summary.active_alerts %}
+    {% for alert in heat_summary.active_alerts %}
+      <div class="alert-card">
+        <div class="alert-title">{{ alert.event_type }}</div>
+        <div class="alert-window">{{ alert.effective | humanize }} &rarr; {{ alert.expires | humanize }}</div>
+        <div class="zone-chips">
+          {% for zone in alert.areas %}
+            <span class="zone-chip">{{ zone }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">No heat advisory active anywhere in Florida right now.</div>
+  {% endif %}
+</body>
+</html>

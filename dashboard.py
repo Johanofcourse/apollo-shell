@@ -39,6 +39,26 @@ def _duration_since(start_iso, end_iso=None):
     return " ".join(parts)
 
 
+def _humanize_timestamp(ts):
+    """
+    Turn a raw ISO timestamp ("2026-07-02T01:19:57.483375" or, for
+    weather alerts, "2026-07-04T02:01:00-04:00") into plain prose
+    ("July 2, 2026, 1:19 AM") for display. The duration/"ago" columns
+    elsewhere (_duration_since) are unaffected - this is only for the
+    absolute-time columns that used to show the raw ISO string as-is.
+    """
+    if not ts:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(ts)
+    except ValueError:
+        return ts
+    return dt.strftime("%B %-d, %Y, %-I:%M %p")
+
+
+app.jinja_env.filters['humanize'] = _humanize_timestamp
+
+
 def _format_alert_types(alert_types):
     """
     Turn {"Flood Advisory": 32, "Tornado Warning": 2} into
@@ -362,6 +382,21 @@ def history():
         storms=storms,
         db_missing=not available_counties,
     )
+
+
+@app.route("/heat")
+def heat():
+    """
+    Detail view for the dashboard's "heat this month" strip - which
+    specific NWS forecast zones are under an active Heat Advisory /
+    Excessive Heat Warning right now, plus this month's frequency so
+    far. See OutageDatabase.get_heat_advisory_summary().
+    """
+    db = OutageDatabase()
+    heat_summary = db.get_heat_advisory_summary()
+    db.close()
+
+    return render_template("heat.html", heat_summary=heat_summary)
 
 
 if __name__ == "__main__":

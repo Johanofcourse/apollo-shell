@@ -209,3 +209,13 @@ query interface over the historical data - a "dumb AI" in the user's
 own words, narrow and task-scoped on purpose, likely backed by a cheap
 model like DeepSeek rather than anything general-purpose. Both are real
 ideas now on the roadmap (Phase 4), neither started.
+
+Two quick follow-ups once the strip was actually in front of a real
+person: "85 zones" meant nothing without a way to see which ones, so
+that count is now a link to a small `/heat` page listing the actual
+NWS forecast zones under an active advisory, plus a plain-language note
+on what a "zone" even is (finer-grained than a county - "Coastal
+Broward County" and "Inland Broward County" are two separate zones).
+And every raw ISO timestamp on the dashboard and history pages, the
+kind with a `T` and six decimal places nobody asked for, now renders as
+actual prose ("July 2, 2026, 1:19 AM") through one shared Jinja filter.

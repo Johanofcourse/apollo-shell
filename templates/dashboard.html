@@ -207,10 +207,12 @@
       font-size: 0.75rem;
       font-weight: 600;
       color: var(--warn);
+      text-decoration: none;
       display: flex;
       align-items: center;
       gap: 0.35rem;
     }
+    .heat-now-badge:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -266,7 +268,7 @@
       {% endif %}
     </div>
     {% if heat_summary.currently_active %}
-    <div class="heat-now-badge">&#9888; Active now &mdash; {{ heat_summary.active_area_count }} zone{{ "s" if heat_summary.active_area_count != 1 else "" }}</div>
+    <a href="/heat" class="heat-now-badge">&#9888; Active now &mdash; {{ heat_summary.active_area_count }} zone{{ "s" if heat_summary.active_area_count != 1 else "" }} &rarr;</a>
     {% endif %}
   </div>
 
@@ -313,7 +315,7 @@
         <td>{{ e.utility }}</td>
         <td>{{ e.county or "—" }}</td>
         <td class="pct-bad">{{ "{:,}".format(e.customers or 0) }}</td>
-        <td>{{ e.start_time }}</td>
+        <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.duration }}</td>
       </tr>
       {% endfor %}
@@ -333,7 +335,7 @@
         <td>{{ e.county }}</td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
-        <td>{{ e.start_time }}</td>
+        <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.duration }}</td>
       </tr>
       {% endfor %}
@@ -371,8 +373,8 @@
       <tr>
         <td>{{ e.county }}</td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
-        <td>{{ e.start_time }}</td>
-        <td>{{ e.end_time }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
         <td>{{ e.duration }}</td>
       </tr>
       {% endfor %}
@@ -392,8 +394,8 @@
         <td>{{ a.event_type }}</td>
         <td>{{ a.severity or "—" }}</td>
         <td>{{ a.areas }}</td>
-        <td>{{ a.effective or "—" }}</td>
-        <td>{{ a.expires or "—" }}</td>
+        <td>{{ a.effective | humanize }}</td>
+        <td>{{ a.expires | humanize }}</td>
       </tr>
       {% endfor %}
     </table>
@@ -443,7 +445,7 @@
         <td class="pct-bad">{{ e.peak_customer_count }}</td>
         <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
         <td>{{ e.estimated_restoration or "—" }}</td>
-        <td>{{ e.start_time }}</td>
+        <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.duration }}</td>
       </tr>
       {% endfor %}
@@ -464,8 +466,8 @@
         <td>{{ e.county or "—" }}</td>
         <td class="pct-ok">{{ e.peak_customer_count }}</td>
         <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
-        <td>{{ e.start_time }}</td>
-        <td>{{ e.end_time }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
         <td>{{ e.duration }}</td>
       </tr>
       {% endfor %}
@@ -515,7 +517,7 @@
         <td>{{ e.county or "—" }}</td>
         <td class="pct-bad">{{ e.peak_customer_count }}</td>
         <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
-        <td>{{ e.start_time }}</td>
+        <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.duration }}</td>
       </tr>
       {% endfor %}
@@ -536,8 +538,8 @@
         <td>{{ e.county or "—" }}</td>
         <td class="pct-ok">{{ e.peak_customer_count }}</td>
         <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
-        <td>{{ e.start_time }}</td>
-        <td>{{ e.end_time }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
         <td>{{ e.duration }}</td>
       </tr>
       {% endfor %}

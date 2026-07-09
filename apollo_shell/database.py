@@ -503,6 +503,7 @@ class OutageDatabase:
         days_covered = set()
         tier_counts = {"Heat Advisory": 0, "Excessive Heat Warning": 0}
         active_areas = set()
+        active_alerts = []
         now_utc = datetime.now(timezone.utc)
 
         for row in rows:
@@ -514,7 +515,14 @@ class OutageDatabase:
                 effective_dt = datetime.fromisoformat(row["effective"])
                 expires_dt = datetime.fromisoformat(row["expires"])
                 if effective_dt <= now_utc <= expires_dt:
-                    active_areas.update(a.strip() for a in row["areas"].split(";"))
+                    areas = [a.strip() for a in row["areas"].split(";")]
+                    active_areas.update(areas)
+                    active_alerts.append({
+                        "event_type": row["event_type"],
+                        "effective": row["effective"],
+                        "expires": row["expires"],
+                        "areas": areas,
+                    })
 
         return {
             "month_label": reference.strftime('%B %Y'),
@@ -524,6 +532,8 @@ class OutageDatabase:
             "excessive_heat_warning_count": tier_counts["Excessive Heat Warning"],
             "currently_active": len(active_areas) > 0,
             "active_area_count": len(active_areas),
+            "active_zones": sorted(active_areas),
+            "active_alerts": active_alerts,
         }
 
     def log_outage(self, utility, county, customers_out, customers_served):

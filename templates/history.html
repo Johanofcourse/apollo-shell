@@ -152,8 +152,8 @@
                         <td>{{ u.utility }}</td>
                         <td>{{ "{:,}".format(u.peak_customers_out) }}</td>
                         <td class="{{ 'pct-bad' if u.peak_percentage_out >= 10 else '' }}">{{ "%.1f"|format(u.peak_percentage_out) }}%</td>
-                        <td>{{ u.start_time }}</td>
-                        <td>{{ u.end_time or '(open at report series end)' }}</td>
+                        <td>{{ u.start_time | humanize }}</td>
+                        <td>{{ u.end_time | humanize if u.end_time else '(open at report series end)' }}</td>
                       </tr>
                     {% endfor %}
                   </tbody>
