@@ -51,7 +51,7 @@ STORM_HISTORY_WIND_PATTERNS = [
 ]
 SNOW_RE = re.compile(r"between\s+(\d+)\s+and\s+(\d+)\s+inches?\s+of\s+snow", re.IGNORECASE)
 WIND_CHILL_RE = re.compile(r"wind\s*chills?\s+of\s+(-?\d+)\s*-\s*(-?\d+)\s+degrees", re.IGNORECASE)
-ICE_RE = re.compile(r"(?:a |an )?(quarter|half|three.quarters|\d+(?:\.\d+)?)\s*inch(?:es)?\s+of\s+ice", re.IGNORECASE)
+ICE_RE = re.compile(r"(?:a |an )?(quarter|half|three[-\s]quarters|\d+(?:\.\d+)?)\s*inch(?:es)?\s+of\s+ice", re.IGNORECASE)
 ICE_WORD_VALUES = {"quarter": 0.25, "half": 0.5, "three quarters": 0.75, "three-quarters": 0.75}
 
 

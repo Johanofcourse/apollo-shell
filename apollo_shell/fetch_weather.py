@@ -1,3 +1,4 @@
+import hashlib
 import requests
 from datetime import datetime
 
@@ -38,17 +39,33 @@ def fetch_florida_alerts():
 def parse_alert(alert):
     """
     Parse a single alert into a clean format
-    
+
     Args:
         alert: GeoJSON feature object from NWS API
-    
+
     Returns:
         Dictionary with cleaned alert data
     """
     props = alert.get('properties', {})
 
+    alert_id = props.get('id')  # NWS's own permanent alert ID
+    if not alert_id:
+        # NWS's API always includes this in practice, but weather_alerts'
+        # uniqueness guard is keyed on alert_id, and a NULL bypasses a
+        # SQLite UNIQUE constraint entirely (5 real rows from this
+        # project's first day already show what that leads to: the same
+        # still-active alert re-logged every cycle it stays active,
+        # since there was nothing to dedupe by). Build a deterministic
+        # fallback from fields that together uniquely identify a real
+        # alert, so this can never silently fall back to no protection
+        # at all, only to a slightly less authoritative one.
+        fallback_source = f"{props.get('event')}|{props.get('areaDesc')}|{props.get('effective')}|{props.get('expires')}"
+        alert_id = "fallback-" + hashlib.sha256(fallback_source.encode()).hexdigest()[:16]
+        print(f"parse_alert: NWS alert had no 'id' field, using a synthetic one ({alert_id}) - "
+              f"event={props.get('event')!r}, areas={props.get('areaDesc')!r}")
+
     return {
-        'id': props.get('id'),  # NWS's own permanent alert ID
+        'id': alert_id,
         'event': props.get('event'),  # e.g., "Wind Advisory"
         'headline': props.get('headline'),
         'severity': props.get('severity'),  # e.g., "Moderate", "Severe"
