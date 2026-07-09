@@ -158,3 +158,32 @@ Levy, Citrus) - but only in Elsa's dataset. None of the other 16
 storms have this pattern at all. A quirk of how that one storm's
 narratives happened to get written, not a systemic problem across the
 whole historical archive.
+
+## The Miami-Dade saga
+Started with a simple ask - let people query a county's real storm
+history - and turned into the best bug hunt this project's had. Built a
+consolidated historical database and a real query page, then noticed
+Miami-Dade had zero records anywhere while its neighbors had plenty.
+Turned out to be real: every county-matching regex in the PDF parser
+was missing a hyphen in its character class, and Miami-Dade is the only
+Florida county with one in its name - every single Miami-Dade row, in
+every report, in all 17 storms, had been silently skipped since the
+very first backfill.
+
+Fixing it surfaced a second, worse bug: replaying a historical report
+series a second time on top of data that's already there doesn't just
+skip duplicates like everything else in this project - it fabricates
+extra fake outages, because the lifecycle tracker decides "is this
+currently open" by asking the live database, which only makes sense
+moving forward in time. Re-ran all 17 storms clean from scratch to fix
+it properly, re-applying a data-entry-error correction that got
+temporarily undone along the way. Miami-Dade now has real data in 12 of
+17 storms, confirmed genuinely absent in the other 5.
+
+Also shipped: a real pipeline error alert on the dashboard (every caught
+fetch failure used to just be a print() line nobody watched), and,
+after asking "what else might be lurking," a couple more small real
+fixes (a NULL-id gap in weather alerts, a sloppy regex in the ice
+detector) plus the thing this project never had before - an actual
+integrity-check script and a real pytest suite, including a test that
+reproduces the replay bug itself and proves the fix actually holds.

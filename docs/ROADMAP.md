@@ -77,6 +77,25 @@
       -> county lookups) - that failure already degrades gracefully
       three layers deep with no database handle in scope, not worth the
       refactor unless it gets a lot worse.
+- [x] **Real bug hunt following the Miami-Dade fix, plus a first real
+      test suite.** Asking "any other counties missing, any other odd
+      parses" turned up two more real, if minor, issues: `weather_alerts`
+      had 5 legacy rows with a NULL `alert_id` (from before that field
+      existed) that could bypass the uniqueness guard entirely if it
+      ever happened again - fixed with a deterministic synthetic-ID
+      fallback in `fetch_weather.py`. `storm_severity.py`'s ice-detection
+      regex had an unescaped `.` in `three.quarters`, matching any
+      character instead of just a hyphen/space - fixed, verified zero
+      effect on the 17 storms' already-stored data. Also added:
+      `apollo_shell/check_data_integrity.py`, a reusable script
+      formalizing the ad hoc SQL sanity checks this project has
+      repeatedly done by hand (impossible values, bad durations,
+      duplicate keys, cross-storm anomalies, county coverage, pipeline
+      health, consolidated-db sync) into one command; and a real pytest
+      suite (42 tests, `tests/`) - the project had zero automated tests
+      before this. Includes a direct regression test for the replay bug
+      above, verified to actually catch it (reverted the fix, watched
+      3/4 tests fail, restored it, watched them pass).
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration)
 - [x] Visual direction settled on, explored entirely in an isolated
