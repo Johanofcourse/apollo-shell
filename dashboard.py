@@ -1,8 +1,9 @@
 import os
+import sqlite3
 import sys
 from datetime import datetime
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
@@ -234,6 +235,105 @@ def index():
         combined_confidence_bar=combined_confidence_bar,
         combined_confidence_display=combined_confidence_display,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+
+HISTORICAL_DB_PATH = "historical_consolidated.db"
+
+
+def _available_history_counties():
+    if not os.path.exists(HISTORICAL_DB_PATH):
+        return []
+    conn = sqlite3.connect(HISTORICAL_DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT county FROM historical_outage_events ORDER BY county")
+    counties = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return counties
+
+
+def _load_history_for_county(county):
+    """
+    Real historical storm data for one Florida county, from the
+    consolidated historical database (see
+    apollo_shell/consolidate_historical.py) - built from the 17
+    independently-verified per-storm databases, never the raw per-storm
+    files directly. County names in this table are stored upper-case (an
+    artifact of the PSC report parser), so the lookup is case-insensitive -
+    a user typing "Miami-Dade" still matches the stored "MIAMI-DADE".
+    """
+    conn = sqlite3.connect(HISTORICAL_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT storm_name, storm_year, utility, start_time, end_time,
+               peak_customers_out, peak_percentage_out, customers_served
+        FROM historical_outage_events
+        WHERE UPPER(county) = UPPER(?)
+        ORDER BY storm_year, peak_percentage_out DESC
+    ''', (county,))
+    outage_rows = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute('''
+        SELECT storm_name, storm_year, event_type, reported_wind_mph,
+               snow_inches, ice_inches, wind_chill_f
+        FROM historical_storm_severity
+        WHERE UPPER(county) = UPPER(?)
+        ORDER BY storm_year
+    ''', (county,))
+    severity_rows = [dict(row) for row in cursor.fetchall()]
+
+    conn.close()
+
+    # Group both tables by storm so the page can show, per storm: which
+    # utilities reported an outage here and how bad it got, plus whatever
+    # independent NOAA severity readings exist for the same county/storm -
+    # two different sources, shown side by side, never merged into one
+    # number.
+    storms_by_key = {}
+
+    def _storm_bucket(row):
+        key = (row["storm_name"], row["storm_year"])
+        return storms_by_key.setdefault(key, {
+            "storm_name": row["storm_name"],
+            "storm_year": row["storm_year"],
+            "utilities": [],
+            "severity": [],
+        })
+
+    for row in outage_rows:
+        _storm_bucket(row)["utilities"].append(row)
+    for row in severity_rows:
+        _storm_bucket(row)["severity"].append(row)
+
+    return sorted(storms_by_key.values(), key=lambda s: s["storm_year"])
+
+
+@app.route("/history")
+def history():
+    """
+    Query a single Florida county's real historical storm pattern across
+    the 17 independently-verified storms backfilled so far (2018-2025).
+
+    Internal tool for now, not a public-facing feature - see
+    docs/ROADMAP.md Phase 4 for what actually opening this up publicly
+    would require (it's a real, separate, not-yet-met gate, not just a
+    UI decision).
+    """
+    available_counties = _available_history_counties()
+    selected_county = request.args.get("county", "").strip()
+
+    storms = None
+    if selected_county and available_counties:
+        storms = _load_history_for_county(selected_county)
+
+    return render_template(
+        "history.html",
+        available_counties=available_counties,
+        selected_county=selected_county,
+        storms=storms,
+        db_missing=not available_counties,
     )
 
 

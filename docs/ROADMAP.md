@@ -48,6 +48,22 @@
       browser through devtools to find, same as how TECO's was found
 - [ ] More Florida utilities beyond FPL/TECO/Duke, one at a time, same
       proven pattern
+- [x] **County storm-history query tool**, internal only (see
+      `apollo_shell/consolidate_historical.py` and the `/history` route
+      in `dashboard.py`). The 17 per-storm databases stay untouched,
+      independently-verified source of truth; a new, separate,
+      regeneratable `historical_consolidated.db` pulls just the
+      derived/summary data (outage events + independent NOAA severity
+      readings, not raw per-utility snapshots) into one queryable store.
+      Pick a county, see every storm that has real data for it, side by
+      side with the independent severity reading for the same
+      county/storm. Real finding along the way: historical TECO/Duke
+      data was never in utility-specific tables at all - PSC's
+      county-level reports cover 40+ Florida utilities per storm
+      (co-ops, municipals, not just the three we track live), all under
+      one shared `outage_events` shape. This is explicitly an internal
+      tool right now, not a public feature - see Phase 4 for what
+      actually opening it up would require.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration)
 - [x] Visual direction settled on, explored entirely in an isolated
@@ -98,11 +114,12 @@
       this county, which took about Y hours to restore." Explicitly
       deferred, not just unstarted: needs (1) running the same
       severity extractors against live weather alert text, not just
-      historical NOAA narratives; (2) a real decision on querying
-      across separate storm databases (17 so far) vs. consolidating
-      them into one; (3) enough live volume that "closest historical match" is
-      more than 1-2 data points per county. Revisit once Phase 3's
-      data-volume bar (below) is actually met.
+      historical NOAA narratives; (2) enough live volume that "closest
+      historical match" is more than 1-2 data points per county.
+      Revisit once Phase 3's data-volume bar (below) is actually met.
+      The consolidation half of this is now done (see Phase 2.5) - the
+      remaining blocker is purely live data volume, not the database
+      question anymore.
 
 This phase is **not a normal engineering task with a schedulable
 timeline.** It requires enough accumulated real outage-duration data

@@ -11,22 +11,30 @@ from database import OutageDatabase
 TIMESTAMP_RE = re.compile(r"(\d{1,2}/\d{1,2}/\d{4})\s+(\d{1,2}:\d{2}\s*[AP]M)")
 
 # "Florida Power and Light Company ALACHUA 1,280 0 0.00% Not Significantly Impacted"
+#
+# Character class includes "-" - without it, "MIAMI-DADE" (the only
+# Florida county with a hyphen in its name) can never match this regex
+# at all, silently skipping every Miami-Dade row in every report, in
+# every storm. Found 2026-07-08 by noticing Miami-Dade had zero rows
+# across all 17 backfilled storms despite its neighbors (Broward, Palm
+# Beach, Monroe) all having plenty - confirmed against a real source PDF
+# that Miami-Dade's data was there all along, just never captured.
 ROW_FULL_RE = re.compile(
-    r"^(?P<provider>.+?)\s+(?P<county>[A-Z][A-Z.\s]*[A-Z])\s+"
+    r"^(?P<provider>.+?)\s+(?P<county>[A-Z][A-Z.\s-]*[A-Z])\s+"
     r"(?P<customers>[\d,]+)\s+(?P<out>[\d,]+)\s+(?P<pct>[\d.]+)%\s+(?P<restore>.+)$"
 )
 
 # Some already-restored rows drop the "out" column entirely, e.g.
 # "Florida Power and Light Company BREVARD 345,490 0.00% Restored"
 ROW_NO_OUT_RE = re.compile(
-    r"^(?P<provider>.+?)\s+(?P<county>[A-Z][A-Z.\s]*[A-Z])\s+"
+    r"^(?P<provider>.+?)\s+(?P<county>[A-Z][A-Z.\s-]*[A-Z])\s+"
     r"(?P<customers>[\d,]+)\s+(?P<pct>[\d.]+)%\s+(?P<restore>.+)$"
 )
 
 # Some zero-customer rows drop the percentage entirely, e.g.
 # "Duke Energy HARDEE 0 0 Restored"
 ROW_NO_PCT_RE = re.compile(
-    r"^(?P<provider>.+?)\s+(?P<county>[A-Z][A-Z.\s]*[A-Z])\s+"
+    r"^(?P<provider>.+?)\s+(?P<county>[A-Z][A-Z.\s-]*[A-Z])\s+"
     r"(?P<customers>[\d,]+)\s+(?P<out>[\d,]+)\s+(?P<restore>[A-Za-z].+)$"
 )
 
@@ -160,7 +168,7 @@ def parse_esf12_report(pdf_path):
 # data can only be sliced by county, not by utility, unlike every other
 # storm), not an oversight.
 COUNTY_SUMMARY_ROW_RE = re.compile(
-    r"^(?P<county>[A-Z][A-Z.\s]*[A-Z])\s+(?P<served>[\d,]+)\s+(?P<out>[\d,]+)\s+(?P<pct>[\d.]+)%"
+    r"^(?P<county>[A-Z][A-Z.\s-]*[A-Z])\s+(?P<served>[\d,]+)\s+(?P<out>[\d,]+)\s+(?P<pct>[\d.]+)%"
 )
 COMBINED_UTILITY_LABEL = "All Utilities Combined"
 
