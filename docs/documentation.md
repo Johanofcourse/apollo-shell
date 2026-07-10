@@ -219,3 +219,37 @@ Broward County" and "Inland Broward County" are two separate zones).
 And every raw ISO timestamp on the dashboard and history pages, the
 kind with a `T` and six decimal places nobody asked for, now renders as
 actual prose ("July 2, 2026, 1:19 AM") through one shared Jinja filter.
+
+## The isometric map, and a fourth utility in one night
+Two more things landed the same night. First, the county map got a real
+isometric pass in the design sandbox - the same 40-degree rotated
+version that got cut months earlier came back, done properly this time:
+a true 30-degree projection on the real Census county data already in
+place, each county given a modest real extrusion (height tied to its
+verdict severity, not just decoration), depth-sorted so nearer shapes
+draw over farther ones correctly. "Some meat, nothing too intense" was
+the brief, and that's what it stayed - a relief map, not a skyline.
+
+Second, and bigger: JEA joined FPL, TECO, and Duke as a fourth live
+utility, found and built start to finish in one sitting. JEA's outage
+map turned out to run on a completely different vendor platform than
+TECO or Duke - not something either of their integrations could be
+copy-pasted from. Finding it meant downloading the outage map's own JS
+bundles and reading through the minified source for the real API routes,
+since there was no live browser/devtools tool available this session -
+corrected two wrong guesses along the way (a plural/singular typo in one
+route, a wrong deployment-id field in another) before the real chain
+resolved cleanly: a "current state" call, a "configuration" call, then
+the actual live report.
+
+That report turned out to be genuinely richer in one respect than
+anything already in this project - a labeled confidence
+(`etr_confidence`) on JEA's own restoration-time estimate, not just the
+estimate itself. It also reports by ZIP code, not county, which every
+other source here uses - resolved by reverse-geocoding each ZIP's own
+bounding-box center through the same FCC lookup TECO's incidents already
+use, no separate ZIP-to-county dataset needed, cached once per process
+since JEA's ~38 ZIPs don't move between polls. JEA got its own dedicated
+tables rather than sharing FPL's, on purpose: FPL's dashboard section
+and correlation both read without a utility filter, so sharing would
+have silently mixed JEA's numbers into "FPL"'s.

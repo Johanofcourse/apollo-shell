@@ -46,8 +46,24 @@
       system alerts, correlation). Its live map blocks a plain
       automated fetch, so this one needed a human driving a real
       browser through devtools to find, same as how TECO's was found
-- [ ] More Florida utilities beyond FPL/TECO/Duke, one at a time, same
-      proven pattern
+- [x] Fourth live Florida utility integrated end-to-end — JEA
+      (Jacksonville Electric Authority). A genuinely different vendor
+      than TECO/Duke (Kubra's "Storm Center" product, not an Azure/Apigee-
+      hosted API), found by reading the outage-map page's own JS bundle
+      rather than live browser devtools. JEA's feed is a county-rollup
+      shape like FPL's (not incident-level like TECO/Duke), but reports
+      by ZIP code, not county - resolved via the same FCC reverse-geocode
+      TECO's incidents already use (each ZIP's own bounding-box center,
+      not a separate ZIP crosswalk dataset), cached per process since
+      JEA's service-area ZIPs don't change between polls. Also the first
+      source with a labeled confidence on its own restoration estimate
+      (`etr_confidence`), not just an ETR value. Own dedicated tables
+      (`jea_outages`, `jea_outage_events`), not shared with FPL's - see
+      `apollo_shell/fetch_jea_outages.py` for why (FPL's dashboard
+      section/correlation read with no utility filter, so sharing would
+      have silently mixed JEA rows into "FPL").
+- [ ] More Florida utilities beyond FPL/TECO/Duke/JEA, one at a time,
+      same proven pattern
 - [x] **County storm-history query tool**, internal only (see
       `apollo_shell/consolidate_historical.py` and the `/history` route
       in `dashboard.py`). The 17 per-storm databases stay untouched,
@@ -230,7 +246,7 @@ thin sample per county, not something to treat as a reliable average yet.
 
 ## Explicitly not planned
 - **Any public pass-through of the raw live utility feeds** (FPL, TECO,
-  Duke, or any future one) - never planned, not up for reconsideration.
+  Duke, JEA, or any future one) - never planned, not up for reconsideration.
   These feeds are undocumented/reverse-engineered, not official public
   APIs, and re-publishing them at any real scale is a different (and
   worse) risk than using them for our own private analysis. See Phase 4

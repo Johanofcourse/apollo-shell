@@ -12,6 +12,7 @@ from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
     find_duke_correlations, duke_correlation_summary,
+    find_jea_correlations,
 )
 
 
@@ -128,15 +129,16 @@ def _percentage_tier(percentage_out):
     return "low"
 
 
-def _build_unified_view(open_events, teco_open_events, duke_open_events):
+def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events):
     """
-    Normalize FPL's county-level outage_events and TECO's/Duke's
-    incident-level *_incident_events into one common shape for an at-a-
-    glance, all-utilities table. Deliberately keeps only the fields all
-    three sources actually have (utility, county, customers affected,
-    when it started, how long it's been going) - the richer per-source
-    fields (TECO's/Duke's cause/ETR, FPL's percentage-of-county) stay in
-    their own detailed sections below, not squeezed in here.
+    Normalize FPL's/JEA's county-level outage_events-shaped tables and
+    TECO's/Duke's incident-level *_incident_events into one common shape
+    for an at-a-glance, all-utilities table. Deliberately keeps only the
+    fields all sources actually have (utility, county, customers
+    affected, when it started, how long it's been going) - the richer
+    per-source fields (TECO's/Duke's cause/ETR, FPL's/JEA's percentage-
+    of-county) stay in their own detailed sections below, not squeezed
+    in here.
     """
     unified = []
 
@@ -167,6 +169,15 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events):
             "duration": e["duration"],
         })
 
+    for e in jea_open_events:
+        unified.append({
+            "utility": e["utility"],
+            "county": e["county"],
+            "customers": e["peak_customers_out"],
+            "start_time": e["start_time"],
+            "duration": e["duration"],
+        })
+
     unified.sort(key=lambda row: row["customers"] or 0, reverse=True)
     return unified
 
@@ -184,8 +195,10 @@ def index():
     teco_closed_events = db.get_teco_recent_closed_events(limit=10)
     duke_open_events = db.get_duke_open_events()
     duke_closed_events = db.get_duke_recent_closed_events(limit=10)
+    jea_open_events = db.get_jea_open_events()
+    jea_closed_events = db.get_jea_recent_closed_events(limit=10)
 
-    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "correlation"])
+    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "correlation"])
     heat_summary = db.get_heat_advisory_summary()
 
     db.close()
@@ -201,6 +214,10 @@ def index():
     for event in duke_open_events:
         event["duration"] = _duration_since(event["start_time"])
     for event in duke_closed_events:
+        event["duration"] = _duration_since(event["start_time"], event["end_time"])
+    for event in jea_open_events:
+        event["duration"] = _duration_since(event["start_time"])
+    for event in jea_closed_events:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
     matches = find_correlations(db_path)
@@ -224,11 +241,22 @@ def index():
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
         stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
-    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events)
+    jea_matches = find_jea_correlations(db_path)
+    jea_correlation = correlation_summary(jea_matches)
+    for stats in jea_correlation.values():
+        stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
+        stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
+        stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
+
+    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events)
 
     for event in open_events:
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
     for event in closed_events:
+        event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
+    for event in jea_open_events:
+        event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
+    for event in jea_closed_events:
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
 
     # Pipeline health strip - surfaces caught fetch/correlation failures
@@ -240,6 +268,7 @@ def index():
         "weather": "NWS Weather",
         "teco": "TECO",
         "duke": "Duke Energy",
+        "jea": "JEA",
         "correlation": "Correlation",
     }
     for source, info in pipeline_health.items():
@@ -256,7 +285,7 @@ def index():
     # read before scrolling into the detailed per-utility tables below.
     total_customers_affected = sum(row["customers"] or 0 for row in unified_open)
     worst_row = unified_open[0] if unified_open else None
-    combined_confidence = _combine_confidence_breakdowns(matches, teco_matches, duke_matches)
+    combined_confidence = _combine_confidence_breakdowns(matches, teco_matches, duke_matches, jea_matches)
     combined_confidence_bar = _confidence_bar_segments(combined_confidence)
     combined_confidence_display = _format_confidence(combined_confidence)
 
@@ -273,6 +302,9 @@ def index():
         duke_open_events=duke_open_events,
         duke_closed_events=duke_closed_events,
         duke_correlation=duke_correlation,
+        jea_open_events=jea_open_events,
+        jea_closed_events=jea_closed_events,
+        jea_correlation=jea_correlation,
         unified_open=unified_open,
         total_customers_affected=total_customers_affected,
         worst_row=worst_row,

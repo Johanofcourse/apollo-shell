@@ -345,6 +345,53 @@ def duke_correlation_summary(matches):
     return summary
 
 
+def find_jea_correlations(db_path="outages.db"):
+    """
+    Match JEA's raw per-ZIP outage snapshots to weather alerts active in
+    the same county at the same time. Same logic/shape as
+    find_correlations() (JEA's county-rollup shape matches FPL's, unlike
+    TECO/Duke's incident shape) - reads jea_outages rather than outages,
+    kept as its own dedicated table per the same one-utility-per-table
+    convention used everywhere else in this project.
+
+    Returns a list of {"outage": {...}, "alert": {...}} dicts - reuse
+    correlation_summary() below directly, since the shape matches FPL's.
+    """
+    db = OutageDatabase(db_path)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT * FROM jea_outages')
+    outages = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute('SELECT * FROM weather_alerts')
+    alerts = [dict(row) for row in cursor.fetchall()]
+
+    db.close()
+
+    matches = []
+    for outage in outages:
+        if not outage.get('county'):
+            continue
+
+        outage_time = _parse_timestamp(outage['timestamp'])
+        if outage_time is None:
+            continue
+
+        for alert in alerts:
+            if not _county_in_alert(outage['county'], alert['areas']):
+                continue
+
+            effective = _parse_timestamp(alert.get('effective'))
+            expires = _parse_timestamp(alert.get('expires'))
+
+            if _alert_covers_time(effective, expires, outage_time):
+                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
+                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
+
+    return matches
+
+
 def correlation_summary(matches):
     """
     Aggregate correlated outage/alert pairs by county.

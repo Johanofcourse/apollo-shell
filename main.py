@@ -14,10 +14,12 @@ from fetch_duke_outages import (
     get_counties_summary as get_duke_counties_summary,
     get_system_alerts_summary as get_duke_system_alerts_summary,
 )
+from fetch_jea_outages import get_jea_summary
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
     find_duke_correlations, duke_correlation_summary,
+    find_jea_correlations,
 )
 
 
@@ -92,10 +94,26 @@ def run_duke_cycle(db):
         db.log_duke_system_alerts(alerts)
 
 
+def run_jea_cycle(db):
+    """
+    Fetch JEA's live ZIP-level outage report, save the raw per-ZIP
+    snapshot, and update jea_outage_events lifecycle tracking (start/end
+    per county, rolled up from ZIP-level numbers).
+    """
+    zip_records, county_rollup = get_jea_summary()
+    if not zip_records:
+        print("Skipping JEA save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_jea_outages(zip_records, timestamp=timestamp)
+    db.sync_jea_outage_events(county_rollup, timestamp=timestamp)
+
+
 def run_correlation_cycle():
     """
-    Compute current outage/weather correlations (FPL, TECO, and Duke) and
-    log a summary.
+    Compute current outage/weather correlations (FPL, TECO, Duke, and
+    JEA) and log a summary.
     """
     matches = find_correlations()
     if not matches:
@@ -133,6 +151,19 @@ def run_correlation_cycle():
             print(
                 f"  {county}: {stats['incident_count']} incident(s), "
                 f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
+    jea_matches = find_jea_correlations()
+    if not jea_matches:
+        print("JEA correlation: no matches this cycle")
+    else:
+        jea_summary = correlation_summary(jea_matches)
+        print(f"JEA correlation: {len(jea_matches)} matches across {len(jea_summary)} counties")
+        for county, stats in jea_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
                 f"confidence={stats['confidence_breakdown']}"
             )
 
@@ -175,6 +206,12 @@ def main():
             except Exception as e:
                 print(f"Duke fetch cycle failed: {e}")
                 db.log_pipeline_error("duke", str(e))
+
+            try:
+                run_jea_cycle(db)
+            except Exception as e:
+                print(f"JEA fetch cycle failed: {e}")
+                db.log_pipeline_error("jea", str(e))
 
             try:
                 run_correlation_cycle()

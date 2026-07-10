@@ -577,5 +577,74 @@
     <div class="empty">No correlated Duke incident/weather events right now.</div>
   {% endif %}
   </div>
+
+  <h2>JEA — Currently Open Outages ({{ jea_open_events|length }})</h2>
+  <div class="wrap">
+  {% if jea_open_events %}
+    <table>
+      <tr><th>County</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in jea_open_events %}
+      <tr>
+        <td>{{ e.county }}</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open JEA outages right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>JEA — Recently Resolved</h2>
+  <div class="wrap">
+  {% if jea_closed_events %}
+    <table>
+      <tr><th>County</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in jea_closed_events %}
+      <tr>
+        <td>{{ e.county }}</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h2>Weather / Outage Correlation (JEA)</h2>
+  <div class="wrap">
+  {% if jea_correlation %}
+    <table>
+      <tr><th>County</th><th>Correlated Outages</th><th>Peak % Out</th><th>Alert Types</th><th>Confidence</th></tr>
+      {% for county, stats in jea_correlation.items() %}
+      <tr>
+        <td>{{ county }}</td>
+        <td>{{ stats.outage_count }}</td>
+        <td>{{ "%.2f"|format(stats.max_percentage_out) }}%</td>
+        <td>{{ stats.alert_types_display }}</td>
+        <td>
+          {% if stats.confidence_bar %}
+          <div class="conf-bar">
+            {% for seg in stats.confidence_bar %}
+            <div class="conf-seg-{{ seg.tier }}" style="width: {{ seg.pct }}%;" title="{{ seg.tier }} ×{{ seg.count }}"></div>
+            {% endfor %}
+          </div>
+          <div class="conf-caption">{{ stats.confidence_display }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No correlated JEA outage/weather events right now.</div>
+  {% endif %}
+  </div>
 </body>
 </html>

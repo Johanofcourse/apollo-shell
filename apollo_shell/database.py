@@ -272,6 +272,48 @@ class OutageDatabase:
             )
         ''')
 
+        # JEA raw ZIP-level snapshots - JEA's live feed (Kubra's "Storm
+        # Center" product) rolls up by ZIP code, not county, and includes
+        # a real ETR + a labeled confidence on that estimate (richer than
+        # FPL's plain county numbers). One fresh row per ZIP per poll
+        # cycle, same principle as the plain outages table.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS jea_outages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                utility TEXT NOT NULL,
+                zip_code TEXT NOT NULL,
+                county TEXT,
+                customers_out INTEGER NOT NULL,
+                customers_served INTEGER NOT NULL,
+                percentage_out REAL NOT NULL,
+                etr TEXT,
+                etr_confidence TEXT,
+                n_out INTEGER
+            )
+        ''')
+
+        # JEA county-level lifecycle tracking - ZIP-level customer counts
+        # rolled up to county (weather-alert correlation is county-based
+        # here, same as FPL), same open/close-on-zero-customers algorithm
+        # as outage_events. Kept as JEA's own dedicated table rather than
+        # sharing outage_events with FPL, matching the same one-utility-
+        # per-table convention TECO/Duke already established - reusing
+        # FPL's table would silently mix JEA rows into the "FPL" dashboard
+        # section and correlation, since those reads have no utility filter.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS jea_outage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customers_out INTEGER NOT NULL,
+                peak_percentage_out REAL NOT NULL,
+                customers_served INTEGER NOT NULL
+            )
+        ''')
+
         # Create indexes
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_timestamp
@@ -291,6 +333,11 @@ class OutageDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_duke_incident_events_open
             ON duke_incident_events(incident_id, end_time)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_jea_outage_events_open
+            ON jea_outage_events(utility, county, end_time)
         ''')
 
         # Uniqueness guards so re-running an import (e.g. replaying the same
@@ -314,6 +361,16 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_teco_incident_events_unique
             ON teco_incident_events(incident_id, start_time)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_jea_outages_unique
+            ON jea_outages(timestamp, utility, zip_code)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_jea_outage_events_unique
+            ON jea_outage_events(utility, county, start_time)
         ''')
 
         # NWS's own alert id is the real identity of an alert - re-polling
@@ -680,6 +737,107 @@ class OutageDatabase:
         print(f"Outage events: {opened} opened, {closed} closed this cycle")
 
 
+    def log_jea_outages(self, zip_records, timestamp=None):
+        """
+        Insert JEA's raw per-ZIP snapshots (customers, ETR, ETR confidence),
+        one fresh row per ZIP per poll cycle - same principle as
+        log_multiple_outages, kept in its own table (see jea_outages)
+        rather than sharing FPL's outages table.
+
+        Args:
+            zip_records: list of dicts as returned by
+                fetch_jea_outages.parse_jea_areas()'s first return value
+            timestamp: ISO timestamp for this batch; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+
+        records = [
+            (
+                timestamp, "Jacksonville (JEA)", z['zip_code'], z['county'],
+                z['customers_out'], z['customers_served'], z['percentage_out'],
+                z['etr'], z['etr_confidence'], z['n_out'],
+            )
+            for z in zip_records
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO jea_outages
+                (timestamp, utility, zip_code, county, customers_out,
+                 customers_served, percentage_out, etr, etr_confidence, n_out)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', records)
+
+        conn.commit()
+        print(f"Logged {len(records)} JEA ZIP-level outage records")
+
+
+    def sync_jea_outage_events(self, outage_list, timestamp=None):
+        """
+        Update jea_outage_events from a fresh batch of per-county
+        rollups (ZIP-level customer counts summed to county - see
+        fetch_jea_outages.parse_jea_areas()'s second return value).
+
+        Identical algorithm to sync_outage_events(), kept as JEA's own
+        dedicated table/method rather than parameterizing that one -
+        same one-utility-per-table convention TECO/Duke already use.
+        Same replay caveat applies: NOT SAFE TO REPLAY historical data,
+        only meant for live, chronologically-ordered polling.
+
+        Args:
+            outage_list: list of dicts with keys: county, customers_out,
+                customers_served
+            timestamp: ISO timestamp for opened/closed events; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        utility = "Jacksonville (JEA)"
+
+        opened = 0
+        closed = 0
+
+        for outage in outage_list:
+            county = outage['county']
+            customers_out = outage['customers_out']
+            customers_served = outage['customers_served']
+            percentage_out = (customers_out / customers_served * 100) if customers_served > 0 else 0
+
+            cursor.execute('''
+                SELECT id, peak_customers_out FROM jea_outage_events
+                WHERE utility = ? AND county = ? AND end_time IS NULL
+            ''', (utility, county))
+            open_event = cursor.fetchone()
+
+            if customers_out > 0:
+                if open_event is None:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO jea_outage_events
+                            (utility, county, start_time, end_time, peak_customers_out, peak_percentage_out, customers_served)
+                        VALUES (?, ?, ?, NULL, ?, ?, ?)
+                    ''', (utility, county, timestamp, customers_out, percentage_out, customers_served))
+                    if cursor.rowcount > 0:
+                        opened += 1
+                elif customers_out > open_event['peak_customers_out']:
+                    cursor.execute('''
+                        UPDATE jea_outage_events
+                        SET peak_customers_out = ?, peak_percentage_out = ?, customers_served = ?
+                        WHERE id = ?
+                    ''', (customers_out, percentage_out, customers_served, open_event['id']))
+            else:
+                if open_event is not None:
+                    cursor.execute('''
+                        UPDATE jea_outage_events SET end_time = ? WHERE id = ?
+                    ''', (timestamp, open_event['id']))
+                    closed += 1
+
+        conn.commit()
+        print(f"JEA outage events: {opened} opened, {closed} closed this cycle")
+
+
     def log_weather_alerts(self, alert_list):
         """
         Insert multiple weather alert records at once
@@ -764,6 +922,38 @@ class OutageDatabase:
 
         cursor.execute('''
             SELECT * FROM outage_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_jea_open_events(self):
+        """
+        Return currently open jea_outage_events (end_time IS NULL), worst
+        (by peak percentage out) first.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM jea_outage_events
+            WHERE end_time IS NULL
+            ORDER BY peak_percentage_out DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_jea_recent_closed_events(self, limit=10):
+        """
+        Return the most recently closed jea_outage_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM jea_outage_events
             WHERE end_time IS NOT NULL
             ORDER BY end_time DESC
             LIMIT ?

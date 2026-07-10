@@ -92,3 +92,52 @@ class TestSyncOutageEventsLifecycle:
         assert rows[0]["end_time"] == "2026-01-01T00:15:00"
         assert rows[1]["start_time"] == "2026-01-01T01:00:00"
         assert rows[1]["end_time"] is None
+
+
+class TestSyncJeaOutageEventsLifecycle:
+    """
+    Same lifecycle algorithm as sync_outage_events, applied to JEA's own
+    dedicated jea_outage_events table (see fetch_jea_outages.py,
+    2026-07-09) - mirrored tests for the same reason the FPL ones exist:
+    cheap insurance that a near-identical implementation didn't
+    introduce a near-identical bug.
+    """
+    def test_opens_new_event_when_customers_out_positive(self, db_path):
+        db = OutageDatabase(db_path)
+        db.sync_jea_outage_events([_fpl_row("Duval", 50)], timestamp="2026-01-01T00:00:00")
+
+        conn = db.connect()
+        rows = conn.execute("SELECT county, end_time, peak_customers_out FROM jea_outage_events").fetchall()
+        db.close()
+
+        assert len(rows) == 1
+        assert rows[0]["county"] == "Duval"
+        assert rows[0]["end_time"] is None
+        assert rows[0]["peak_customers_out"] == 50
+
+    def test_closes_event_when_customers_out_returns_to_zero(self, db_path):
+        db = OutageDatabase(db_path)
+        db.sync_jea_outage_events([_fpl_row("Duval", 50)], timestamp="2026-01-01T00:00:00")
+        db.sync_jea_outage_events([_fpl_row("Duval", 0)], timestamp="2026-01-01T00:15:00")
+
+        conn = db.connect()
+        rows = conn.execute("SELECT end_time FROM jea_outage_events").fetchall()
+        db.close()
+
+        assert rows[0]["end_time"] == "2026-01-01T00:15:00"
+
+    def test_does_not_mix_with_fpl_outage_events_table(self, db_path):
+        # The whole reason JEA got its own dedicated table instead of
+        # reusing outage_events: get_open_events() has no utility filter,
+        # so sharing FPL's table would silently mix JEA rows into the
+        # "FPL" dashboard section.
+        db = OutageDatabase(db_path)
+        db.sync_outage_events("FPL", [_fpl_row("Duval", 50)], timestamp="2026-01-01T00:00:00")
+        db.sync_jea_outage_events([_fpl_row("Duval", 75)], timestamp="2026-01-01T00:00:00")
+
+        fpl_open = db.get_open_events()
+        jea_open = db.get_jea_open_events()
+        db.close()
+
+        assert len(fpl_open) == 1 and fpl_open[0]["peak_customers_out"] == 50
+        assert len(jea_open) == 1 and jea_open[0]["peak_customers_out"] == 75
