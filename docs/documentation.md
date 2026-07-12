@@ -253,3 +253,33 @@ since JEA's ~38 ZIPs don't move between polls. JEA got its own dedicated
 tables rather than sharing FPL's, on purpose: FPL's dashboard section
 and correlation both read without a utility filter, so sharing would
 have silently mixed JEA's numbers into "FPL"'s.
+
+## A public-facing Storm History, and the same lesson twice
+Picked up the artifact's design sandbox again to sketch what a genuinely
+public-facing page could look like, starting from the one piece already
+clear of Phase 4's gates: storm history. Landed on a real question to
+build around - "if a storm like this hits, what happens to my area?" -
+which meant translating the internal tool's language (peak percentage
+out, ETR, "NOAA Storm Events") into plain sentences, and treating the
+17 storms as the real chronological timeline they are instead of a
+table.
+
+The one design note worth keeping: "no report for this storm" has to
+keep meaning "we don't have a record of it," never accidentally read
+as "this county wasn't affected" - the exact distinction the Miami-Dade
+bug hunt existed to establish in the first place. Built the mockup to
+show all 17 storms for every county, honest gaps included, with real
+data (Miami-Dade: 12 of 17, matching the known number) rather than
+placeholder content, and wired county selection two ways - clicking the
+isometric map directly, or a plain search box - since precisely tapping
+a tiny county shape on a touchscreen is its own real problem.
+
+Then the same lesson got applied a second time, somewhere closer to
+home: the actual internal `/history` route had the identical blur - it
+only ever listed storms with real data for a county, silently leaving
+the rest out, so "12 of 17" was never actually visible, just 12 cards
+with no mention of the other 5. Fixed for real this time, logic only -
+the internal tool stays plain and data-dense on purpose, that's not a
+gap to close, just a different job than the public-facing mockup. Every
+county's page now lists all 17 storms, honest "no report" rows and all,
+verified against the same real numbers (Miami-Dade 12/17, Duval 13/17).

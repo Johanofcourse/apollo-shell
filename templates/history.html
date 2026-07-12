@@ -134,10 +134,18 @@
 
     {% if selected_county %}
       {% if storms %}
-        <h2>{{ selected_county.title() }} &mdash; {{ storms|length }} storm{{ 's' if storms|length != 1 else '' }} with real data</h2>
+        <h2>{{ selected_county.title() }} &mdash; {{ storms_with_data_count }} of {{ storms|length }} storms have a real report</h2>
         {% for storm in storms %}
           <div class="storm-card">
             <div class="storm-title">{{ storm.storm_name }} <span class="year">({{ storm.storm_year }})</span></div>
+
+            {% if not storm.has_data %}
+              <div class="empty">No report for this storm in our data for {{ selected_county.title() }} - this
+                doesn't mean the county wasn't affected, just that we don't have a record of it. Two real reasons
+                this can happen: the county's utilities genuinely may not have had a reportable outage in this
+                storm, or a report where this county did show up simply wasn't among the ones pulled for this
+                storm - PSC report series weren't imported exhaustively for every storm.</div>
+            {% endif %}
 
             {% if storm.utilities %}
               <div class="source-label">Outage reports (PSC situation reports, per utility)</div>

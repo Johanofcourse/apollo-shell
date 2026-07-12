@@ -80,6 +80,19 @@
       one shared `outage_events` shape. This is explicitly an internal
       tool right now, not a public feature - see Phase 4 for what
       actually opening it up would require.
+- [x] **`/history` now lists every storm explicitly, including the ones
+      with nothing for a given county** (2026-07-12) - it used to just
+      silently omit storms with no report, which blurred "no data for
+      this storm" into "confirmed unaffected." Every county's page now
+      shows all 17 storms, with an honest "no report for this storm in
+      our data" row for the gaps instead of leaving them out. Verified
+      against the real numbers: Miami-Dade correctly shows 12 of 17,
+      Duval 13 of 17. Deliberately logic-only, not a visual redesign -
+      the internal tool stays plain and data-dense on purpose; the
+      polished version of this same idea (map-click county selection,
+      plain-language timeline) was prototyped separately in the Artifact
+      design sandbox as a model for an eventual real public-facing page,
+      not merged into this internal one.
 - [x] **Pipeline error alerting**, tied to the dashboard. Every fetch
       cycle already had its own try/except so one source failing
       couldn't crash the others, but the only record was a print() line

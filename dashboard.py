@@ -331,6 +331,24 @@ def _available_history_counties():
     return counties
 
 
+def _all_storms():
+    """
+    Every storm this project has real data for, across all 67 counties -
+    used so a single county's history lists every storm explicitly, even
+    the ones where that county has nothing, rather than silently
+    omitting them (see _load_history_for_county).
+    """
+    conn = sqlite3.connect(HISTORICAL_DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DISTINCT storm_name, storm_year FROM historical_outage_events
+        ORDER BY storm_year, storm_name
+    ''')
+    storms = [{"storm_name": row[0], "storm_year": row[1]} for row in cursor.fetchall()]
+    conn.close()
+    return storms
+
+
 def _load_history_for_county(county):
     """
     Real historical storm data for one Florida county, from the
@@ -340,6 +358,14 @@ def _load_history_for_county(county):
     files directly. County names in this table are stored upper-case (an
     artifact of the PSC report parser), so the lookup is case-insensitive -
     a user typing "Miami-Dade" still matches the stored "MIAMI-DADE".
+
+    Returns every storm this project has data for (see _all_storms()),
+    not just the ones with a report for this specific county - a storm
+    with nothing for this county gets an explicit has_data=False entry
+    instead of being silently left out. "No report for this storm" and
+    "confirmed unaffected by this storm" are different claims, and only
+    listing storms with data blurred that distinction (this is the same
+    lesson the Miami-Dade bug hunt turned up - see docs/documentation.md).
     """
     conn = sqlite3.connect(HISTORICAL_DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -372,19 +398,30 @@ def _load_history_for_county(county):
     # number.
     storms_by_key = {}
 
-    def _storm_bucket(row):
-        key = (row["storm_name"], row["storm_year"])
+    def _storm_bucket(storm_name, storm_year):
+        key = (storm_name, storm_year)
         return storms_by_key.setdefault(key, {
-            "storm_name": row["storm_name"],
-            "storm_year": row["storm_year"],
+            "storm_name": storm_name,
+            "storm_year": storm_year,
             "utilities": [],
             "severity": [],
+            "has_data": False,
         })
 
     for row in outage_rows:
-        _storm_bucket(row)["utilities"].append(row)
+        bucket = _storm_bucket(row["storm_name"], row["storm_year"])
+        bucket["utilities"].append(row)
+        bucket["has_data"] = True
     for row in severity_rows:
-        _storm_bucket(row)["severity"].append(row)
+        bucket = _storm_bucket(row["storm_name"], row["storm_year"])
+        bucket["severity"].append(row)
+        bucket["has_data"] = True
+
+    # Every storm gets a row - _storm_bucket() is a no-op for storms
+    # already populated above, and creates an honest has_data=False
+    # entry for the rest.
+    for storm in _all_storms():
+        _storm_bucket(storm["storm_name"], storm["storm_year"])
 
     return sorted(storms_by_key.values(), key=lambda s: s["storm_year"])
 
@@ -404,14 +441,17 @@ def history():
     selected_county = request.args.get("county", "").strip()
 
     storms = None
+    storms_with_data_count = 0
     if selected_county and available_counties:
         storms = _load_history_for_county(selected_county)
+        storms_with_data_count = sum(1 for s in storms if s["has_data"])
 
     return render_template(
         "history.html",
         available_counties=available_counties,
         selected_county=selected_county,
         storms=storms,
+        storms_with_data_count=storms_with_data_count,
         db_missing=not available_counties,
     )
 
