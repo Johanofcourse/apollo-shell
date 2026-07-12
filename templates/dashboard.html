@@ -440,7 +440,7 @@
       <tr><th>Incident</th><th>County</th><th>Customers</th><th>Reason</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in teco_open_events %}
       <tr>
-        <td>{{ e.incident_id }}</td>
+        <td>{{ e.incident_id | incident_label }}</td>
         <td>{{ e.county or "—" }}</td>
         <td class="pct-bad">{{ e.peak_customer_count }}</td>
         <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
@@ -462,7 +462,7 @@
       <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Reason</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
       {% for e in teco_closed_events %}
       <tr>
-        <td>{{ e.incident_id }}</td>
+        <td>{{ e.incident_id | incident_label }}</td>
         <td>{{ e.county or "—" }}</td>
         <td class="pct-ok">{{ e.peak_customer_count }}</td>
         <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
@@ -513,7 +513,7 @@
       <tr><th>Incident</th><th>County</th><th>Customers</th><th>Cause</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in duke_open_events %}
       <tr>
-        <td>{{ e.incident_id }}</td>
+        <td>{{ e.incident_id | incident_label }}</td>
         <td>{{ e.county or "—" }}</td>
         <td class="pct-bad">{{ e.peak_customer_count }}</td>
         <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
@@ -534,7 +534,7 @@
       <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Cause</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
       {% for e in duke_closed_events %}
       <tr>
-        <td>{{ e.incident_id }}</td>
+        <td>{{ e.incident_id | incident_label }}</td>
         <td>{{ e.county or "—" }}</td>
         <td class="pct-ok">{{ e.peak_customer_count }}</td>
         <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>

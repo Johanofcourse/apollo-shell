@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import sys
+import time
 from datetime import datetime
 
 from flask import Flask, render_template, request
@@ -17,6 +18,37 @@ from correlate import (
 
 
 app = Flask(__name__)
+
+# find_correlations()/find_teco_correlations()/find_duke_correlations()/
+# find_jea_correlations() each nested-loop the *entire* raw history of
+# their source table against every weather alert in plain Python -
+# measured 2026-07-12 at ~35s combined once outages/teco_incidents/
+# duke_incidents grew into the tens of thousands of rows (a fresh row
+# gets logged every 15-min poll cycle per county/incident, forever, so
+# this only gets slower over time). The underlying data only actually
+# changes once per poll cycle, but the dashboard auto-refreshes every
+# 60s (see the <meta http-equiv="refresh"> in dashboard.html), so most
+# reloads were recomputing an answer that couldn't have changed. Cached
+# here with a short TTL rather than rewriting the matching into SQL -
+# a much smaller, lower-risk fix for the same practical problem.
+CORRELATION_CACHE_TTL_SECONDS = 300
+_correlation_cache = {"computed_at": 0.0, "data": None}
+
+
+def _get_cached_correlations(db_path):
+    now = time.time()
+    if _correlation_cache["data"] is not None and (now - _correlation_cache["computed_at"]) < CORRELATION_CACHE_TTL_SECONDS:
+        return _correlation_cache["data"]
+
+    data = (
+        find_correlations(db_path),
+        find_teco_correlations(db_path),
+        find_duke_correlations(db_path),
+        find_jea_correlations(db_path),
+    )
+    _correlation_cache["data"] = data
+    _correlation_cache["computed_at"] = now
+    return data
 
 
 def _duration_since(start_iso, end_iso=None):
@@ -58,6 +90,39 @@ def _humanize_timestamp(ts):
 
 
 app.jinja_env.filters['humanize'] = _humanize_timestamp
+
+
+def _incident_label(incident_id):
+    """
+    Duke's incident_id is literally YYYYMMDD + a 6-digit sequence number
+    that resets daily (confirmed 2026-07-12 against real first-seen
+    dates - an incident first seen on 2026-07-03 has id
+    "20260703000275", one from 2026-07-12 starts "20260712..."). The
+    date half is pure redundancy here since the row's own "Started"
+    column already shows it - the sequence number is the only actually
+    new information, so that's all this shows: "Incident #423".
+
+    TECO's incident_id (e.g. "A202619308291") does NOT decode to a date -
+    it's a large, steadily-incrementing counter (grew by roughly 100,000
+    over 10 real days, checked directly against the data), almost
+    certainly TECO's shared enterprise ticket sequence rather than
+    anything outage-specific. There's no real structure to translate,
+    so it's left exactly as TECO sends it rather than faking a
+    transformation - detected by shape (14 digits, first 8 a valid
+    date), not by utility name, so this stays correct if either source's
+    format ever changes.
+    """
+    if incident_id and len(incident_id) == 14 and incident_id.isdigit():
+        date_part, seq_part = incident_id[:8], incident_id[8:]
+        try:
+            datetime.strptime(date_part, "%Y%m%d")
+            return f"Incident #{int(seq_part)}"
+        except ValueError:
+            pass
+    return incident_id
+
+
+app.jinja_env.filters['incident_label'] = _incident_label
 
 
 def _format_alert_types(alert_types):
@@ -220,28 +285,26 @@ def index():
     for event in jea_closed_events:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
-    matches = find_correlations(db_path)
+    matches, teco_matches, duke_matches, jea_matches = _get_cached_correlations(db_path)
+
     correlation = correlation_summary(matches)
     for stats in correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
         stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
-    teco_matches = find_teco_correlations(db_path)
     teco_correlation = teco_correlation_summary(teco_matches)
     for stats in teco_correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
         stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
-    duke_matches = find_duke_correlations(db_path)
     duke_correlation = duke_correlation_summary(duke_matches)
     for stats in duke_correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
         stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
-    jea_matches = find_jea_correlations(db_path)
     jea_correlation = correlation_summary(jea_matches)
     for stats in jea_correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])

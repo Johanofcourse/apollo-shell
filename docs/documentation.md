@@ -283,3 +283,44 @@ the internal tool stays plain and data-dense on purpose, that's not a
 gap to close, just a different job than the public-facing mockup. Every
 county's page now lists all 17 storms, honest "no report" rows and all,
 verified against the same real numbers (Miami-Dade 12/17, Duval 13/17).
+
+## Why the dashboard got slow
+A plain complaint - "dashboard is taking a while to load" - turned into
+a real, measured diagnosis rather than a guess. Every page load was
+silently recomputing all four correlation functions from scratch, each
+one a plain-Python nested loop over its entire raw history against
+every weather alert - fine when the tables were small, not fine once
+`outages`/`teco_incidents`/`duke_incidents` had each grown into the
+tens of thousands of rows from weeks of 15-minute polling (a fresh row
+every cycle, forever, whether or not anything actually changed). Timed
+it directly instead of assuming: about 34 seconds combined, on every
+single load.
+
+The underlying fix wasn't to make the matching faster - it was to
+notice the data behind it only actually changes once every 15 minutes,
+while the page itself auto-refreshes every 60 seconds. A short-lived
+cache made almost every reload reuse an answer that genuinely hadn't
+changed yet: cold load still ~34s, everything after that within five
+minutes, about 0.05s. Deliberately the smaller fix over rewriting the
+matching in SQL - that would solve the same problem more thoroughly,
+but risks quietly changing the matching logic's actual behavior in the
+process, and this got the real problem (unusable load times) solved
+without that risk.
+
+## Two incident IDs, decoded, one of them worth translating
+A passing question about why Duke's incidents look like `20260712000423`
+and TECO's look like `A202619308291` turned into an actual investigation
+rather than a shrug. Checked both against real data instead of guessing:
+Duke's really is `YYYYMMDD` plus a per-day counter - an incident first
+seen on July 3rd genuinely starts with `20260703`, one from July 12th
+starts with `20260712`, confirmed directly. TECO's isn't a date at all -
+tracked how much the number grew over ten real days (about 100,000) and
+it's clearly some enterprise-wide ticket counter running far faster than
+actual outages could ever produce, not anything specific to power.
+
+Only one of those was worth acting on: Duke's dashboard now shows
+`Incident #423` instead of the full digit string, since the date part
+was always redundant with the row's own "Started" column right next to
+it. TECO's stays exactly as sent - there's nothing real underneath it
+to translate, and showing a fake decoded label would be worse than
+showing an honest opaque one.

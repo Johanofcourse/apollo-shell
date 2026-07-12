@@ -143,6 +143,37 @@
       dashboard/history pages (`2026-07-02T01:19:57.483375`) now renders
       through a `humanize` Jinja filter as prose (`July 2, 2026, 1:19
       AM`) instead of the raw machine format.
+- [x] **Dashboard load time fixed with a correlation cache.** Every page
+      load was recomputing `find_correlations()`/`find_teco_correlations()`/
+      `find_duke_correlations()`/`find_jea_correlations()` from scratch -
+      each one nested-loops its *entire* raw history (tens of thousands
+      of rows once `outages`/`teco_incidents`/`duke_incidents` grew past
+      a few weeks of 15-minute polling) against every weather alert in
+      plain Python. Measured at ~34s combined on 2026-07-12. Since the
+      underlying data only actually changes once per poll cycle but the
+      page auto-refreshes every 60s, a short-TTL (5 min) in-memory cache
+      in `dashboard.py` cut nearly every reload down to ~0.05s -
+      deliberately the smaller, lower-risk fix over rewriting the
+      matching into SQL, which would fix the root cause but risks a
+      subtle correctness difference from the current county-normalizing
+      logic. Worth revisiting if the raw tables keep growing indefinitely
+      (they do, by design - a fresh row per county/incident every cycle
+      forever) since the *cold*-cache load time keeps getting worse too.
+- [x] **Decoded Duke's/TECO's incident ID formats, then made Duke's
+      readable.** Duke's `incident_id` (e.g. `20260712000423`) turned out
+      to be literally `YYYYMMDD` + a 6-digit per-day sequence number -
+      confirmed directly against real first-seen dates, not guessed.
+      Since the row's own "Started" column already shows that date, the
+      dashboard now shows just `Incident #423` - the one part of the ID
+      that's actually new information. TECO's `incident_id` (e.g.
+      `A202619308291`) does *not* decode to a date - checked its growth
+      rate against real data (~100,000/10 days) and it's almost certainly
+      TECO's shared enterprise ticket sequence, not anything outage-
+      specific - so it's left exactly as TECO sends it rather than
+      faking a translation. New `_incident_label()` Jinja filter in
+      `dashboard.py`, detected by shape (14 digits, first 8 a real
+      calendar date) rather than utility name, so it stays correct if
+      either format ever changes. 6 new tests.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration)
 - [x] Visual direction settled on, explored entirely in an isolated
