@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Apollo Sentinel — Incident Detail</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #161d27;
+      --border: #26313f;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --accent: #e8734a;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --crit: #f85149;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 2rem;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+    .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
+    .meta a { color: var(--accent); }
+    h2 {
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-top: 2rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+    tr:hover td { background: var(--panel); }
+    .wrap { max-width: 100%; overflow-x: auto; }
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      padding: 0.75rem 0;
+    }
+    .notice {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--warn);
+      padding: 1rem 1.25rem;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+    }
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .summary-item .label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.3rem;
+    }
+    .summary-item .value { font-size: 1.2rem; font-weight: 700; }
+    .episode-block { margin-bottom: 2rem; }
+    .episode-block:last-child { margin-bottom: 0; }
+  </style>
+</head>
+<body>
+  <h1>Incident Detail</h1>
+  <div class="meta"><a href="/">&larr; Back to live status</a></div>
+
+  {% if not detail %}
+    <div class="notice">
+      No record found for
+      {% if source in ("teco", "duke") %}
+        incident <code>{{ incident_id }}</code> ({{ source|upper }}).
+      {% elif source in ("fpl", "jea") %}
+        {{ county }} ({{ source|upper }}) at the given start time.
+      {% else %}
+        this request - missing or unrecognized parameters.
+      {% endif %}
+      This page is only meant to be reached by clicking a row on the main dashboard, not by
+      typing an id from memory - if you got here that way, double-check the link.
+    </div>
+
+  {% elif source in ("teco", "duke") %}
+    {% for ev in detail.events %}
+      <div class="episode-block">
+        <h2>{{ 'Episode ' ~ loop.index if detail.events|length > 1 else 'Summary' }}</h2>
+        <div class="summary-strip">
+          <div class="summary-item">
+            <div class="label">Incident</div>
+            <div class="value">{{ ev.incident_id | incident_label }}</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">County</div>
+            <div class="value">{{ ev.county or "—" }}</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Peak Customers</div>
+            <div class="value">{{ "{:,}".format(ev.peak_customer_count) if ev.peak_customer_count is not none else "—" }}</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">{{ "Reason" if source == "teco" else "Cause" }}</div>
+            <div class="value" style="font-size: 0.95rem;">
+              {{ (ev.reason if source == "teco" else ev.cause) or "—" }}
+              <span style="color: var(--muted); font-weight: 400;">
+                ({{ (ev.reason_category if source == "teco" else ev.cause_category) or "unknown" }})
+              </span>
+            </div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Started</div>
+            <div class="value" style="font-size: 0.95rem;">{{ ev.start_time | humanize }}</div>
+          </div>
+          <div class="summary-item">
+            <div class="label">{{ "Ended" if ev.end_time else "Status" }}</div>
+            <div class="value" style="font-size: 0.95rem;">
+              {{ ev.end_time | humanize if ev.end_time else "Still open" }}
+            </div>
+          </div>
+          <div class="summary-item">
+            <div class="label">Duration</div>
+            <div class="value">{{ ev.duration }}</div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+
+    <h2>Raw Snapshot Timeline ({{ detail.history|length }})</h2>
+    <div class="wrap">
+      {% if detail.history %}
+        <table>
+          <tr>
+            <th>Observed At</th>
+            {% if source == "teco" %}<th>Status</th>{% endif %}
+            <th>Customers</th>
+            <th>{{ "Reason" if source == "teco" else "Cause" }}</th>
+            {% if source == "teco" %}<th>Est. Restoration</th>{% endif %}
+          </tr>
+          {% for row in detail.history %}
+            <tr>
+              <td>{{ row.fetched_at | humanize }}</td>
+              {% if source == "teco" %}<td>{{ row.status or "—" }}</td>{% endif %}
+              <td>{{ "{:,}".format(row.customer_count) if row.customer_count is not none else "—" }}</td>
+              <td>{{ (row.reason if source == "teco" else row.cause) or "—" }}</td>
+              {% if source == "teco" %}<td>{{ row.estimated_restoration or "—" }}</td>{% endif %}
+            </tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <div class="empty">No raw snapshots on file for this incident.</div>
+      {% endif %}
+    </div>
+
+  {% else %}
+    <div class="summary-strip">
+      <div class="summary-item">
+        <div class="label">County</div>
+        <div class="value">{{ detail.event.county }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="label">Peak % Out</div>
+        <div class="value">{{ "%.2f"|format(detail.event.peak_percentage_out) }}%</div>
+      </div>
+      <div class="summary-item">
+        <div class="label">Peak Customers</div>
+        <div class="value">{{ "{:,}".format(detail.event.peak_customers_out) }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="label">Started</div>
+        <div class="value" style="font-size: 0.95rem;">{{ detail.event.start_time | humanize }}</div>
+      </div>
+      <div class="summary-item">
+        <div class="label">{{ "Ended" if detail.event.end_time else "Status" }}</div>
+        <div class="value" style="font-size: 0.95rem;">
+          {{ detail.event.end_time | humanize if detail.event.end_time else "Still open" }}
+        </div>
+      </div>
+      <div class="summary-item">
+        <div class="label">Duration</div>
+        <div class="value">{{ detail.event.duration }}</div>
+      </div>
+    </div>
+
+    <h2>Customer Count Over Time ({{ detail.history|length }} snapshots)</h2>
+    <div class="wrap">
+      {% if detail.history %}
+        <table>
+          <tr><th>Time</th><th>Customers Out</th><th>Customers Served</th><th>% Out</th></tr>
+          {% for row in detail.history %}
+            <tr>
+              <td>{{ row.timestamp | humanize }}</td>
+              <td>{{ "{:,}".format(row.customers_out) }}</td>
+              <td>{{ "{:,}".format(row.customers_served) }}</td>
+              <td>{{ "%.2f"|format(row.percentage_out) }}%</td>
+            </tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <div class="empty">No raw snapshots on file for this outage.</div>
+      {% endif %}
+    </div>
+  {% endif %}
+</body>
+</html>

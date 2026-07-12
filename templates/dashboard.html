@@ -332,7 +332,7 @@
       <tr><th>County</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in open_events %}
       <tr>
-        <td>{{ e.county }}</td>
+        <td><a href="/incident?source=fpl&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--accent);">{{ e.county }}</a></td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
         <td>{{ e.start_time | humanize }}</td>
@@ -371,7 +371,7 @@
       <tr><th>County</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
       {% for e in closed_events %}
       <tr>
-        <td>{{ e.county }}</td>
+        <td><a href="/incident?source=fpl&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--accent);">{{ e.county }}</a></td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.end_time | humanize }}</td>
@@ -440,7 +440,7 @@
       <tr><th>Incident</th><th>County</th><th>Customers</th><th>Reason</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in teco_open_events %}
       <tr>
-        <td>{{ e.incident_id | incident_label }}</td>
+        <td><a href="/incident?source=teco&incident_id={{ e.incident_id | urlencode }}" style="color: var(--accent);">{{ e.incident_id | incident_label }}</a></td>
         <td>{{ e.county or "—" }}</td>
         <td class="pct-bad">{{ e.peak_customer_count }}</td>
         <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
@@ -462,7 +462,7 @@
       <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Reason</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
       {% for e in teco_closed_events %}
       <tr>
-        <td>{{ e.incident_id | incident_label }}</td>
+        <td><a href="/incident?source=teco&incident_id={{ e.incident_id | urlencode }}" style="color: var(--accent);">{{ e.incident_id | incident_label }}</a></td>
         <td>{{ e.county or "—" }}</td>
         <td class="pct-ok">{{ e.peak_customer_count }}</td>
         <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
@@ -513,7 +513,7 @@
       <tr><th>Incident</th><th>County</th><th>Customers</th><th>Cause</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in duke_open_events %}
       <tr>
-        <td>{{ e.incident_id | incident_label }}</td>
+        <td><a href="/incident?source=duke&incident_id={{ e.incident_id | urlencode }}" style="color: var(--accent);">{{ e.incident_id | incident_label }}</a></td>
         <td>{{ e.county or "—" }}</td>
         <td class="pct-bad">{{ e.peak_customer_count }}</td>
         <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
@@ -534,7 +534,7 @@
       <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Cause</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
       {% for e in duke_closed_events %}
       <tr>
-        <td>{{ e.incident_id | incident_label }}</td>
+        <td><a href="/incident?source=duke&incident_id={{ e.incident_id | urlencode }}" style="color: var(--accent);">{{ e.incident_id | incident_label }}</a></td>
         <td>{{ e.county or "—" }}</td>
         <td class="pct-ok">{{ e.peak_customer_count }}</td>
         <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
@@ -585,7 +585,7 @@
       <tr><th>County</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in jea_open_events %}
       <tr>
-        <td>{{ e.county }}</td>
+        <td><a href="/incident?source=jea&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--accent);">{{ e.county }}</a></td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
         <td>{{ e.start_time | humanize }}</td>
@@ -605,7 +605,7 @@
       <tr><th>County</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
       {% for e in jea_closed_events %}
       <tr>
-        <td>{{ e.county }}</td>
+        <td><a href="/incident?source=jea&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--accent);">{{ e.county }}</a></td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.end_time | humanize }}</td>

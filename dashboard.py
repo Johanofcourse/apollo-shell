@@ -15,6 +15,8 @@ from correlate import (
     find_duke_correlations, duke_correlation_summary,
     find_jea_correlations,
 )
+from fetch_fpl_outages import UTILITY_NAME as FPL_UTILITY_NAME
+from fetch_jea_outages import UTILITY_NAME as JEA_UTILITY_NAME
 
 
 app = Flask(__name__)
@@ -532,6 +534,62 @@ def heat():
     db.close()
 
     return render_template("heat.html", heat_summary=heat_summary)
+
+
+@app.route("/incident")
+def incident():
+    """
+    Detail view for one specific outage/incident, reached by clicking a
+    row in one of the four "Currently Open"/"Recently Resolved" tables
+    on the main dashboard - not meant to be reached by typing an id
+    from memory.
+
+    TECO/Duke have a real incident_id, so one id is enough to find
+    everything on file for it (every lifecycle episode, plus the full
+    raw snapshot timeline - both tables log a fresh row every poll
+    cycle while active, so this is a real timeline, not just a start/
+    end pair). FPL/JEA never give us a discrete incident identity, only
+    a county-level rollup, so a specific occurrence there is identified
+    by (county, start_time) instead - the same natural key their own
+    outage_events/jea_outage_events unique index already enforces.
+    """
+    source = request.args.get("source", "").strip().lower()
+    db = OutageDatabase()
+
+    detail = None
+    if source in ("teco", "duke"):
+        incident_id = request.args.get("incident_id", "").strip()
+        if incident_id:
+            raw_detail = (
+                db.get_teco_incident_detail(incident_id) if source == "teco"
+                else db.get_duke_incident_detail(incident_id)
+            )
+            if raw_detail["events"] or raw_detail["history"]:
+                detail = raw_detail
+    elif source in ("fpl", "jea"):
+        county = request.args.get("county", "").strip()
+        start_time = request.args.get("start_time", "").strip()
+        if county and start_time:
+            utility = FPL_UTILITY_NAME if source == "fpl" else JEA_UTILITY_NAME
+            get_fn = db.get_fpl_outage_detail if source == "fpl" else db.get_jea_outage_detail
+            detail = get_fn(utility, county, start_time)
+
+    db.close()
+
+    if detail:
+        if source in ("teco", "duke"):
+            for ev in detail["events"]:
+                ev["duration"] = _duration_since(ev["start_time"], ev["end_time"])
+        else:
+            detail["event"]["duration"] = _duration_since(detail["event"]["start_time"], detail["event"]["end_time"])
+
+    return render_template(
+        "incident.html",
+        source=source,
+        detail=detail,
+        incident_id=request.args.get("incident_id", "").strip(),
+        county=request.args.get("county", "").strip(),
+    )
 
 
 if __name__ == "__main__":

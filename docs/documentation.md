@@ -324,3 +324,26 @@ was always redundant with the row's own "Started" column right next to
 it. TECO's stays exactly as sent - there's nothing real underneath it
 to translate, and showing a fake decoded label would be worse than
 showing an honest opaque one.
+
+## Checking on one outage after it's over
+A natural next question once you can see incident IDs clearly: can you
+actually look one up? Turned into a real, small feature - click any row
+in a "Recently Resolved" table and land on that one incident's own page.
+
+The interesting part was that "one outage" means something different
+depending on the source. TECO and Duke hand us a real incident id, and
+because both quietly re-log a fresh snapshot every single poll cycle
+while something's active, a specific incident already had a whole real
+timeline sitting in the data - status changes, cause, customer count,
+ETR, all with real timestamps - nobody had ever built a page to actually
+show it. FPL and JEA don't have that; neither has ever given us a
+discrete incident identity, only a county-level number. So "one outage"
+there means one specific county occurrence, told apart from any other
+time that same county had trouble by exactly when it started - which,
+conveniently, is already how the database tells them apart internally.
+
+Worth remembering: this is the same raw material the long-deferred
+restoration-confidence idea (Phase 3) would eventually need to learn
+from - not that model itself, which is still waiting on a lot more
+resolved-incident history to accumulate, just the part where you can
+finally go look at one incident's whole story by hand.

@@ -174,6 +174,30 @@
       `dashboard.py`, detected by shape (14 digits, first 8 a real
       calendar date) rather than utility name, so it stays correct if
       either format ever changes. 6 new tests.
+- [x] **Per-incident detail lookup (`/incident`)**, reached by clicking
+      any row in the four "Currently Open"/"Recently Resolved" tables -
+      not something meant to be reached by typing an id from memory.
+      TECO/Duke have a real `incident_id`, so one id finds everything on
+      file for it: every lifecycle episode plus the *full raw snapshot
+      timeline* (both tables log a fresh row every poll cycle while
+      active, so status/cause/customer-count/ETR changes over time are
+      already sitting in the data, not just a start/end pair). FPL/JEA
+      never give us a discrete incident identity, only a county-level
+      rollup, so a specific occurrence there is identified by
+      `(county, start_time)` instead - the exact natural key their own
+      `outage_events`/`jea_outage_events` unique index already enforces.
+      JEA's history additionally sums across every ZIP in the county per
+      timestamp (its raw snapshots are per-ZIP, the lifecycle is per-
+      county), matching the same aggregation `sync_jea_outage_events()`
+      already does. New `OutageDatabase.get_teco_incident_detail()` /
+      `get_duke_incident_detail()` / `get_fpl_outage_detail()` /
+      `get_jea_outage_detail()`, a new `templates/incident.html`
+      (plain, internal-tool style, not the Artifact's design language -
+      this is a dashboard.py feature, not a public-facing one). This is
+      also the same raw data Phase 3's restoration-confidence idea would
+      eventually train on - not that model itself (still blocked on data
+      volume, not code), just the querying layer for individual past
+      incidents. 6 new tests.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration)
 - [x] Visual direction settled on, explored entirely in an isolated

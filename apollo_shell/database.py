@@ -961,6 +961,123 @@ class OutageDatabase:
         return [dict(row) for row in cursor.fetchall()]
 
 
+    def _get_incident_events(self, events_table, incident_id):
+        """
+        Every lifecycle episode (there's usually just one, but an
+        incident_id could in principle reopen after closing, giving it
+        more than one start/end row) for one TECO/Duke incident_id.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT * FROM {events_table} WHERE incident_id = ? ORDER BY start_time
+        ''', (incident_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def _get_incident_raw_history(self, raw_table, incident_id):
+        """
+        Every raw snapshot on file for one TECO/Duke incident_id, in the
+        order we actually observed them (fetched_at, our own poll
+        timestamp - not TECO's own update_time, which we don't fully
+        trust to always move forward). Both tables log a fresh row every
+        poll cycle while the incident is active, so this is a genuine
+        timeline (status/cause/customer-count/ETR changes over time),
+        not just a start/end pair.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT * FROM {raw_table} WHERE incident_id = ? ORDER BY fetched_at
+        ''', (incident_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_teco_incident_detail(self, incident_id):
+        """
+        Full detail for one TECO incident: every lifecycle episode plus
+        the complete raw snapshot timeline (status/reason/ETR/customer-
+        count changes over time), for the incident detail page.
+        """
+        return {
+            "events": self._get_incident_events("teco_incident_events", incident_id),
+            "history": self._get_incident_raw_history("teco_incidents", incident_id),
+        }
+
+    def get_duke_incident_detail(self, incident_id):
+        """
+        Same as get_teco_incident_detail(), for a Duke incident_id.
+        """
+        return {
+            "events": self._get_incident_events("duke_incident_events", incident_id),
+            "history": self._get_incident_raw_history("duke_incidents", incident_id),
+        }
+
+    def get_fpl_outage_detail(self, utility, county, start_time):
+        """
+        Full detail for one specific FPL county-level outage occurrence,
+        identified by (utility, county, start_time) - the same natural
+        key idx_outage_events_unique already enforces, since FPL never
+        gives us a discrete incident id the way TECO/Duke do. Returns
+        None if no such occurrence exists.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM outage_events WHERE utility = ? AND county = ? AND start_time = ?
+        ''', (utility, county, start_time))
+        event = cursor.fetchone()
+        if event is None:
+            return None
+        event = dict(event)
+
+        end_bound = event["end_time"] or datetime.now().isoformat()
+        cursor.execute('''
+            SELECT timestamp, customers_out, customers_served, percentage_out FROM outages
+            WHERE utility = ? AND county = ? AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp
+        ''', (utility, county, start_time, end_bound))
+        history = [dict(row) for row in cursor.fetchall()]
+
+        return {"event": event, "history": history}
+
+    def get_jea_outage_detail(self, utility, county, start_time):
+        """
+        Same idea as get_fpl_outage_detail(), for one JEA county-level
+        outage occurrence. JEA's raw snapshots (jea_outages) are logged
+        per ZIP code, not per county, so the history trend sums across
+        every ZIP in the county per poll timestamp - the same
+        aggregation sync_jea_outage_events() already does when deriving
+        the county-level lifecycle in the first place.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM jea_outage_events WHERE utility = ? AND county = ? AND start_time = ?
+        ''', (utility, county, start_time))
+        event = cursor.fetchone()
+        if event is None:
+            return None
+        event = dict(event)
+
+        end_bound = event["end_time"] or datetime.now().isoformat()
+        cursor.execute('''
+            SELECT
+                timestamp,
+                SUM(customers_out) AS customers_out,
+                SUM(customers_served) AS customers_served,
+                CASE WHEN SUM(customers_served) > 0
+                     THEN SUM(customers_out) * 100.0 / SUM(customers_served)
+                     ELSE 0 END AS percentage_out
+            FROM jea_outages
+            WHERE county = ? AND timestamp >= ? AND timestamp <= ?
+            GROUP BY timestamp
+            ORDER BY timestamp
+        ''', (county, start_time, end_bound))
+        history = [dict(row) for row in cursor.fetchall()]
+
+        return {"event": event, "history": history}
+
     def get_teco_open_events(self):
         """
         Return currently open teco_incident_events (end_time IS NULL),
