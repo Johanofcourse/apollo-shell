@@ -142,13 +142,21 @@ def find_correlations(db_path="outages.db"):
     Match outage records to weather alerts active in the same county at the
     same time (county name match + effective/expires time overlap).
 
+    Only rows with a real outage (customers_out > 0) are considered -
+    the raw outages table logs a fresh snapshot every poll cycle for
+    every county regardless of whether anything was actually wrong, so
+    without this filter a weather alert merely being active while
+    nothing was happening counted as a "correlated outage." Found
+    2026-07-12: this was inflating FPL's match counts by ~59% (18,151 ->
+    7,495 once filtered, checked directly against the real data).
+
     Returns a list of {"outage": {...}, "alert": {...}} dicts, one per match.
     """
     db = OutageDatabase(db_path)
     conn = db.connect()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM outages')
+    cursor.execute('SELECT * FROM outages WHERE customers_out > 0')
     outages = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute('SELECT * FROM weather_alerts')
@@ -354,6 +362,15 @@ def find_jea_correlations(db_path="outages.db"):
     kept as its own dedicated table per the same one-utility-per-table
     convention used everywhere else in this project.
 
+    Only rows with a real outage (customers_out > 0) are considered -
+    same reasoning and same real bug as find_correlations() above (found
+    2026-07-12): JEA's raw table logs a fresh row every cycle per ZIP
+    regardless of whether anything was actually wrong (82.7% of JEA's
+    raw rows have customers_out = 0), which was inflating match counts
+    by ~84% (596 -> 97 once filtered, checked directly against the real
+    data - proportionally worse than FPL's ~59% since JEA's ZIP-level
+    polling logs even more "nothing happening" rows per real outage).
+
     Returns a list of {"outage": {...}, "alert": {...}} dicts - reuse
     correlation_summary() below directly, since the shape matches FPL's.
     """
@@ -361,7 +378,7 @@ def find_jea_correlations(db_path="outages.db"):
     conn = db.connect()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM jea_outages')
+    cursor.execute('SELECT * FROM jea_outages WHERE customers_out > 0')
     outages = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute('SELECT * FROM weather_alerts')

@@ -198,6 +198,45 @@
       eventually train on - not that model itself (still blocked on data
       volume, not code), just the querying layer for individual past
       incidents. 6 new tests.
+- [x] **Fixed a real over-counting bug in FPL's/JEA's weather correlation.**
+      Asked to explain a dashboard row ("Nassau: 1244 correlated outages,
+      Rip Current Statement ×280...") led to checking the actual query -
+      `find_correlations()`/`find_jea_correlations()` matched *every* raw
+      poll snapshot against active weather alerts, with no filter on
+      whether an outage was actually happening. Both FPL's and JEA's raw
+      tables log a fresh row every 15-minute cycle for every county/ZIP
+      regardless of whether anything was wrong, so "a weather alert was
+      active while nothing was happening" was counting as a "correlated
+      outage." Checked directly against the real data before fixing:
+      inflating FPL's match count by ~59% (18,151 -> 7,495) and JEA's by
+      ~84% (596 -> 97, proportionally worse since JEA's ZIP-level polling
+      logs even more "nothing happening" rows per real outage). TECO/Duke
+      were never affected - their feeds only ever report actively-open
+      incidents, so no zero-customer rows exist to leak in. Fixed with a
+      one-line `WHERE customers_out > 0` filter in each query - also
+      nearly halves FPL's correlation compute time as a side effect
+      (fewer rows to scan). 4 new tests proving a zero-customer snapshot
+      is excluded and a real one still matches, for both FPL and JEA.
+      Separately flagged and deferred: these correlation counts are still
+      all-time-since-April-8-2026 with no rolling window, which will keep
+      growing indefinitely and needs its own real design pass eventually
+      (see "Open question: unbounded correlation window" just below) -
+      this fix only addresses the over-counting, not the unbounded-window
+      problem.
+
+**Open question: unbounded correlation window (not yet designed, not
+started).** The correlation counts/alert-type tallies shown on the
+dashboard are all-time since the poller first started (2026-04-08) with
+no rolling window - they'll keep growing forever and become less
+meaningful as "recent" and "months ago" blur into one number. Also the
+direct cause of the dashboard's growing cold-load time (see the
+correlation-cache entry above) - a time-windowed correlation (e.g. "last
+30 days") would likely fix both problems at once, not just the display
+one, since it would bound the query instead of scanning the full
+history every time. Not scoped yet: what window length actually makes
+sense, whether it should be configurable, whether older data should
+still be queryable some other way (a separate historical correlation
+view?) rather than just disappearing from the live one.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration)
 - [x] Visual direction settled on, explored entirely in an isolated

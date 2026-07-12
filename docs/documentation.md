@@ -347,3 +347,32 @@ restoration-confidence idea (Phase 3) would eventually need to learn
 from - not that model itself, which is still waiting on a lot more
 resolved-incident history to accumulate, just the part where you can
 finally go look at one incident's whole story by hand.
+
+## A dashboard row that didn't add up
+Asked to explain a single row - Nassau, 1244 correlated outages, Rip
+Current Statement x280 - and answering it honestly meant actually
+reading the query behind it instead of describing what the label
+implied. What it turned up: `find_correlations()` was matching *every*
+raw poll snapshot against active weather alerts, with no check for
+whether an outage was actually happening. FPL and JEA both log a fresh
+row every 15 minutes for every county/ZIP regardless of whether
+anything was wrong, so "a heat advisory happened to be active while
+nothing was actually wrong" was quietly counting as a correlated
+outage, same as a real one.
+
+Checked how much it actually mattered before touching anything: FPL's
+match count dropped 59% once filtered to real outages only (18,151 ->
+7,495), JEA's dropped 84% (596 -> 97) - worse proportionally, since its
+ZIP-level polling logs even more "nothing happening" snapshots per real
+outage. TECO and Duke turned out to have never had this problem at all
+- their feeds only ever report incidents that are actually open, so
+there was never a zero-customer row to leak in in the first place.
+Fixed with one line each (`WHERE customers_out > 0`), which also nearly
+halved FPL's correlation compute time as a free side effect.
+
+The bigger question raised alongside this one is still open, on
+purpose: these correlation numbers are all-time since the poller first
+started in April, with no rolling window, and they'll only keep growing
+less meaningful the longer this runs. Fixing the over-count wasn't the
+same thing as fixing that, and didn't pretend to be - a real design
+pass on what "recent" should mean here is still ahead.
