@@ -439,27 +439,6 @@
     </div>
   </div>
 
-  <h2>All Utilities — Currently Open ({{ unified_open|length }})</h2>
-  <div class="wrap">
-  {% if unified_open %}
-    <table>
-      <tr><th>Utility</th><th>County</th><th>Customers Out Now</th><th>Peak This Episode</th><th>Started</th><th>Ongoing</th></tr>
-      {% for e in unified_open %}
-      <tr>
-        <td>{{ e.utility }}</td>
-        <td>{{ e.county or "—" }}</td>
-        <td class="pct-bad">{{ "{:,}".format(e.customers or 0) }}</td>
-        <td>{{ "{:,}".format(e.peak_customers or 0) }}</td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">Nothing open right now, across any utility.</div>
-  {% endif %}
-  </div>
-
 
   <details class="category-block" id="cat-weather-alerts" open>
     <summary>Recent Weather Alerts</summary>
@@ -1085,6 +1064,31 @@
     </table>
   {% else %}
     <div class="empty">No correlated FPUC incident/weather events right now.</div>
+  {% endif %}
+  </div>
+    </div>
+  </details>
+
+  <details class="category-block" id="cat-unified">
+    <summary>All Utilities — Currently Open ({{ unified_open|length }})</summary>
+    <div class="category-body">
+  <div class="wrap">
+  {% if unified_open %}
+    <table>
+      <tr><th>Utility</th><th>County</th><th>Customers Out Now</th><th>Peak This Episode</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in unified_open %}
+      <tr>
+        <td>{{ e.utility }}</td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-bad">{{ "{:,}".format(e.customers or 0) }}</td>
+        <td>{{ "{:,}".format(e.peak_customers or 0) }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing open right now, across any utility.</div>
   {% endif %}
   </div>
     </div>
