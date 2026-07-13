@@ -504,3 +504,89 @@ utility, because it genuinely is one. Closed eight of the ten missing
 counties outright. Three remain - Calhoun, Gadsden, Liberty - probably
 someone smaller, still unfound, still an honest gap instead of a
 guessed-away one.
+
+## Peak isn't the same thing as right now
+A user comparison against poweroutage.us's live count for Palm Beach
+surfaced a real, honest confusion: our dashboard said 2,343 customers
+out, theirs said 233. Neither number was wrong. Pulling every raw poll
+since that outage began showed a real spike to 2,343 hours earlier,
+climbing back down to 230 by the time of the comparison - our "peak"
+column was showing the whole episode's high-water mark, not what's
+happening this exact minute, with nothing on the page saying so.
+
+Fixed at the source rather than papered over: every utility's open-
+outage query now also returns a live "current" reading (joined against
+the freshest raw snapshot for that county/incident), sitting right next
+to the existing peak column, on both the real dashboard and the top KPI
+strip that had the same conflation baked into its own math. The public
+Artifact concept got the identical fix and, while at it, its first real
+narrative summary paragraph - written in the same voice as
+poweroutage.us's own copy, but built entirely from a live query against
+our own database, not copied text. Deliberately didn't borrow their "34
+utilities" figure either - checked our own historical PSC roster first
+(55 distinct utilities there, an unrelated number) rather than assume
+one aggregator's count applied to us.
+
+## Three utilities, one dead end, and a night of real bugs caught early
+Kept pulling the same thread: what else is a real, live Florida utility
+we're not tracking yet. City of Tallahassee came first, found through
+Safari's Web Inspector the same way FPL Northwest was - filter to
+Fetch/XHR, sort by size ascending, don't trust the big files. It runs
+on a plain Esri ArcGIS endpoint, no bot wall in front of it at all. One
+real catch before it ever shipped: the captured URL pointed at ArcGIS
+layer 1, which turned out to be a boundary polygon, not the actual
+"Outages" layer (that was layer 0) - it *looked* like a valid empty
+outage response, schema and all, until a live request came back
+shaped completely differently. Caught by querying the service's own
+layer list directly, not by anything crashing. A second, smaller
+version of the same lesson: the zone-name layer numbers its rows by
+internal database id, not by the digit written into each zone's own
+name - same shape of trap as the Miami-Dade and DeSoto county-name
+mismatches from earlier in this project, just wearing a different
+costume.
+
+Talquin Electric Cooperative came next, on a third distinct vendor
+platform (Siena Technologies) - real, and genuinely useful: it closed
+two of the three remaining Panhandle gaps (Gadsden, Liberty) outright,
+confirmed by matching its live county list against our own historical
+storm data and getting an exact match.
+
+In between, a real dead end, handled the honest way: Grady EMC looked
+like a plausible lead for the last gap given how close it sits to the
+state line, the same reasoning that made Okefenoke REMC a real find
+earlier. It wasn't - their own published service area is Grady/Decatur/
+Thomas counties, all in Georgia, nothing in Florida. Said so plainly
+rather than force a fit, including owning that the original lead was my
+own guess, not confirmed fact.
+
+Florida Public Utilities Corporation closed the night, on a fourth
+distinct vendor platform (DataVoice's "Apprise" system) - and it came
+with a real, unresolved limitation instead of a clean win. Its live
+feed reports exactly one combined total across five non-adjacent
+counties, no per-county split, despite a real search: tested whether a
+`serviceIndex` parameter changed anything (it didn't), searched the
+app's own 22,900-line JS bundle for real endpoint names (only one,
+`cfa_device_markers`, ever came back real), and confirmed via its own
+config that a "Substation" view exists in the app without ever finding
+a live way to trigger capturing its actual request. Built honestly
+instead of guessed around: a fixed placeholder county label that can't
+match a real weather alert, so its correlation function returns empty
+by design, not silently broken. This technically closes Calhoun - the
+last Florida county with zero live coverage - but only as part of one
+blended five-county number, not a verified reading for Calhoun on its
+own. Flagged as a standing priority to revisit, not treated as done.
+
+## A map that finally shows what's happening right now
+The isometric county map had one real gap the whole time: its color and
+height were always driven by historical weather-correlation pattern,
+never by what's actually happening at this moment - the live outage
+count only ever showed up in a tooltip, never in the map itself. Added
+a second view instead of replacing the first: a toggle between
+"Historical Pattern" (unchanged) and "Live Severity," the second one
+tiered by real current-outage percentage where a county's customer base
+is known, falling back to a raw-count tier for the handful of counties
+only covered by sources with no live base (same honest reasoning as the
+"what counts as a customer" note already on the page). Caught two rough
+spots in the rewrite before shipping: a needless string-replace trick
+standing in for a character that could just be typed directly, and a
+ternary quietly returning the same value on both sides.
