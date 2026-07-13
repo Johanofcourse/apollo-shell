@@ -196,11 +196,18 @@
       <div class="error-card-head">
         <span class="source-chip">{{ e.display_name }}</span>
         <span class="severity-badge severity-badge-{{ e.explanation_severity }}">{{ e.explanation_label | replace("-", " ") }}</span>
-        <span class="error-when">{{ e.timestamp | humanize }} &middot; {{ e.time_ago }} ago</span>
+        <span class="error-when">
+          {{ e.first_timestamp | humanize }} &middot;
+          {% if e.count > 1 %}
+            occurred over {{ e.duration }} ({{ e.count }}&times;)
+          {% else %}
+            single occurrence
+          {% endif %}
+        </span>
       </div>
       <div class="error-explanation">{{ e.explanation_text }}</div>
       <div class="error-raw">
-        <span class="error-raw-label">Raw message</span>{{ e.error_message }}
+        <span class="error-raw-label">{{ "Most recent message" if e.count > 1 else "Message" }}</span>{{ e.latest_message }}
       </div>
     </div>
     {% endfor %}

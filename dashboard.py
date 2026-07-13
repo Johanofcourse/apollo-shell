@@ -3,7 +3,7 @@ import re
 import sqlite3
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Flask, render_template, request
 
@@ -786,6 +786,60 @@ def heat():
     return render_template("heat.html", heat_summary=heat_summary)
 
 
+# A poll cycle runs every ~15 min, so a gap under this between two
+# failures from the same source is almost certainly the same underlying
+# episode continuing, not two unrelated blips - used to group raw
+# pipeline_errors rows into "streaks" for display (see
+# _group_pipeline_errors below), rather than showing each individual
+# instant a source failed as its own separate line.
+PIPELINE_ERROR_GROUP_GAP_MINUTES = 20
+
+
+def _group_pipeline_errors(errors):
+    """
+    Collapse consecutive same-source pipeline_errors rows into streaks,
+    so /pipeline-errors can show how long a source was actually failing
+    for (first occurrence -> last occurrence) instead of a redundant
+    pair of "when this row happened" timestamps repeated once per row.
+
+    errors: rows from OutageDatabase.get_pipeline_error_history(),
+    any order. Returns a list of dicts (source, first_timestamp,
+    last_timestamp, count, latest_message), most recent streak first.
+    """
+    by_source = {}
+    for e in errors:
+        by_source.setdefault(e["source"], []).append(e)
+
+    gap = timedelta(minutes=PIPELINE_ERROR_GROUP_GAP_MINUTES)
+    groups = []
+    for source, rows in by_source.items():
+        rows = sorted(rows, key=lambda r: r["timestamp"])
+        current = None
+        current_dt = None
+        for row in rows:
+            row_dt = datetime.fromisoformat(row["timestamp"])
+            if current and (row_dt - current_dt) <= gap:
+                current["last_timestamp"] = row["timestamp"]
+                current["count"] += 1
+                current["latest_message"] = row["error_message"]
+            else:
+                if current:
+                    groups.append(current)
+                current = {
+                    "source": source,
+                    "first_timestamp": row["timestamp"],
+                    "last_timestamp": row["timestamp"],
+                    "count": 1,
+                    "latest_message": row["error_message"],
+                }
+            current_dt = row_dt
+        if current:
+            groups.append(current)
+
+    groups.sort(key=lambda g: g["last_timestamp"], reverse=True)
+    return groups
+
+
 @app.route("/pipeline-errors")
 def pipeline_errors():
     """
@@ -796,6 +850,11 @@ def pipeline_errors():
     day, several sources failing at once, one message repeating) is
     visible instead of just "something failed once."
 
+    Consecutive same-source failures are collapsed into one streak (see
+    _group_pipeline_errors) - shows when a streak started and how long
+    it actually lasted, rather than a redundant "date + time ago" pair
+    repeated on every individual row.
+
     source=<name> filters to just that source (matches the same keys
     used in main.py's log_pipeline_error() calls, e.g. "fpl"/"preco");
     omitted shows every source combined, most recent first.
@@ -804,13 +863,14 @@ def pipeline_errors():
 
     db = OutageDatabase()
     all_sources = sorted(PIPELINE_SOURCE_DISPLAY_NAMES.keys())
-    errors = db.get_pipeline_error_history(source=selected_source or None, limit=200)
+    raw_errors = db.get_pipeline_error_history(source=selected_source or None, limit=500)
     db.close()
 
+    errors = _group_pipeline_errors(raw_errors)
     for e in errors:
         e["display_name"] = PIPELINE_SOURCE_DISPLAY_NAMES.get(e["source"], e["source"].title())
-        e["time_ago"] = _duration_since(e["timestamp"])
-        e["explanation_label"], e["explanation_text"], e["explanation_severity"] = _explain_pipeline_error(e["error_message"])
+        e["duration"] = _duration_since(e["first_timestamp"], e["last_timestamp"])
+        e["explanation_label"], e["explanation_text"], e["explanation_severity"] = _explain_pipeline_error(e["latest_message"])
 
     return render_template(
         "pipeline_errors.html",

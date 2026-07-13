@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dashboard import _incident_label, _explain_pipeline_error
+from dashboard import _incident_label, _explain_pipeline_error, _group_pipeline_errors
 
 
 class TestIncidentLabel:
@@ -101,3 +101,74 @@ class TestExplainPipelineError:
     def test_none_message_handled(self):
         label, explanation, severity = _explain_pipeline_error(None)
         assert label == "unknown"
+
+
+def _error_row(source, timestamp, message="database is locked"):
+    return {"source": source, "timestamp": timestamp, "error_message": message}
+
+
+class TestGroupPipelineErrors:
+    """
+    _group_pipeline_errors() - collapses consecutive same-source
+    failures into one streak (first occurrence -> last occurrence)
+    added 2026-07-13 after the /pipeline-errors page was found to show
+    a redundant "date + time ago" pair on every individual row instead
+    of anything about how long a failure actually persisted.
+    """
+
+    def test_single_error_is_its_own_group_of_one(self):
+        groups = _group_pipeline_errors([_error_row("fpl", "2026-01-01T00:00:00")])
+        assert len(groups) == 1
+        assert groups[0]["count"] == 1
+        assert groups[0]["first_timestamp"] == groups[0]["last_timestamp"] == "2026-01-01T00:00:00"
+
+    def test_close_together_same_source_errors_merge_into_one_streak(self):
+        # 15-min poll cycle - two failures 10 minutes apart are almost
+        # certainly the same ongoing episode.
+        rows = [
+            _error_row("fpl", "2026-01-01T00:00:00"),
+            _error_row("fpl", "2026-01-01T00:10:00"),
+        ]
+        groups = _group_pipeline_errors(rows)
+        assert len(groups) == 1
+        assert groups[0]["count"] == 2
+        assert groups[0]["first_timestamp"] == "2026-01-01T00:00:00"
+        assert groups[0]["last_timestamp"] == "2026-01-01T00:10:00"
+
+    def test_far_apart_same_source_errors_stay_separate_streaks(self):
+        rows = [
+            _error_row("fpl", "2026-01-01T00:00:00"),
+            _error_row("fpl", "2026-01-01T05:00:00"),
+        ]
+        groups = _group_pipeline_errors(rows)
+        assert len(groups) == 2
+        assert all(g["count"] == 1 for g in groups)
+
+    def test_different_sources_never_merge_even_if_simultaneous(self):
+        rows = [
+            _error_row("fpl", "2026-01-01T00:00:00"),
+            _error_row("preco", "2026-01-01T00:00:00"),
+        ]
+        groups = _group_pipeline_errors(rows)
+        assert len(groups) == 2
+        assert {g["source"] for g in groups} == {"fpl", "preco"}
+
+    def test_latest_message_in_streak_is_the_most_recent_one(self):
+        rows = [
+            _error_row("fpl", "2026-01-01T00:00:00", "connection refused"),
+            _error_row("fpl", "2026-01-01T00:05:00", "database is locked"),
+        ]
+        groups = _group_pipeline_errors(rows)
+        assert groups[0]["latest_message"] == "database is locked"
+
+    def test_groups_sorted_most_recent_streak_first(self):
+        rows = [
+            _error_row("fpl", "2026-01-01T00:00:00"),
+            _error_row("preco", "2026-01-01T05:00:00"),
+        ]
+        groups = _group_pipeline_errors(rows)
+        assert groups[0]["source"] == "preco"
+        assert groups[1]["source"] == "fpl"
+
+    def test_empty_input_returns_empty(self):
+        assert _group_pipeline_errors([]) == []
