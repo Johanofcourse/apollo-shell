@@ -36,6 +36,50 @@
       padding-bottom: 0.5rem;
       margin-top: 2.5rem;
     }
+    h3 {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+      margin: 2rem 0 0.75rem;
+    }
+    h3:first-child { margin-top: 0; }
+
+    /* Collapsible category sections - the dashboard groups by data type
+       (Currently Open / Recently Resolved / Correlation), each utility's
+       table nested inside as its own h3, rather than one flat list of
+       27+ per-utility sections. State is persisted across the page's
+       own 60s auto-refresh (see the script at the bottom) since a
+       plain <details> would otherwise silently re-collapse every time
+       the page reloads itself. */
+    .category-block {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      margin-top: 1.5rem;
+      padding: 0 1.25rem;
+    }
+    .category-block > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 1rem 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      user-select: none;
+    }
+    .category-block > summary::-webkit-details-marker { display: none; }
+    .category-block > summary::before {
+      content: "▸";
+      color: var(--pink);
+      transition: transform 0.15s ease;
+      display: inline-block;
+    }
+    .category-block[open] > summary::before { transform: rotate(90deg); }
+    .category-block > summary:hover { color: var(--pink); }
+    .category-body { padding-bottom: 1.5rem; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -416,7 +460,37 @@
   {% endif %}
   </div>
 
-  <h2>FPL — Currently Open Outages ({{ open_events|length }})</h2>
+
+  <details class="category-block" id="cat-weather-alerts" open>
+    <summary>Recent Weather Alerts</summary>
+    <div class="category-body">
+  <h3>Recent Weather Alerts</h3>
+  <div class="wrap">
+  {% if weather_alerts %}
+    <table>
+      <tr><th>Event</th><th>Severity</th><th>Areas</th><th>Effective</th><th>Expires</th></tr>
+      {% for a in weather_alerts %}
+      <tr>
+        <td>{{ a.event_type }}</td>
+        <td>{{ a.severity or "—" }}</td>
+        <td>{{ a.areas }}</td>
+        <td>{{ a.effective | humanize }}</td>
+        <td>{{ a.expires | humanize }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No weather alerts logged yet.</div>
+  {% endif %}
+  </div>
+
+    </div>
+  </details>
+
+  <details class="category-block" id="cat-open" open>
+    <summary>Currently Open</summary>
+    <div class="category-body">
+  <h3>FPL — Currently Open Outages ({{ open_events|length }})</h3>
   <div class="wrap">
   {% if open_events %}
     <table>
@@ -438,7 +512,7 @@
   {% endif %}
   </div>
 
-  <h2>FPL — Latest Snapshot</h2>
+  <h3>FPL — Latest Snapshot</h3>
   <div class="wrap">
   {% if snapshot %}
     <table>
@@ -457,7 +531,183 @@
   {% endif %}
   </div>
 
-  <h2>FPL — Recently Resolved</h2>
+  <h3>TECO — Currently Open Incidents ({{ teco_open_events|length }})</h3>
+  <div class="wrap">
+  {% if teco_open_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Current</th><th>Peak</th><th>Reason</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in teco_open_events %}
+      <tr>
+        <td><a href="/incident?source=teco&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
+        <td>{{ e.estimated_restoration or "—" }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open TECO incidents right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>Duke — Currently Open Incidents ({{ duke_open_events|length }})</h3>
+  <div class="wrap">
+  {% if duke_open_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Current</th><th>Peak</th><th>Cause</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in duke_open_events %}
+      <tr>
+        <td><a href="/incident?source=duke&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open Duke incidents right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>JEA — Currently Open Outages ({{ jea_open_events|length }})</h3>
+  <div class="wrap">
+  {% if jea_open_events %}
+    <table>
+      <tr><th>County</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in jea_open_events %}
+      <tr>
+        <td><a href="/incident?source=jea&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
+        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open JEA outages right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>City of Tallahassee — Currently Open Incidents ({{ tallahassee_open_events|length }})</h3>
+  <div class="wrap">
+  {% if tallahassee_open_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Area</th><th>Current</th><th>Peak</th><th>Cause</th><th>Status</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in tallahassee_open_events %}
+      <tr>
+        <td><a href="/incident?source=tallahassee&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td>{{ e.region_name or "—" }}</td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
+        <td>{{ e.current_status or "—" }}</td>
+        <td>{{ e.current_estimated_restoration | humanize }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open Tallahassee incidents right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>Talquin — Currently Open Outages ({{ talquin_open_events|length }})</h3>
+  <div class="wrap">
+  {% if talquin_open_events %}
+    <table>
+      <tr><th>County</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in talquin_open_events %}
+      <tr>
+        <td><a href="/incident?source=talquin&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
+        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open Talquin outages right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>FPUC — Currently Open Outages ({{ fpuc_open_events|length }})</h3>
+  <p class="section-note">
+    Florida Public Utilities Corporation's live feed reports one combined, authoritative total across its whole
+    (non-adjacent) Florida electric territory &mdash; historically Calhoun, Jackson, Liberty, Nassau, and Wakulla
+    counties. "Territory" below isn't a real county name; see the per-incident section further down for real
+    county-level detail on whichever outages the feed exposes location data for.
+  </p>
+  <div class="wrap">
+  {% if fpuc_open_events %}
+    <table>
+      <tr><th>Territory</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in fpuc_open_events %}
+      <tr>
+        <td><a href="/incident?source=fpuc&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
+        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open FPUC outages right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>FPUC — Currently Open Incidents, Real Counties ({{ fpuc_open_incidents|length }})</h3>
+  <p class="section-note">
+    Confirmed real 2026-07-13: some (not all) FPUC outages come with real coordinates, reverse-geocoded to a
+    county the same way Duke's incidents are. The app's own config says some outages are deliberately withheld
+    here for privacy, so this list can undercount relative to the combined total above &mdash; treat it as real
+    and useful, not complete.
+  </p>
+  <div class="wrap">
+  {% if fpuc_open_incidents %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Substation / Feeder</th><th>Current</th><th>Peak</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in fpuc_open_incidents %}
+      <tr>
+        <td><a href="/incident?source=fpuc_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td>{{ e.substation or "—" }} / {{ e.feeder or "—" }}</td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open FPUC incidents with location data right now.</div>
+  {% endif %}
+  </div>
+
+    </div>
+  </details>
+
+  <details class="category-block" id="cat-resolved">
+    <summary>Recently Resolved</summary>
+    <div class="category-body">
+  <h3>FPL — Recently Resolved</h3>
   <div class="wrap">
   {% if closed_events %}
     <table>
@@ -477,27 +727,161 @@
   {% endif %}
   </div>
 
-  <h2>Recent Weather Alerts</h2>
+  <h3>TECO — Recently Resolved</h3>
   <div class="wrap">
-  {% if weather_alerts %}
+  {% if teco_closed_events %}
     <table>
-      <tr><th>Event</th><th>Severity</th><th>Areas</th><th>Effective</th><th>Expires</th></tr>
-      {% for a in weather_alerts %}
+      <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Reason</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in teco_closed_events %}
       <tr>
-        <td>{{ a.event_type }}</td>
-        <td>{{ a.severity or "—" }}</td>
-        <td>{{ a.areas }}</td>
-        <td>{{ a.effective | humanize }}</td>
-        <td>{{ a.expires | humanize }}</td>
+        <td><a href="/incident?source=teco&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-ok">{{ e.peak_customer_count }}</td>
+        <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
       </tr>
       {% endfor %}
     </table>
   {% else %}
-    <div class="empty">No weather alerts logged yet.</div>
+    <div class="empty">Nothing resolved yet.</div>
   {% endif %}
   </div>
 
-  <h2>Weather / Outage Correlation (FPL) &mdash; last {{ window_days }} days</h2>
+  <h3>Duke — Recently Resolved</h3>
+  <div class="wrap">
+  {% if duke_closed_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Cause</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in duke_closed_events %}
+      <tr>
+        <td><a href="/incident?source=duke&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-ok">{{ e.peak_customer_count }}</td>
+        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>JEA — Recently Resolved</h3>
+  <div class="wrap">
+  {% if jea_closed_events %}
+    <table>
+      <tr><th>County</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in jea_closed_events %}
+      <tr>
+        <td><a href="/incident?source=jea&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>City of Tallahassee — Recently Resolved</h3>
+  <div class="wrap">
+  {% if tallahassee_closed_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Area</th><th>Peak Customers</th><th>Cause</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in tallahassee_closed_events %}
+      <tr>
+        <td><a href="/incident?source=tallahassee&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td>{{ e.region_name or "—" }}</td>
+        <td class="pct-ok">{{ e.peak_customer_count }}</td>
+        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>Talquin — Recently Resolved</h3>
+  <div class="wrap">
+  {% if talquin_closed_events %}
+    <table>
+      <tr><th>County</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in talquin_closed_events %}
+      <tr>
+        <td><a href="/incident?source=talquin&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>FPUC — Recently Resolved</h3>
+  <div class="wrap">
+  {% if fpuc_closed_events %}
+    <table>
+      <tr><th>Territory</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in fpuc_closed_events %}
+      <tr>
+        <td><a href="/incident?source=fpuc&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>FPUC — Recently Resolved Incidents</h3>
+  <div class="wrap">
+  {% if fpuc_closed_incidents %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in fpuc_closed_incidents %}
+      <tr>
+        <td><a href="/incident?source=fpuc_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-ok">{{ e.peak_customer_count }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+    </div>
+  </details>
+
+  <details class="category-block" id="cat-correlation">
+    <summary>Weather / Outage Correlation</summary>
+    <div class="category-body">
+  <h3>Weather / Outage Correlation (FPL) &mdash; last {{ window_days }} days</h3>
   <div class="wrap">
   {% if correlation %}
     <table>
@@ -526,52 +910,7 @@
   {% endif %}
   </div>
 
-  <h2>TECO — Currently Open Incidents ({{ teco_open_events|length }})</h2>
-  <div class="wrap">
-  {% if teco_open_events %}
-    <table>
-      <tr><th>Incident</th><th>County</th><th>Current</th><th>Peak</th><th>Reason</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
-      {% for e in teco_open_events %}
-      <tr>
-        <td><a href="/incident?source=teco&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
-        <td>{{ e.county or "—" }}</td>
-        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
-        <td class="pct-bad">{{ e.peak_customer_count }}</td>
-        <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
-        <td>{{ e.estimated_restoration or "—" }}</td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">No open TECO incidents right now.</div>
-  {% endif %}
-  </div>
-
-  <h2>TECO — Recently Resolved</h2>
-  <div class="wrap">
-  {% if teco_closed_events %}
-    <table>
-      <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Reason</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
-      {% for e in teco_closed_events %}
-      <tr>
-        <td><a href="/incident?source=teco&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
-        <td>{{ e.county or "—" }}</td>
-        <td class="pct-ok">{{ e.peak_customer_count }}</td>
-        <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.end_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">Nothing resolved yet.</div>
-  {% endif %}
-  </div>
-
-  <h2>Weather / Outage Correlation (TECO) &mdash; last {{ window_days }} days</h2>
+  <h3>Weather / Outage Correlation (TECO) &mdash; last {{ window_days }} days</h3>
   <div class="wrap">
   {% if teco_correlation %}
     <table>
@@ -600,51 +939,7 @@
   {% endif %}
   </div>
 
-  <h2>Duke — Currently Open Incidents ({{ duke_open_events|length }})</h2>
-  <div class="wrap">
-  {% if duke_open_events %}
-    <table>
-      <tr><th>Incident</th><th>County</th><th>Current</th><th>Peak</th><th>Cause</th><th>Started</th><th>Ongoing</th></tr>
-      {% for e in duke_open_events %}
-      <tr>
-        <td><a href="/incident?source=duke&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
-        <td>{{ e.county or "—" }}</td>
-        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
-        <td class="pct-bad">{{ e.peak_customer_count }}</td>
-        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">No open Duke incidents right now.</div>
-  {% endif %}
-  </div>
-
-  <h2>Duke — Recently Resolved</h2>
-  <div class="wrap">
-  {% if duke_closed_events %}
-    <table>
-      <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Cause</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
-      {% for e in duke_closed_events %}
-      <tr>
-        <td><a href="/incident?source=duke&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
-        <td>{{ e.county or "—" }}</td>
-        <td class="pct-ok">{{ e.peak_customer_count }}</td>
-        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.end_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">Nothing resolved yet.</div>
-  {% endif %}
-  </div>
-
-  <h2>Weather / Outage Correlation (Duke) &mdash; last {{ window_days }} days</h2>
+  <h3>Weather / Outage Correlation (Duke) &mdash; last {{ window_days }} days</h3>
   <div class="wrap">
   {% if duke_correlation %}
     <table>
@@ -673,49 +968,7 @@
   {% endif %}
   </div>
 
-  <h2>JEA — Currently Open Outages ({{ jea_open_events|length }})</h2>
-  <div class="wrap">
-  {% if jea_open_events %}
-    <table>
-      <tr><th>County</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
-      {% for e in jea_open_events %}
-      <tr>
-        <td><a href="/incident?source=jea&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
-        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
-        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
-        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
-        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">No open JEA outages right now.</div>
-  {% endif %}
-  </div>
-
-  <h2>JEA — Recently Resolved</h2>
-  <div class="wrap">
-  {% if jea_closed_events %}
-    <table>
-      <tr><th>County</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
-      {% for e in jea_closed_events %}
-      <tr>
-        <td><a href="/incident?source=jea&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
-        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.end_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">Nothing resolved yet.</div>
-  {% endif %}
-  </div>
-
-  <h2>Weather / Outage Correlation (JEA) &mdash; last {{ window_days }} days</h2>
+  <h3>Weather / Outage Correlation (JEA) &mdash; last {{ window_days }} days</h3>
   <div class="wrap">
   {% if jea_correlation %}
     <table>
@@ -744,55 +997,7 @@
   {% endif %}
   </div>
 
-  <h2>City of Tallahassee — Currently Open Incidents ({{ tallahassee_open_events|length }})</h2>
-  <div class="wrap">
-  {% if tallahassee_open_events %}
-    <table>
-      <tr><th>Incident</th><th>County</th><th>Area</th><th>Current</th><th>Peak</th><th>Cause</th><th>Status</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
-      {% for e in tallahassee_open_events %}
-      <tr>
-        <td><a href="/incident?source=tallahassee&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
-        <td>{{ e.county or "—" }}</td>
-        <td>{{ e.region_name or "—" }}</td>
-        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
-        <td class="pct-bad">{{ e.peak_customer_count }}</td>
-        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
-        <td>{{ e.current_status or "—" }}</td>
-        <td>{{ e.current_estimated_restoration | humanize }}</td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">No open Tallahassee incidents right now.</div>
-  {% endif %}
-  </div>
-
-  <h2>City of Tallahassee — Recently Resolved</h2>
-  <div class="wrap">
-  {% if tallahassee_closed_events %}
-    <table>
-      <tr><th>Incident</th><th>County</th><th>Area</th><th>Peak Customers</th><th>Cause</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
-      {% for e in tallahassee_closed_events %}
-      <tr>
-        <td><a href="/incident?source=tallahassee&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
-        <td>{{ e.county or "—" }}</td>
-        <td>{{ e.region_name or "—" }}</td>
-        <td class="pct-ok">{{ e.peak_customer_count }}</td>
-        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.end_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">Nothing resolved yet.</div>
-  {% endif %}
-  </div>
-
-  <h2>Weather / Outage Correlation (City of Tallahassee) &mdash; last {{ window_days }} days</h2>
+  <h3>Weather / Outage Correlation (City of Tallahassee) &mdash; last {{ window_days }} days</h3>
   <div class="wrap">
   {% if tallahassee_correlation %}
     <table>
@@ -821,49 +1026,7 @@
   {% endif %}
   </div>
 
-  <h2>Talquin — Currently Open Outages ({{ talquin_open_events|length }})</h2>
-  <div class="wrap">
-  {% if talquin_open_events %}
-    <table>
-      <tr><th>County</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
-      {% for e in talquin_open_events %}
-      <tr>
-        <td><a href="/incident?source=talquin&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
-        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
-        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
-        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
-        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">No open Talquin outages right now.</div>
-  {% endif %}
-  </div>
-
-  <h2>Talquin — Recently Resolved</h2>
-  <div class="wrap">
-  {% if talquin_closed_events %}
-    <table>
-      <tr><th>County</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
-      {% for e in talquin_closed_events %}
-      <tr>
-        <td><a href="/incident?source=talquin&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
-        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.end_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">Nothing resolved yet.</div>
-  {% endif %}
-  </div>
-
-  <h2>Weather / Outage Correlation (Talquin) &mdash; last {{ window_days }} days</h2>
+  <h3>Weather / Outage Correlation (Talquin) &mdash; last {{ window_days }} days</h3>
   <div class="wrap">
   {% if talquin_correlation %}
     <table>
@@ -892,104 +1055,7 @@
   {% endif %}
   </div>
 
-  <h2>FPUC — Currently Open Outages ({{ fpuc_open_events|length }})</h2>
-  <p class="section-note">
-    Florida Public Utilities Corporation's live feed reports one combined, authoritative total across its whole
-    (non-adjacent) Florida electric territory &mdash; historically Calhoun, Jackson, Liberty, Nassau, and Wakulla
-    counties. "Territory" below isn't a real county name; see the per-incident section further down for real
-    county-level detail on whichever outages the feed exposes location data for.
-  </p>
-  <div class="wrap">
-  {% if fpuc_open_events %}
-    <table>
-      <tr><th>Territory</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
-      {% for e in fpuc_open_events %}
-      <tr>
-        <td><a href="/incident?source=fpuc&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
-        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
-        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
-        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
-        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">No open FPUC outages right now.</div>
-  {% endif %}
-  </div>
-
-  <h2>FPUC — Recently Resolved</h2>
-  <div class="wrap">
-  {% if fpuc_closed_events %}
-    <table>
-      <tr><th>Territory</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
-      {% for e in fpuc_closed_events %}
-      <tr>
-        <td><a href="/incident?source=fpuc&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
-        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.end_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">Nothing resolved yet.</div>
-  {% endif %}
-  </div>
-
-  <h2>FPUC — Currently Open Incidents, Real Counties ({{ fpuc_open_incidents|length }})</h2>
-  <p class="section-note">
-    Confirmed real 2026-07-13: some (not all) FPUC outages come with real coordinates, reverse-geocoded to a
-    county the same way Duke's incidents are. The app's own config says some outages are deliberately withheld
-    here for privacy, so this list can undercount relative to the combined total above &mdash; treat it as real
-    and useful, not complete.
-  </p>
-  <div class="wrap">
-  {% if fpuc_open_incidents %}
-    <table>
-      <tr><th>Incident</th><th>County</th><th>Substation / Feeder</th><th>Current</th><th>Peak</th><th>Started</th><th>Ongoing</th></tr>
-      {% for e in fpuc_open_incidents %}
-      <tr>
-        <td><a href="/incident?source=fpuc_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
-        <td>{{ e.county or "—" }}</td>
-        <td>{{ e.substation or "—" }} / {{ e.feeder or "—" }}</td>
-        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
-        <td class="pct-bad">{{ e.peak_customer_count }}</td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">No open FPUC incidents with location data right now.</div>
-  {% endif %}
-  </div>
-
-  <h2>FPUC — Recently Resolved Incidents</h2>
-  <div class="wrap">
-  {% if fpuc_closed_incidents %}
-    <table>
-      <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
-      {% for e in fpuc_closed_incidents %}
-      <tr>
-        <td><a href="/incident?source=fpuc_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
-        <td>{{ e.county or "—" }}</td>
-        <td class="pct-ok">{{ e.peak_customer_count }}</td>
-        <td>{{ e.start_time | humanize }}</td>
-        <td>{{ e.end_time | humanize }}</td>
-        <td>{{ e.duration }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <div class="empty">Nothing resolved yet.</div>
-  {% endif %}
-  </div>
-
-  <h2>Weather / Outage Correlation (FPUC) &mdash; last {{ window_days }} days</h2>
+  <h3>Weather / Outage Correlation (FPUC) &mdash; last {{ window_days }} days</h3>
   <p class="section-note">
     Built from the real per-incident data above, not the combined total - so this can now show real matches
     (confirmed 2026-07-13), but inherits the same possible undercount.
@@ -1021,5 +1087,26 @@
     <div class="empty">No correlated FPUC incident/weather events right now.</div>
   {% endif %}
   </div>
+    </div>
+  </details>
+
+  <script>
+    // The page auto-refreshes itself every 60s (see the <meta refresh>
+    // above) - a plain <details> would silently re-collapse on every one
+    // of those reloads, since the server doesn't know what a browser had
+    // open. Persisted here in localStorage instead, keyed by each
+    // category's own id, so opening a section actually stays open across
+    // the page's own refresh cycle.
+    document.querySelectorAll('.category-block[id]').forEach((el) => {
+      const key = 'apollo-dashboard-' + el.id;
+      const saved = localStorage.getItem(key);
+      if (saved !== null) {
+        el.open = saved === 'true';
+      }
+      el.addEventListener('toggle', () => {
+        localStorage.setItem(key, el.open);
+      });
+    });
+  </script>
 </body>
 </html>
