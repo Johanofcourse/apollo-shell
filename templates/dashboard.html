@@ -213,22 +213,93 @@
       gap: 0.35rem;
     }
     .heat-now-badge:hover { text-decoration: underline; }
+
+    /* Controls strip - real buttons, not text links buried in the meta
+       subtitle line (that's where these lived at first; too easy to
+       miss). */
+    .controls-strip {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+    .nav-btn {
+      display: inline-block;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.65rem 1.4rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    }
+    .nav-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: 0 5px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+    .nav-btn:active { transform: translateY(0); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4); }
+
+    .window-toggle-group {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .window-toggle-label {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .window-toggle {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+    }
+    .window-toggle a, .window-toggle span {
+      padding: 0.65rem 1.4rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      color: var(--text);
+      transition: background 0.12s ease;
+    }
+    .window-toggle a:hover { background: var(--border); }
+    .window-toggle .active {
+      background: var(--accent);
+      color: #1a1006;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .nav-btn { transition: none; }
+    }
   </style>
 </head>
 <body>
   <h1>Apollo Sentinel — Live Status</h1>
-  <div class="meta">
-    Generated {{ generated_at }} · refreshes every 60s ·
-    <a href="/history" style="color: var(--accent);">County storm history &rarr;</a>
-    · Weather correlation window:
-    {% for choice in window_choices %}
-      {% if choice == window_days %}
-        <strong>{{ choice }}d</strong>
-      {% else %}
-        <a href="/?window={{ choice }}" style="color: var(--accent);">{{ choice }}d</a>
-      {% endif %}
-      {{ "·" if not loop.last }}
-    {% endfor %}
+  <div class="meta">Generated {{ generated_at }} · refreshes every 60s</div>
+
+  <div class="controls-strip">
+    <a href="/history" class="nav-btn">County storm history &rarr;</a>
+
+    <div class="window-toggle-group">
+      <span class="window-toggle-label">Correlation window:</span>
+      <span class="window-toggle">
+        {% for choice in window_choices %}
+          {% if choice == window_days %}
+            <span class="active">{{ choice }}d</span>
+          {% else %}
+            <a href="/?window={{ choice }}">{{ choice }}d</a>
+          {% endif %}
+        {% endfor %}
+      </span>
+    </div>
   </div>
 
   <div class="pipeline-health {{ 'pipeline-health-issue' if any_pipeline_issue else '' }}">
