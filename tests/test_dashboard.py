@@ -50,6 +50,17 @@ class TestExplainPipelineError:
     derives a label/explanation/severity to show alongside it.
     """
 
+    def test_generic_fetch_failed_message_recognized(self):
+        # The message main.py's run_X_cycle() functions raise when a
+        # fetch genuinely fails (2026-07-13 pipeline-visibility fix) -
+        # doesn't carry the original specific network error, so this
+        # exists to avoid it falling into the "other/uncommon" bucket.
+        label, explanation, severity = _explain_pipeline_error(
+            "PRECO fetch returned no records - see the poller's own log for the underlying request error"
+        )
+        assert label == "fetch-failed"
+        assert severity == "warn"
+
     def test_database_locked_is_info_severity(self):
         label, explanation, severity = _explain_pipeline_error("database is locked")
         assert label == "database-lock"

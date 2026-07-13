@@ -926,8 +926,6 @@ class OutageDatabase:
         conn.commit()
 
 
-
-
     def log_multiple_outages(self, utility, outage_list, timestamp=None):
         """
         Insert multiple outage records at once (more efficient)
@@ -937,35 +935,26 @@ class OutageDatabase:
             outage_list: List of dicts with keys: county, customers_out, customers_served
             timestamp: ISO timestamp to record for this batch; defaults to now
         """
-        print(f"DEBUG: log_multiple_outages called with {len(outage_list)} records")
-
         conn = self.connect()
         cursor = conn.cursor()
 
         timestamp = timestamp or datetime.now().isoformat()
-        print(f"DEBUG: Timestamp: {timestamp}")
-        
+
         records = []
         for outage in outage_list:
             county = outage['county']
             customers_out = outage['customers_out']
             customers_served = outage['customers_served']
             percentage_out = (customers_out / customers_served * 100) if customers_served > 0 else 0
-            
+
             records.append((timestamp, utility, county, customers_out, customers_served, percentage_out))
-        
-        print(f"DEBUG: Built {len(records)} records to insert")
-        print(f"DEBUG: First record: {records[0] if records else 'NONE'}")
-        
+
         cursor.executemany('''
             INSERT OR IGNORE INTO outages (timestamp, utility, county, customers_out, customers_served, percentage_out)
             VALUES (?, ?, ?, ?, ?, ?)
         ''', records)
-        
-        print(f"DEBUG: executemany completed, rows affected: {cursor.rowcount}")
-        
+
         conn.commit()
-        print(f"DEBUG: commit completed")
         print(f"Logged {len(records)} outage records for {utility}")
 
 

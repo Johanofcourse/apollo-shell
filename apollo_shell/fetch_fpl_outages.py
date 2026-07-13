@@ -57,12 +57,6 @@ def fetch_fpl_outages():
         
         response = requests.get(FPL_API_URL, headers=headers, timeout=10)
         response.raise_for_status()
-        
-        # Debug: print what we actually got
-        print(f"Status Code: {response.status_code}")
-        print(f"Content Type: {response.headers.get('content-type')}")
-        print(f"First 200 chars of response: {response.text[:200]}")
-        
         return response.json()
     
     except requests.exceptions.RequestException as e:
@@ -213,8 +207,6 @@ def main():
 
     # Convert FPL data format to our database format, combining both feeds
     outage_list = get_combined_fpl_records()
-
-    print(f"DEBUG: Prepared {len(outage_list)} records to save")
 
     # Log all counties at once
     db.log_multiple_outages(UTILITY_NAME, outage_list)

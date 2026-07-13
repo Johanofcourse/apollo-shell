@@ -16,9 +16,9 @@ from fetch_duke_outages import (
 )
 from fetch_jea_outages import get_jea_summary
 from fetch_tallahassee_outages import get_incidents_summary as get_tallahassee_incidents_summary
-from fetch_talquin_outages import get_talquin_records
-from fetch_fpuc_outages import fetch_fpuc_outage_summary, outages_to_records as fpuc_outages_to_records, markers_to_incidents
-from fetch_preco_outages import get_preco_records
+from fetch_talquin_outages import get_talquin_records, TALQUIN_API_URL
+from fetch_fpuc_outages import fetch_fpuc_outage_summary, outages_to_records as fpuc_outages_to_records, markers_to_incidents, FPUC_API_URL
+from fetch_preco_outages import get_preco_records, PRECO_API_URL
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -39,11 +39,23 @@ def run_outage_cycle(db):
     Fetch current FPL outage data (main feed + the separate Panhandle
     feed, combined - see get_combined_fpl_records()), save the snapshot,
     and update outage_events lifecycle tracking (start/end per county).
+
+    Raises if the combined result is empty. FPL's main feed is always
+    configured (a missing config already raises inside
+    fetch_fpl_outages() itself) and reports on 60+ counties every cycle
+    in steady state, so a fully empty result here means the underlying
+    request itself failed - not that nothing is happening statewide.
+    Previously this was silently swallowed (fetch_fpl_outages() catches
+    its own RequestException and returns None), so a real, sustained FPL
+    outage-map failure would never have shown up in pipeline_errors /
+    the dashboard's health strip - only ever a coincidental failure
+    elsewhere, like a database write error. Raising here lets the
+    existing try/except in main()'s poll loop catch and log it, same as
+    every other cycle.
     """
     records = get_combined_fpl_records()
     if not records:
-        print("Skipping outage save - no data fetched")
-        return
+        raise RuntimeError("FPL fetch returned no records - see the poller's own log for the underlying request error")
 
     timestamp = datetime.now().isoformat()
     db.log_multiple_outages(FPL_UTILITY_NAME, records, timestamp=timestamp)
@@ -107,11 +119,18 @@ def run_jea_cycle(db):
     Fetch JEA's live ZIP-level outage report, save the raw per-ZIP
     snapshot, and update jea_outage_events lifecycle tracking (start/end
     per county, rolled up from ZIP-level numbers).
+
+    Raises if zip_records is empty, same reasoning as run_outage_cycle()
+    above - JEA's feed covers every serviced ZIP every cycle in steady
+    state (missing config already raises inside fetch_jea_areas()
+    itself), so an empty result means the request/parsing chain failed,
+    not that nothing is currently affected. Same silent-swallow gap as
+    FPL previously had (fetch_jea_areas() catches its own failure and
+    returns []).
     """
     zip_records, county_rollup = get_jea_summary()
     if not zip_records:
-        print("Skipping JEA save - no data fetched")
-        return
+        raise RuntimeError("JEA fetch returned no records - see the poller's own log for the underlying request error")
 
     timestamp = datetime.now().isoformat()
     db.log_jea_outages(zip_records, timestamp=timestamp)
@@ -140,9 +159,19 @@ def run_talquin_cycle(db):
     save the raw snapshot, and update talquin_outage_events lifecycle
     tracking (start/end per county) - a county-rollup source like
     FPL/JEA, not an incident list.
+
+    Raises only when TALQUIN_API_URL is actually configured but the
+    fetch still came back empty - same reasoning as run_outage_cycle()
+    above (Talquin's feed reports on all 10 counties every cycle in
+    steady state, so that combination means the request failed, not
+    that nothing is happening). An unset URL is left exactly as before
+    (a deployment where this integration simply isn't turned on yet,
+    not a failure).
     """
     records = get_talquin_records()
     if not records:
+        if TALQUIN_API_URL:
+            raise RuntimeError("Talquin fetch returned no records - see the poller's own log for the underlying request error")
         print("Skipping Talquin save - no data fetched")
         return
 
@@ -157,9 +186,15 @@ def run_preco_cycle(db):
     data, save the raw snapshot, and update preco_outage_events
     lifecycle tracking (start/end per county) - a county-rollup source
     like Talquin, not an incident list.
+
+    Raises only when PRECO_API_URL is actually configured but the fetch
+    still came back empty - same reasoning/config-check pattern as
+    run_talquin_cycle() above.
     """
     records = get_preco_records()
     if not records:
+        if PRECO_API_URL:
+            raise RuntimeError("PRECO fetch returned no records - see the poller's own log for the underlying request error")
         print("Skipping PRECO save - no data fetched")
         return
 
@@ -177,9 +212,15 @@ def run_fpuc_cycle(db):
     county, confirmed possible 2026-07-13). One fetch, two derived
     views, rather than two separate network calls that could observe
     slightly different live state.
+
+    Raises only when FPUC_API_URL is actually configured but the fetch
+    still came back empty - same reasoning/config-check pattern as
+    run_talquin_cycle().
     """
     data = fetch_fpuc_outage_summary()
     if not data:
+        if FPUC_API_URL:
+            raise RuntimeError("FPUC fetch returned no data - see the poller's own log for the underlying request error")
         print("Skipping FPUC save - no data fetched")
         return
 

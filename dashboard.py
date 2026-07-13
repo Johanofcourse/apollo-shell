@@ -76,6 +76,12 @@ PIPELINE_SOURCE_DISPLAY_NAMES = {
 # principle as fetch_teco_outages.py's reason/status categorization.
 # Order matters: first matching pattern wins, most specific first.
 PIPELINE_ERROR_EXPLANATIONS = [
+    ("fetch-failed", [r"fetch returned no (records|data)"],
+     "The data source's own request failed, but the specific network "
+     "error (timeout, rate limit, server error, etc.) wasn't captured in "
+     "this message - check the poller's raw log output around this "
+     "timestamp for the exact underlying error.",
+     "warn"),
     ("database-lock", [r"database is locked"],
      "Two parts of our own system tried to write to the local database at "
      "the exact same instant. Not related to the utility's feed at all - "
@@ -885,18 +891,19 @@ def pipeline_errors():
 def incident():
     """
     Detail view for one specific outage/incident, reached by clicking a
-    row in one of the four "Currently Open"/"Recently Resolved" tables
-    on the main dashboard - not meant to be reached by typing an id
-    from memory.
+    row in one of the "Currently Open"/"Recently Resolved" tables on the
+    main dashboard (one pair per utility) - not meant to be reached by
+    typing an id from memory.
 
-    TECO/Duke have a real incident_id, so one id is enough to find
-    everything on file for it (every lifecycle episode, plus the full
-    raw snapshot timeline - both tables log a fresh row every poll
-    cycle while active, so this is a real timeline, not just a start/
-    end pair). FPL/JEA never give us a discrete incident identity, only
-    a county-level rollup, so a specific occurrence there is identified
-    by (county, start_time) instead - the same natural key their own
-    outage_events/jea_outage_events unique index already enforces.
+    TECO/Duke/City of Tallahassee/FPUC's per-incident view have a real
+    incident_id, so one id is enough to find everything on file for it
+    (every lifecycle episode, plus the full raw snapshot timeline - both
+    tables log a fresh row every poll cycle while active, so this is a
+    real timeline, not just a start/end pair). FPL/JEA/Talquin/FPUC's
+    combined-territory view/PRECO never give us a discrete incident
+    identity, only a county-level rollup, so a specific occurrence there
+    is identified by (county, start_time) instead - the same natural key
+    their own outage_events-shaped tables' unique index already enforces.
     """
     source = request.args.get("source", "").strip().lower()
     db = OutageDatabase()
