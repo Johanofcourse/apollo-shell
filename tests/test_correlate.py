@@ -16,7 +16,7 @@ import pytest
 from correlate import (
     weather_match_confidence, find_correlations, find_jea_correlations,
     find_tallahassee_correlations, find_talquin_correlations,
-    duke_correlation_summary, correlation_summary,
+    find_fpuc_correlations, duke_correlation_summary, correlation_summary,
 )
 from database import OutageDatabase
 
@@ -341,3 +341,26 @@ class TestFindTalquinCorrelations:
         db.close()
 
         assert find_talquin_correlations(db_path, days=None) == []
+
+
+class TestFindFpucCorrelations:
+    """
+    FPUC has no real per-county breakdown (see
+    fetch_fpuc_outages.COMBINED_TERRITORY_LABEL) - these tests confirm
+    that's a deliberate, self-documenting empty result, not a silent
+    failure: even a real active outage, logged at the exact same time
+    as an overlapping alert for one of FPUC's real historical counties,
+    still can't match, because the placeholder territory string isn't a
+    real county name any alert's areas field would ever contain.
+    """
+
+    def test_placeholder_territory_never_matches_a_real_county_alert(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Gadsden"))
+        db.log_fpuc_outages(
+            [{"county": "Multiple Counties (NW FL & Nassau)", "customers_out": 50, "customers_served": 30668}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_fpuc_correlations(db_path, days=None) == []

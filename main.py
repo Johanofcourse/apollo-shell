@@ -17,6 +17,7 @@ from fetch_duke_outages import (
 from fetch_jea_outages import get_jea_summary
 from fetch_tallahassee_outages import get_incidents_summary as get_tallahassee_incidents_summary
 from fetch_talquin_outages import get_talquin_records
+from fetch_fpuc_outages import get_fpuc_records
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -24,6 +25,7 @@ from correlate import (
     find_jea_correlations,
     find_tallahassee_correlations,
     find_talquin_correlations,
+    find_fpuc_correlations,
 )
 
 
@@ -147,10 +149,27 @@ def run_talquin_cycle(db):
     db.sync_talquin_outage_events(records, timestamp=timestamp)
 
 
+def run_fpuc_cycle(db):
+    """
+    Fetch FPUC's live combined-territory outage data, save the raw
+    snapshot, and update fpuc_outage_events lifecycle tracking. Always
+    exactly one "county" row (see fetch_fpuc_outages.COMBINED_TERRITORY_LABEL) -
+    this source has no real per-county breakdown available.
+    """
+    records = get_fpuc_records()
+    if not records:
+        print("Skipping FPUC save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_fpuc_outages(records, timestamp=timestamp)
+    db.sync_fpuc_outage_events(records, timestamp=timestamp)
+
+
 def run_correlation_cycle():
     """
     Compute current outage/weather correlations (FPL, TECO, Duke, JEA,
-    City of Tallahassee, and Talquin) and log a summary.
+    City of Tallahassee, Talquin, and FPUC) and log a summary.
     """
     matches = find_correlations()
     if not matches:
@@ -230,6 +249,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    fpuc_matches = find_fpuc_correlations()
+    if not fpuc_matches:
+        print("FPUC correlation: no matches this cycle (expected - no real per-county breakdown for this source)")
+    else:
+        fpuc_summary = correlation_summary(fpuc_matches)
+        print(f"FPUC correlation: {len(fpuc_matches)} matches across {len(fpuc_summary)} counties")
+        for county, stats in fpuc_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def main():
     """
@@ -287,6 +319,12 @@ def main():
             except Exception as e:
                 print(f"Talquin fetch cycle failed: {e}")
                 db.log_pipeline_error("talquin", str(e))
+
+            try:
+                run_fpuc_cycle(db)
+            except Exception as e:
+                print(f"FPUC fetch cycle failed: {e}")
+                db.log_pipeline_error("fpuc", str(e))
 
             try:
                 run_correlation_cycle()

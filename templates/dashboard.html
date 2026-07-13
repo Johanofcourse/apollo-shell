@@ -57,6 +57,12 @@
       font-style: italic;
       padding: 0.75rem 0;
     }
+    .section-note {
+      color: var(--muted);
+      font-size: 0.85rem;
+      max-width: 60rem;
+      margin: -0.5rem 0 0.75rem;
+    }
     .pct-bad { color: var(--accent); font-weight: 600; }
     .pct-ok { color: var(--ok); }
     .wrap { max-width: 100%; overflow-x: auto; }
@@ -883,6 +889,86 @@
     </table>
   {% else %}
     <div class="empty">No correlated Talquin outage/weather events right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>FPUC — Currently Open Outages ({{ fpuc_open_events|length }})</h2>
+  <p class="section-note">
+    Florida Public Utilities Corporation's live feed only reports one combined total across its whole
+    (non-adjacent) Florida electric territory &mdash; historically Calhoun, Jackson, Liberty, Nassau, and Wakulla
+    counties. No real per-county breakdown is available from this source yet, so "Territory" below isn't a real
+    county name.
+  </p>
+  <div class="wrap">
+  {% if fpuc_open_events %}
+    <table>
+      <tr><th>Territory</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in fpuc_open_events %}
+      <tr>
+        <td><a href="/incident?source=fpuc&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
+        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open FPUC outages right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>FPUC — Recently Resolved</h2>
+  <div class="wrap">
+  {% if fpuc_closed_events %}
+    <table>
+      <tr><th>Territory</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in fpuc_closed_events %}
+      <tr>
+        <td><a href="/incident?source=fpuc&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h2>Weather / Outage Correlation (FPUC) &mdash; last {{ window_days }} days</h2>
+  <p class="section-note">
+    Always empty by design - FPUC's placeholder territory label can't match a real NWS alert area. See note above.
+  </p>
+  <div class="wrap">
+  {% if fpuc_correlation %}
+    <table>
+      <tr><th>Territory</th><th>Correlated Outages</th><th>Peak % Out</th><th>Alert Types</th><th>Confidence</th></tr>
+      {% for county, stats in fpuc_correlation.items() %}
+      <tr>
+        <td>{{ county }}</td>
+        <td>{{ stats.outage_count }}</td>
+        <td>{{ "%.2f"|format(stats.max_percentage_out) }}%</td>
+        <td>{{ stats.alert_types_display }}</td>
+        <td>
+          {% if stats.confidence_bar %}
+          <div class="conf-bar">
+            {% for seg in stats.confidence_bar %}
+            <div class="conf-seg-{{ seg.tier }}" style="width: {{ seg.pct }}%;" title="{{ seg.tier }} ×{{ seg.count }}"></div>
+            {% endfor %}
+          </div>
+          <div class="conf-caption">{{ stats.confidence_display }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No correlated FPUC outage/weather events right now.</div>
   {% endif %}
   </div>
 </body>
