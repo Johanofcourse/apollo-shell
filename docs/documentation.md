@@ -370,9 +370,27 @@ there was never a zero-customer row to leak in in the first place.
 Fixed with one line each (`WHERE customers_out > 0`), which also nearly
 halved FPL's correlation compute time as a free side effect.
 
-The bigger question raised alongside this one is still open, on
-purpose: these correlation numbers are all-time since the poller first
-started in April, with no rolling window, and they'll only keep growing
-less meaningful the longer this runs. Fixing the over-count wasn't the
-same thing as fixing that, and didn't pretend to be - a real design
-pass on what "recent" should mean here is still ahead.
+The bigger question raised alongside this one didn't stay open for
+long, though - asked to explain one more row a little later the same
+night ("Broward: Air Quality Alert x190... is that a day, a month,
+since we started tracking?"), and this time the honest answer was
+"good question, let's actually fix that" instead of just explaining the
+mechanism.
+
+Two things were tangled up in that one number, so both got fixed at
+once. First, no time bound at all - these counts had been all-time
+since the poller first started back in April, silently growing less
+meaningful by the day. Second, even bounded, the count was still wrong
+at the unit level: it counted every *(outage snapshot, alert) pair* a
+15-minute poll cycle happened to overlap, not anything close to "190
+alerts." A single Air Quality Alert lasting a day and a half, checked
+every 15 minutes, racks up well over a hundred matches against the same
+one real event.
+
+The fix: a real `days=` window on every correlation query (a toggle
+between 7 and 30 days now sits right on the dashboard, defaulting to
+30), and the alert tally switched from counting matches to counting
+*distinct alerts* - NWS's own alert id, de-duplicated. Same for the
+outage side. Broward's "x190" became something closer to a small,
+believable number of actual distinct events - the kind of thing someone
+could read out loud and have it mean something.

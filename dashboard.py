@@ -22,34 +22,43 @@ from fetch_jea_outages import UTILITY_NAME as JEA_UTILITY_NAME
 app = Flask(__name__)
 
 # find_correlations()/find_teco_correlations()/find_duke_correlations()/
-# find_jea_correlations() each nested-loop the *entire* raw history of
-# their source table against every weather alert in plain Python -
-# measured 2026-07-12 at ~35s combined once outages/teco_incidents/
-# duke_incidents grew into the tens of thousands of rows (a fresh row
-# gets logged every 15-min poll cycle per county/incident, forever, so
-# this only gets slower over time). The underlying data only actually
-# changes once per poll cycle, but the dashboard auto-refreshes every
-# 60s (see the <meta http-equiv="refresh"> in dashboard.html), so most
-# reloads were recomputing an answer that couldn't have changed. Cached
-# here with a short TTL rather than rewriting the matching into SQL -
-# a much smaller, lower-risk fix for the same practical problem.
+# find_jea_correlations() each nested-loop the raw history of their
+# source table against every weather alert in plain Python - measured
+# 2026-07-12 at ~35s combined once outages/teco_incidents/duke_incidents
+# grew into the tens of thousands of rows (a fresh row gets logged
+# every 15-min poll cycle per county/incident, forever, so this only
+# gets slower over time). The underlying data only actually changes
+# once per poll cycle, but the dashboard auto-refreshes every 60s (see
+# the <meta http-equiv="refresh"> in dashboard.html), so most reloads
+# were recomputing an answer that couldn't have changed. Cached here
+# with a short TTL rather than rewriting the matching into SQL - a much
+# smaller, lower-risk fix for the same practical problem.
 CORRELATION_CACHE_TTL_SECONDS = 300
-_correlation_cache = {"computed_at": 0.0, "data": None}
+
+# Default window for the correlation tables - added 2026-07-12 alongside
+# a real over-counting bug fix (see correlate.py). Without a window
+# these counts are all-time since the poller first started and only
+# ever grow less meaningful; the dashboard also offers a 7-day toggle
+# (see the /?window=7 query param below). Cache is keyed by window
+# since 7-day and 30-day results genuinely differ.
+DEFAULT_CORRELATION_WINDOW_DAYS = 30
+CORRELATION_WINDOW_CHOICES = (7, 30)
+_correlation_cache = {}
 
 
-def _get_cached_correlations(db_path):
+def _get_cached_correlations(db_path, days):
     now = time.time()
-    if _correlation_cache["data"] is not None and (now - _correlation_cache["computed_at"]) < CORRELATION_CACHE_TTL_SECONDS:
-        return _correlation_cache["data"]
+    cached = _correlation_cache.get(days)
+    if cached is not None and (now - cached["computed_at"]) < CORRELATION_CACHE_TTL_SECONDS:
+        return cached["data"]
 
     data = (
-        find_correlations(db_path),
-        find_teco_correlations(db_path),
-        find_duke_correlations(db_path),
-        find_jea_correlations(db_path),
+        find_correlations(db_path, days=days),
+        find_teco_correlations(db_path, days=days),
+        find_duke_correlations(db_path, days=days),
+        find_jea_correlations(db_path, days=days),
     )
-    _correlation_cache["data"] = data
-    _correlation_cache["computed_at"] = now
+    _correlation_cache[days] = {"data": data, "computed_at": now}
     return data
 
 
@@ -251,6 +260,13 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
 
 @app.route("/")
 def index():
+    try:
+        window_days = int(request.args.get("window", DEFAULT_CORRELATION_WINDOW_DAYS))
+    except ValueError:
+        window_days = DEFAULT_CORRELATION_WINDOW_DAYS
+    if window_days not in CORRELATION_WINDOW_CHOICES:
+        window_days = DEFAULT_CORRELATION_WINDOW_DAYS
+
     db = OutageDatabase()
     db_path = db.db_path
 
@@ -287,7 +303,7 @@ def index():
     for event in jea_closed_events:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
-    matches, teco_matches, duke_matches, jea_matches = _get_cached_correlations(db_path)
+    matches, teco_matches, duke_matches, jea_matches = _get_cached_correlations(db_path, window_days)
 
     correlation = correlation_summary(matches)
     for stats in correlation.values():
@@ -378,6 +394,8 @@ def index():
         pipeline_health_list=pipeline_health_list,
         any_pipeline_issue=any_pipeline_issue,
         heat_summary=heat_summary,
+        window_days=window_days,
+        window_choices=CORRELATION_WINDOW_CHOICES,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 

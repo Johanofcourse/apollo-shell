@@ -1,6 +1,28 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from database import OutageDatabase
+
+
+def _alert_identity(alert):
+    """
+    A stable identity for one alert, for de-duplication - NWS's own
+    alert_id when we have one (the normal case), or a synthetic identity
+    built from its effective time + areas when we don't (~5 known
+    legacy rows from before alert_id tracking existed - see
+    fetch_weather.py's synthetic-id fallback for new ones).
+    """
+    return alert.get("alert_id") or f"noid:{alert.get('effective')}:{alert.get('areas')}"
+
+
+def _window_cutoff(days):
+    """
+    ISO cutoff timestamp for "the last N days," or None if days is None
+    (meaning: no window, all-time - the historical default, still used
+    when a caller doesn't ask for a bounded window).
+    """
+    if days is None:
+        return None
+    return (datetime.now() - timedelta(days=days)).isoformat()
 
 
 def _parse_timestamp(value):
@@ -137,7 +159,7 @@ def weather_match_confidence(event_type, severity):
     return "medium" if severity_score >= 1 else "low"
 
 
-def find_correlations(db_path="outages.db"):
+def find_correlations(db_path="outages.db", days=None):
     """
     Match outage records to weather alerts active in the same county at the
     same time (county name match + effective/expires time overlap).
@@ -150,13 +172,23 @@ def find_correlations(db_path="outages.db"):
     2026-07-12: this was inflating FPL's match counts by ~59% (18,151 ->
     7,495 once filtered, checked directly against the real data).
 
+    days: if given, only considers outage snapshots from the last N
+    days - added 2026-07-12 alongside the above fix, since without a
+    window these counts are all-time since the poller first started and
+    only ever grow. None (the default) preserves the old all-time
+    behavior for any caller that doesn't ask for a window.
+
     Returns a list of {"outage": {...}, "alert": {...}} dicts, one per match.
     """
     db = OutageDatabase(db_path)
     conn = db.connect()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM outages WHERE customers_out > 0')
+    cutoff = _window_cutoff(days)
+    if cutoff is not None:
+        cursor.execute('SELECT * FROM outages WHERE customers_out > 0 AND timestamp >= ?', (cutoff,))
+    else:
+        cursor.execute('SELECT * FROM outages WHERE customers_out > 0')
     outages = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute('SELECT * FROM weather_alerts')
@@ -184,12 +216,16 @@ def find_correlations(db_path="outages.db"):
     return matches
 
 
-def find_teco_correlations(db_path="outages.db"):
+def find_teco_correlations(db_path="outages.db", days=None):
     """
     Match TECO incidents to weather alerts active in the same county at
     the same time. Same logic as find_correlations(), adapted for TECO's
     incident-level schema (county + update_time instead of a plain
     county-rollup timestamp).
+
+    days: same windowing as find_correlations() - bounds by fetched_at
+    (our own poll timestamp), not TECO's own update_time, so the window
+    means "polled in the last N days" consistently across all sources.
 
     Returns a list of {"incident": {...}, "alert": {...}} dicts.
     """
@@ -197,7 +233,11 @@ def find_teco_correlations(db_path="outages.db"):
     conn = db.connect()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM teco_incidents')
+    cutoff = _window_cutoff(days)
+    if cutoff is not None:
+        cursor.execute('SELECT * FROM teco_incidents WHERE fetched_at >= ?', (cutoff,))
+    else:
+        cursor.execute('SELECT * FROM teco_incidents')
     incidents = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute('SELECT * FROM weather_alerts')
@@ -232,6 +272,14 @@ def teco_correlation_summary(matches):
     """
     Aggregate correlated TECO incident/alert pairs by county.
 
+    incident_count and alert_types both count DISTINCT things (added
+    2026-07-12, alongside days= windowing in find_teco_correlations()) -
+    previously counted every matched (incident-snapshot, alert) PAIR, so
+    one long-running alert overlapping many 15-minute poll cycles for
+    the same incident inflated the number far past anything meaningful.
+    incident_count counts distinct (incident_id, fetched_at) snapshots;
+    alert_types counts distinct alert_id per event type.
+
     Returns a dict keyed by county:
         {
             "<county>": {
@@ -243,32 +291,40 @@ def teco_correlation_summary(matches):
             ...
         }
     """
-    summary = {}
+    raw = {}
 
     for match in matches:
         county = match["incident"]["county"]
-        entry = summary.setdefault(county, {
-            "incident_count": 0,
+        entry = raw.setdefault(county, {
+            "incident_keys": set(),
             "max_customer_count": 0,
-            "alert_types": {},
+            "alert_type_ids": {},
             "confidence_breakdown": {},
         })
 
-        entry["incident_count"] += 1
+        entry["incident_keys"].add((match["incident"]["incident_id"], match["incident"]["fetched_at"]))
         entry["max_customer_count"] = max(
             entry["max_customer_count"], match["incident"]["customer_count"] or 0
         )
 
         event_type = match["alert"]["event_type"]
-        entry["alert_types"][event_type] = entry["alert_types"].get(event_type, 0) + 1
+        entry["alert_type_ids"].setdefault(event_type, set()).add(_alert_identity(match["alert"]))
 
         confidence = match["confidence"]
         entry["confidence_breakdown"][confidence] = entry["confidence_breakdown"].get(confidence, 0) + 1
 
-    return summary
+    return {
+        county: {
+            "incident_count": len(entry["incident_keys"]),
+            "max_customer_count": entry["max_customer_count"],
+            "alert_types": {et: len(ids) for et, ids in entry["alert_type_ids"].items()},
+            "confidence_breakdown": entry["confidence_breakdown"],
+        }
+        for county, entry in raw.items()
+    }
 
 
-def find_duke_correlations(db_path="outages.db"):
+def find_duke_correlations(db_path="outages.db", days=None):
     """
     Match Duke Energy incidents to weather alerts active in the same
     county at the same time. Same logic as find_teco_correlations(),
@@ -276,13 +332,19 @@ def find_duke_correlations(db_path="outages.db"):
     update_time (unlike TECO's), so fetched_at (our own poll timestamp)
     is used as the incident time instead.
 
+    days: same windowing as find_correlations()/find_teco_correlations().
+
     Returns a list of {"incident": {...}, "alert": {...}} dicts.
     """
     db = OutageDatabase(db_path)
     conn = db.connect()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM duke_incidents')
+    cutoff = _window_cutoff(days)
+    if cutoff is not None:
+        cursor.execute('SELECT * FROM duke_incidents WHERE fetched_at >= ?', (cutoff,))
+    else:
+        cursor.execute('SELECT * FROM duke_incidents')
     incidents = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute('SELECT * FROM weather_alerts')
@@ -315,7 +377,9 @@ def find_duke_correlations(db_path="outages.db"):
 
 def duke_correlation_summary(matches):
     """
-    Aggregate correlated Duke incident/alert pairs by county.
+    Aggregate correlated Duke incident/alert pairs by county. Same
+    distinct-counting fix as teco_correlation_summary() above (2026-07-12) -
+    see its docstring.
 
     Returns a dict keyed by county:
         {
@@ -328,32 +392,40 @@ def duke_correlation_summary(matches):
             ...
         }
     """
-    summary = {}
+    raw = {}
 
     for match in matches:
         county = match["incident"]["county"]
-        entry = summary.setdefault(county, {
-            "incident_count": 0,
+        entry = raw.setdefault(county, {
+            "incident_keys": set(),
             "max_customer_count": 0,
-            "alert_types": {},
+            "alert_type_ids": {},
             "confidence_breakdown": {},
         })
 
-        entry["incident_count"] += 1
+        entry["incident_keys"].add((match["incident"]["incident_id"], match["incident"]["fetched_at"]))
         entry["max_customer_count"] = max(
             entry["max_customer_count"], match["incident"]["customer_count"] or 0
         )
 
         event_type = match["alert"]["event_type"]
-        entry["alert_types"][event_type] = entry["alert_types"].get(event_type, 0) + 1
+        entry["alert_type_ids"].setdefault(event_type, set()).add(_alert_identity(match["alert"]))
 
         confidence = match["confidence"]
         entry["confidence_breakdown"][confidence] = entry["confidence_breakdown"].get(confidence, 0) + 1
 
-    return summary
+    return {
+        county: {
+            "incident_count": len(entry["incident_keys"]),
+            "max_customer_count": entry["max_customer_count"],
+            "alert_types": {et: len(ids) for et, ids in entry["alert_type_ids"].items()},
+            "confidence_breakdown": entry["confidence_breakdown"],
+        }
+        for county, entry in raw.items()
+    }
 
 
-def find_jea_correlations(db_path="outages.db"):
+def find_jea_correlations(db_path="outages.db", days=None):
     """
     Match JEA's raw per-ZIP outage snapshots to weather alerts active in
     the same county at the same time. Same logic/shape as
@@ -371,6 +443,8 @@ def find_jea_correlations(db_path="outages.db"):
     data - proportionally worse than FPL's ~59% since JEA's ZIP-level
     polling logs even more "nothing happening" rows per real outage).
 
+    days: same windowing as find_correlations().
+
     Returns a list of {"outage": {...}, "alert": {...}} dicts - reuse
     correlation_summary() below directly, since the shape matches FPL's.
     """
@@ -378,7 +452,11 @@ def find_jea_correlations(db_path="outages.db"):
     conn = db.connect()
     cursor = conn.cursor()
 
-    cursor.execute('SELECT * FROM jea_outages WHERE customers_out > 0')
+    cutoff = _window_cutoff(days)
+    if cutoff is not None:
+        cursor.execute('SELECT * FROM jea_outages WHERE customers_out > 0 AND timestamp >= ?', (cutoff,))
+    else:
+        cursor.execute('SELECT * FROM jea_outages WHERE customers_out > 0')
     outages = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute('SELECT * FROM weather_alerts')
@@ -411,7 +489,19 @@ def find_jea_correlations(db_path="outages.db"):
 
 def correlation_summary(matches):
     """
-    Aggregate correlated outage/alert pairs by county.
+    Aggregate correlated outage/alert pairs by county (shared by FPL and
+    JEA - their match shape is identical, keyed "outage"/percentage_out).
+
+    outage_count and alert_types both count DISTINCT things (added
+    2026-07-12, alongside days= windowing in find_correlations()/
+    find_jea_correlations()) - previously counted every matched (outage-
+    snapshot, alert) PAIR, so one long-running alert overlapping many
+    15-minute poll cycles for the same outage inflated the number far
+    past anything meaningful (a real example: "Air Quality Alert x190"
+    on a live dashboard row, which was really a handful of distinct
+    alerts re-counted once per poll cycle each happened to overlap).
+    outage_count now counts distinct (county, timestamp) raw snapshots;
+    alert_types counts distinct alert_id per event type.
 
     Returns a dict keyed by county:
         {
@@ -424,29 +514,37 @@ def correlation_summary(matches):
             ...
         }
     """
-    summary = {}
+    raw = {}
 
     for match in matches:
         county = match["outage"]["county"]
-        entry = summary.setdefault(county, {
-            "outage_count": 0,
+        entry = raw.setdefault(county, {
+            "outage_keys": set(),
             "max_percentage_out": 0.0,
-            "alert_types": {},
+            "alert_type_ids": {},
             "confidence_breakdown": {},
         })
 
-        entry["outage_count"] += 1
+        entry["outage_keys"].add((match["outage"]["county"], match["outage"]["timestamp"]))
         entry["max_percentage_out"] = max(
             entry["max_percentage_out"], match["outage"]["percentage_out"]
         )
 
         event_type = match["alert"]["event_type"]
-        entry["alert_types"][event_type] = entry["alert_types"].get(event_type, 0) + 1
+        entry["alert_type_ids"].setdefault(event_type, set()).add(_alert_identity(match["alert"]))
 
         confidence = match["confidence"]
         entry["confidence_breakdown"][confidence] = entry["confidence_breakdown"].get(confidence, 0) + 1
 
-    return summary
+    return {
+        county: {
+            "outage_count": len(entry["outage_keys"]),
+            "max_percentage_out": entry["max_percentage_out"],
+            "alert_types": {et: len(ids) for et, ids in entry["alert_type_ids"].items()},
+            "confidence_breakdown": entry["confidence_breakdown"],
+        }
+        for county, entry in raw.items()
+    }
 
 
 def main():

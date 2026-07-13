@@ -220,23 +220,33 @@
       Separately flagged and deferred: these correlation counts are still
       all-time-since-April-8-2026 with no rolling window, which will keep
       growing indefinitely and needs its own real design pass eventually
-      (see "Open question: unbounded correlation window" just below) -
-      this fix only addresses the over-counting, not the unbounded-window
-      problem.
-
-**Open question: unbounded correlation window (not yet designed, not
-started).** The correlation counts/alert-type tallies shown on the
-dashboard are all-time since the poller first started (2026-04-08) with
-no rolling window - they'll keep growing forever and become less
-meaningful as "recent" and "months ago" blur into one number. Also the
-direct cause of the dashboard's growing cold-load time (see the
-correlation-cache entry above) - a time-windowed correlation (e.g. "last
-30 days") would likely fix both problems at once, not just the display
-one, since it would bound the query instead of scanning the full
-history every time. Not scoped yet: what window length actually makes
-sense, whether it should be configurable, whether older data should
-still be queryable some other way (a separate historical correlation
-view?) rather than just disappearing from the live one.
+      (see the windowed-correlation entry directly below, done the same
+      night) - this fix only addressed the over-counting on its own.
+- [x] **Windowed correlation (7/30-day toggle) + distinct-alert
+      counting**, resolving the unbounded-window problem flagged above.
+      Two real, separate problems, fixed together: (1) the correlation
+      tables were all-time since the poller first started (2026-04-08),
+      no rolling window, so they'd only grow less meaningful forever;
+      (2) even bounded, the alert-type tally was counting every matched
+      *(outage-snapshot, alert) pair*, not anything a person would call
+      "N alerts" - a real dashboard row showed "Air Quality Alert x190"
+      for what was actually a handful of distinct alerts, re-counted
+      once per 15-minute poll cycle each one happened to overlap.
+      `find_correlations()`/`find_teco_correlations()`/
+      `find_duke_correlations()`/`find_jea_correlations()` all gained a
+      `days=` parameter (`None` preserves the old all-time behavior for
+      any caller that doesn't ask for a window); `correlation_summary()`/
+      `teco_correlation_summary()`/`duke_correlation_summary()` now
+      count *distinct* alert_ids per event type and distinct outage/
+      incident snapshots, not raw match pairs. Dashboard gets a `?window=
+      7|30` toggle (default 30) in the header, each correlation section
+      labeled with its actual window ("Weather / Outage Correlation
+      (FPL) — last 30 days"), correlation cache keyed by window since
+      7-day and 30-day results genuinely differ. Verified against real
+      data: Nassau's Heat Advisory tally went from a meaningless 926 (or
+      482 post over-count-fix) down to a real, readable 16. 8 new tests
+      covering the distinct-counting logic and the window boundary
+      itself (old data excluded, recent data included).
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration)
 - [x] Visual direction settled on, explored entirely in an isolated

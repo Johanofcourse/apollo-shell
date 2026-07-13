@@ -217,7 +217,19 @@
 </head>
 <body>
   <h1>Apollo Sentinel — Live Status</h1>
-  <div class="meta">Generated {{ generated_at }} · refreshes every 60s · <a href="/history" style="color: var(--accent);">County storm history &rarr;</a></div>
+  <div class="meta">
+    Generated {{ generated_at }} · refreshes every 60s ·
+    <a href="/history" style="color: var(--accent);">County storm history &rarr;</a>
+    · Weather correlation window:
+    {% for choice in window_choices %}
+      {% if choice == window_days %}
+        <strong>{{ choice }}d</strong>
+      {% else %}
+        <a href="/?window={{ choice }}" style="color: var(--accent);">{{ choice }}d</a>
+      {% endif %}
+      {{ "·" if not loop.last }}
+    {% endfor %}
+  </div>
 
   <div class="pipeline-health {{ 'pipeline-health-issue' if any_pipeline_issue else '' }}">
     <div class="pipeline-health-header">
@@ -404,7 +416,7 @@
   {% endif %}
   </div>
 
-  <h2>Weather / Outage Correlation (FPL)</h2>
+  <h2>Weather / Outage Correlation (FPL) &mdash; last {{ window_days }} days</h2>
   <div class="wrap">
   {% if correlation %}
     <table>
@@ -477,7 +489,7 @@
   {% endif %}
   </div>
 
-  <h2>Weather / Outage Correlation (TECO)</h2>
+  <h2>Weather / Outage Correlation (TECO) &mdash; last {{ window_days }} days</h2>
   <div class="wrap">
   {% if teco_correlation %}
     <table>
@@ -549,7 +561,7 @@
   {% endif %}
   </div>
 
-  <h2>Weather / Outage Correlation (Duke)</h2>
+  <h2>Weather / Outage Correlation (Duke) &mdash; last {{ window_days }} days</h2>
   <div class="wrap">
   {% if duke_correlation %}
     <table>
@@ -618,7 +630,7 @@
   {% endif %}
   </div>
 
-  <h2>Weather / Outage Correlation (JEA)</h2>
+  <h2>Weather / Outage Correlation (JEA) &mdash; last {{ window_days }} days</h2>
   <div class="wrap">
   {% if jea_correlation %}
     <table>

@@ -3,15 +3,17 @@ Tests for weather_match_confidence() in correlate.py - the event-type
 plausibility logic, and the Excessive Heat Warning / Heat Advisory split
 added 2026-07-08 (sustained extreme heat has a real grid-strain
 mechanism; a routine hot day doesn't) - plus find_correlations()/
-find_jea_correlations()'s customers_out > 0 filter, added 2026-07-12.
+find_jea_correlations()'s customers_out > 0 filter and days= window,
+and correlation_summary()'s distinct-counting fix, all added 2026-07-12.
 """
 
 import os
 import tempfile
+from datetime import datetime, timedelta
 
 import pytest
 
-from correlate import weather_match_confidence, find_correlations, find_jea_correlations
+from correlate import weather_match_confidence, find_correlations, find_jea_correlations, correlation_summary
 from database import OutageDatabase
 
 
@@ -131,3 +133,113 @@ class TestFindCorrelationsRealOutageFilter:
         matches = find_jea_correlations(db_path)
         assert len(matches) == 1
         assert matches[0]["outage"]["customers_out"] == 10
+
+
+class TestCorrelationSummaryDistinctCounting:
+    """
+    2026-07-12: correlation_summary() used to count every matched
+    (outage-snapshot, alert) PAIR, so one long-running alert overlapping
+    many 15-minute poll cycles for the same outage inflated the number
+    far past anything meaningful (a real dashboard row showed "Air
+    Quality Alert x190" for what was actually a handful of distinct
+    alerts). Now counts distinct alert_ids per event type, and distinct
+    (county, timestamp) snapshots for outage_count.
+    """
+
+    def test_one_alert_matching_many_snapshots_counts_once(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert())
+        # Same county, same alert window, 5 separate poll-cycle snapshots -
+        # simulating one real outage that stayed open across several
+        # 15-minute polls while one Heat Advisory remained active.
+        for i in range(5):
+            db.log_multiple_outages(
+                "FPL", [{"county": "ALACHUA", "customers_out": 50, "customers_served": 1000}],
+                timestamp=f"2026-01-01T{12 + i:02d}:00:00",
+            )
+        db.close()
+
+        summary = correlation_summary(find_correlations(db_path))
+        assert summary["ALACHUA"]["alert_types"]["Heat Advisory"] == 1
+        assert summary["ALACHUA"]["outage_count"] == 5
+
+    def test_one_snapshot_matching_two_alerts_counts_as_one_outage(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([
+            {"id": "alert-a", "event": "Heat Advisory", "severity": "Severe", "urgency": "Expected",
+             "areas": "ALACHUA", "effective": "2026-01-01T00:00:00", "expires": "2026-01-01T23:59:59",
+             "headline": "a", "description": "a"},
+            {"id": "alert-b", "event": "Special Weather Statement", "severity": "Moderate", "urgency": "Expected",
+             "areas": "ALACHUA", "effective": "2026-01-01T00:00:00", "expires": "2026-01-01T23:59:59",
+             "headline": "b", "description": "b"},
+        ])
+        db.log_multiple_outages(
+            "FPL", [{"county": "ALACHUA", "customers_out": 50, "customers_served": 1000}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        summary = correlation_summary(find_correlations(db_path))
+        # Two alerts overlap the one real snapshot - 2 matches, but still
+        # only 1 real outage occasion
+        assert summary["ALACHUA"]["outage_count"] == 1
+        assert summary["ALACHUA"]["alert_types"] == {"Heat Advisory": 1, "Special Weather Statement": 1}
+
+
+class TestFindCorrelationsWindow:
+    """
+    2026-07-12: find_correlations()/find_teco_correlations()/
+    find_duke_correlations()/find_jea_correlations() gained a days=
+    parameter so the dashboard can bound these to "last 7/30 days"
+    instead of all-time-since-the-poller-started - added alongside the
+    distinct-counting fix above, for the same underlying complaint
+    (unbounded numbers that only ever grow less meaningful).
+    """
+
+    def test_days_none_includes_old_data(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert())
+        db.log_multiple_outages(
+            "FPL", [{"county": "ALACHUA", "customers_out": 50, "customers_served": 1000}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert len(find_correlations(db_path, days=None)) == 1
+
+    def test_days_window_excludes_old_data(self, db_path):
+        now = datetime.now()
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([{
+            "id": "old-alert", "event": "Heat Advisory", "severity": "Severe", "urgency": "Expected",
+            "areas": "ALACHUA",
+            "effective": (now - timedelta(days=100)).isoformat(),
+            "expires": (now - timedelta(days=99)).isoformat(),
+            "headline": "old", "description": "old",
+        }])
+        db.log_multiple_outages(
+            "FPL", [{"county": "ALACHUA", "customers_out": 50, "customers_served": 1000}],
+            timestamp=(now - timedelta(days=100)).isoformat(),
+        )
+        db.close()
+
+        assert find_correlations(db_path, days=None) != []
+        assert find_correlations(db_path, days=30) == []
+
+    def test_days_window_includes_recent_data(self, db_path):
+        now = datetime.now()
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([{
+            "id": "recent-alert", "event": "Heat Advisory", "severity": "Severe", "urgency": "Expected",
+            "areas": "ALACHUA",
+            "effective": (now - timedelta(days=2)).isoformat(),
+            "expires": (now + timedelta(days=2)).isoformat(),
+            "headline": "recent", "description": "recent",
+        }])
+        db.log_multiple_outages(
+            "FPL", [{"county": "ALACHUA", "customers_out": 50, "customers_served": 1000}],
+            timestamp=(now - timedelta(days=1)).isoformat(),
+        )
+        db.close()
+
+        assert len(find_correlations(db_path, days=30)) == 1
