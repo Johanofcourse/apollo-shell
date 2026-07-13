@@ -482,3 +482,25 @@ original Miami-Dade bug already taught this project once - a spelling
 mismatch reads exactly like a real gap until you check the raw source
 directly. The real, final count: ten counties missing, every one of
 them Panhandle, no outliers left once both mistakes were caught.
+
+The wall held for a night, then came down the next time it got looked
+at. Same page, same Incapsula protection - the difference was filtering
+the browser's network log by size the *right* direction. Sorting for
+the biggest transfers had buried the actual answer under a 3MB jQuery
+file; the real payload was a tiny 7KB JSON response, easy to miss
+looking the wrong way, easy to spot once someone thought to look for
+small instead of big. `fplmaps.com/northwest/feeds/CountyOutages.json` -
+same shape as the feed this project already knows how to read, just a
+different address and a different page to claim as the referer.
+
+Turns out this isn't really a fifth utility at all, just a second door
+into the same one - Gulf Power became FPL on paper back in 2021, and
+whoever maintains fplmaps.com never got around to merging the two maps.
+So it went in the way that actually matched reality: folded straight
+into the existing FPL pipeline, no new tables, no new correlation
+function, nothing TECO/Duke/JEA each needed built for them from
+scratch. Fetch both feeds, combine the results, treat it as one
+utility, because it genuinely is one. Closed eight of the ten missing
+counties outright. Three remain - Calhoun, Gadsden, Liberty - probably
+someone smaller, still unfound, still an honest gap instead of a
+guessed-away one.

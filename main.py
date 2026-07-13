@@ -6,7 +6,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
 from database import OutageDatabase
-from fetch_fpl_outages import fetch_fpl_outages, outages_to_records, UTILITY_NAME as FPL_UTILITY_NAME
+from fetch_fpl_outages import get_combined_fpl_records, UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_weather import get_alerts_summary
 from fetch_teco_outages import get_incidents_summary
 from fetch_duke_outages import (
@@ -28,15 +28,15 @@ POLL_INTERVAL_SECONDS = 15 * 60
 
 def run_outage_cycle(db):
     """
-    Fetch current FPL outage data, save the snapshot, and update
-    outage_events lifecycle tracking (start/end per county).
+    Fetch current FPL outage data (main feed + the separate Panhandle
+    feed, combined - see get_combined_fpl_records()), save the snapshot,
+    and update outage_events lifecycle tracking (start/end per county).
     """
-    data = fetch_fpl_outages()
-    if not data:
+    records = get_combined_fpl_records()
+    if not records:
         print("Skipping outage save - no data fetched")
         return
 
-    records = outages_to_records(data)
     timestamp = datetime.now().isoformat()
     db.log_multiple_outages(FPL_UTILITY_NAME, records, timestamp=timestamp)
     db.sync_outage_events(FPL_UTILITY_NAME, records, timestamp=timestamp)

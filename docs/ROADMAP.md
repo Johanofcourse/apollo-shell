@@ -462,19 +462,48 @@ thin sample per county, not something to treat as a reliable average yet.
       maintains a distinct regional map at fplmaps.com/northwest.html,
       confirmed to reference its own separate JS/data bundle
       (`/content/dam/fplmaps/power-tracker/northwest/...`), not the main
-      site's. Discovery stalled there for the night - the underlying
-      data endpoint sits behind real Incapsula/Imperva bot protection
-      (confirmed: our own unauthenticated request to the main
-      CountyOutages.json endpoint returns an Incapsula challenge page
-      when the right headers aren't sent, and the northwest page's
-      Network tab only ever showed analytics/bot-challenge requests, not
-      the real data call, even after interacting with the map). Same
-      class of wall TECO/Duke needed a human driving a real browser
-      through devtools to get past - worth another look with fresh eyes,
-      not a dead end. This is still the best-scoped candidate for a
-      fifth utility integration, whenever that's picked up - a real,
-      checked gap, not a guess, even though the endpoint itself isn't
-      found yet.
+      site's. The actual data endpoint sat behind real Incapsula/Imperva
+      bot protection - same class of wall TECO/Duke needed a human
+      driving a real browser through devtools to get past. Found the
+      same night, by the user, filtering the Network tab by transfer
+      size small-to-large instead of large-to-small (the real payload
+      was tiny, ~7KB, easy to miss while looking at "big" requests):
+      `fplmaps.com/northwest/feeds/CountyOutages.json`, needing a
+      `Referer: https://www.fplmaps.com/northwest.html` header - same
+      JSON shape as the main feed, confirmed by fetching it directly.
+- [x] **FPL Northwest ("Panhandle") feed integrated - the fifth utility
+      source, though not tracked as a separate one.** Since Gulf Power
+      merged into FPL corporately in 2021, this is genuinely the same
+      real utility as the one we already integrate, just a second
+      technical data source FPL never consolidated into its main feed -
+      so it's combined into the existing FPL pipeline
+      (`get_combined_fpl_records()` in `fetch_fpl_outages.py`) rather
+      than given its own tables/correlation function/dashboard section
+      the way TECO/Duke/JEA were. Zero new schema needed - same
+      `outages`/`outage_events` tables, same `find_correlations()`, same
+      dashboard section, all already utility-name-keyed, not table-per-
+      source. Covers Escambia, Santa Rosa, Okaloosa, Walton, Holmes,
+      Washington, Jackson, and Bay - confirmed directly against the real
+      response, closing 8 of the 10 gap counties above. Three real
+      Panhandle counties (Calhoun, Gadsden, Liberty) still have zero live
+      coverage - likely a smaller rural co-op's territory, not yet
+      found; the county-coverage check now shows exactly these 3 and
+      nothing else. The Panhandle feed is treated as a bonus on top of
+      the main one - if it's ever unset or fails, `get_combined_fpl_records()`
+      still returns the main feed's records rather than failing the
+      whole outage cycle. 6 new tests
+      (`tests/test_fetch_fpl_outages.py` - first direct unit tests for
+      any FPL parsing logic; used `monkeypatch` to test the combining
+      logic without a real network call, the first use of mocking in
+      this test suite, since `get_combined_fpl_records()` calls the two
+      fetch functions directly rather than accepting injected data the
+      way JEA's zip-county cache did). Verified against real live data
+      end to end before calling it done: ran one real cycle against the
+      live database (not just tests), confirmed all 8 Panhandle counties
+      appear in the raw snapshot table, restarted both the launchd
+      poller and the dashboard to pick up the new code, re-ran the
+      county-coverage check live and watched it drop from 10 missing
+      counties to 3.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida

@@ -12,6 +12,20 @@ load_dotenv()
 FPL_API_URL = os.environ.get("FPL_API_URL")
 FPL_API_ORIGIN = os.environ.get("FPL_API_ORIGIN")
 
+# FPL also runs a second, separate live feed for the Florida Panhandle -
+# Gulf Power's former territory, merged into FPL corporately in 2021 but
+# apparently never consolidated into the main map/feed. Same real
+# utility, same "outages" JSON shape, just a different endpoint and
+# Referer - found 2026-07-12 behind real Incapsula bot protection (a
+# human had to check a real browser's Network tab; curl alone couldn't
+# get past it). Covers Escambia, Santa Rosa, Okaloosa, Walton, Holmes,
+# Washington, Jackson, and Bay - confirmed by checking the real response,
+# not assumed. Three real Panhandle counties (Calhoun, Gadsden, Liberty)
+# still aren't covered by either FPL feed - likely a smaller rural co-op's
+# territory, not yet found.
+FPL_NORTHWEST_API_URL = os.environ.get("FPL_NORTHWEST_API_URL")
+FPL_NORTHWEST_API_REFERER = os.environ.get("FPL_NORTHWEST_API_REFERER")
+
 # The canonical utility name, matching the exact string historical PSC-
 # report data uses for this same real entity ("Florida Power and Light
 # Company") - same fix already applied to TECO and Duke, just missed for
@@ -53,6 +67,37 @@ def fetch_fpl_outages():
     
     except requests.exceptions.RequestException as e:
         print(f"Error fetching data: {e}")
+        return None
+
+
+def fetch_fpl_northwest_outages():
+    """
+    Fetches live outage data from FPL's separate Panhandle ("northwest")
+    feed - same JSON shape as fetch_fpl_outages(), different endpoint and
+    Referer. Returns None on failure, same as fetch_fpl_outages() - a
+    missing/unset config is treated as "not configured yet" rather than
+    a hard error, since this feed is a real bonus on top of the main one,
+    not something the whole outage cycle should fail without.
+    """
+    if not FPL_NORTHWEST_API_URL or not FPL_NORTHWEST_API_REFERER:
+        print("FPL_NORTHWEST_API_URL / FPL_NORTHWEST_API_REFERER not set - skipping Panhandle feed")
+        return None
+
+    try:
+        print("Fetching FPL Northwest (Panhandle) outage data...")
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': FPL_NORTHWEST_API_REFERER,
+        }
+
+        response = requests.get(FPL_NORTHWEST_API_URL, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        return response.json()
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching FPL Northwest data: {e}")
         return None
 
 
@@ -124,9 +169,33 @@ def outages_to_records(data):
     return outage_list
 
 
+def get_combined_fpl_records():
+    """
+    Fetch both FPL feeds (main + Panhandle) and combine into one list of
+    records, ready for log_multiple_outages()/sync_outage_events() - both
+    represent the same real utility, just two technical data sources, so
+    they're combined here rather than tracked as separate utilities the
+    way TECO/Duke/JEA are. The Panhandle feed is a bonus on top of the
+    main one: if it's unset or fails, this still returns the main feed's
+    records rather than failing the whole cycle.
+    """
+    records = []
+
+    main_data = fetch_fpl_outages()
+    if main_data:
+        records.extend(outages_to_records(main_data))
+
+    northwest_data = fetch_fpl_northwest_outages()
+    if northwest_data:
+        records.extend(outages_to_records(northwest_data))
+
+    return records
+
+
 def main():
     """
-    Main function - fetches FPL data, displays it, and saves to database
+    Main function - fetches FPL data (both feeds), displays it, and saves
+    to database
     """
     # Fetch the data
     data = fetch_fpl_outages()
@@ -142,8 +211,8 @@ def main():
     print("\nSaving data to database...")
     db = OutageDatabase()
 
-    # Convert FPL data format to our database format
-    outage_list = outages_to_records(data)
+    # Convert FPL data format to our database format, combining both feeds
+    outage_list = get_combined_fpl_records()
 
     print(f"DEBUG: Prepared {len(outage_list)} records to save")
 
