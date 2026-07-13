@@ -77,10 +77,10 @@ PIPELINE_SOURCE_DISPLAY_NAMES = {
 # Order matters: first matching pattern wins, most specific first.
 PIPELINE_ERROR_EXPLANATIONS = [
     ("fetch-failed", [r"fetch returned no (records|data)"],
-     "The data source's own request failed, but the specific network "
-     "error (timeout, rate limit, server error, etc.) wasn't captured in "
-     "this message - check the poller's raw log output around this "
-     "timestamp for the exact underlying error.",
+     "A request to this data source failed this cycle - it normally "
+     "reports fresh numbers every single check, so getting nothing back "
+     "at all is treated as a real problem rather than a quiet day. It "
+     "will try again automatically on the next scheduled check.",
      "warn"),
     ("database-lock", [r"database is locked"],
      "Two parts of our own system tried to write to the local database at "
