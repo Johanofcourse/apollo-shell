@@ -37,7 +37,7 @@ def _run_check(label, fn):
 
 def check_live_impossible_values(conn):
     c = conn.cursor()
-    for table in ["outage_events", "jea_outage_events"]:
+    for table in ["outage_events", "jea_outage_events", "talquin_outage_events"]:
         c.execute(f"SELECT utility, county, start_time FROM {table} "
                   f"WHERE peak_customers_out > customers_served")
         for r in c.fetchall():
@@ -46,7 +46,7 @@ def check_live_impossible_values(conn):
 
 def check_live_bad_durations(conn):
     c = conn.cursor()
-    for table in ["outage_events", "teco_incident_events", "duke_incident_events", "jea_outage_events", "tallahassee_incident_events"]:
+    for table in ["outage_events", "teco_incident_events", "duke_incident_events", "jea_outage_events", "tallahassee_incident_events", "talquin_outage_events"]:
         c.execute(f"SELECT county, start_time, end_time FROM {table} "
                   f"WHERE end_time IS NOT NULL AND end_time < start_time")
         for r in c.fetchall():

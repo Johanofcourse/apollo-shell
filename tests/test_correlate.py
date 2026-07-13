@@ -15,7 +15,8 @@ import pytest
 
 from correlate import (
     weather_match_confidence, find_correlations, find_jea_correlations,
-    find_tallahassee_correlations, duke_correlation_summary, correlation_summary,
+    find_tallahassee_correlations, find_talquin_correlations,
+    duke_correlation_summary, correlation_summary,
 )
 from database import OutageDatabase
 
@@ -302,3 +303,41 @@ class TestFindTallahasseeCorrelations:
         db.close()
 
         assert find_tallahassee_correlations(db_path, days=None) == []
+
+
+class TestFindTalquinCorrelations:
+    """
+    find_talquin_correlations() reuses the exact same matching helpers
+    already proven via find_correlations()/find_jea_correlations() above
+    (it shares correlation_summary() too, since the shape is identical to
+    FPL's) - this is a wiring smoke test, not a re-proof of shared logic.
+    """
+
+    def test_matches_a_talquin_outage_to_an_overlapping_alert(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Gadsden"))
+        db.log_talquin_outages(
+            [{"county": "Gadsden", "customers_out": 50, "customers_served": 15493}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        matches = find_talquin_correlations(db_path, days=None)
+        assert len(matches) == 1
+
+        summary = correlation_summary(matches)
+        assert summary["Gadsden"]["outage_count"] == 1
+
+    def test_zero_customer_snapshots_are_not_matched(self, db_path):
+        # Same real bug find_correlations()/find_jea_correlations() had
+        # fixed for them - the raw table logs a fresh row every poll
+        # cycle regardless of whether anything was actually wrong.
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Gadsden"))
+        db.log_talquin_outages(
+            [{"county": "Gadsden", "customers_out": 0, "customers_served": 15493}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_talquin_correlations(db_path, days=None) == []

@@ -16,12 +16,14 @@ from fetch_duke_outages import (
 )
 from fetch_jea_outages import get_jea_summary
 from fetch_tallahassee_outages import get_incidents_summary as get_tallahassee_incidents_summary
+from fetch_talquin_outages import get_talquin_records
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
     find_duke_correlations, duke_correlation_summary,
     find_jea_correlations,
     find_tallahassee_correlations,
+    find_talquin_correlations,
 )
 
 
@@ -128,10 +130,27 @@ def run_tallahassee_cycle(db):
     db.sync_tallahassee_incident_events(incidents, timestamp=timestamp)
 
 
+def run_talquin_cycle(db):
+    """
+    Fetch Talquin Electric Cooperative's live county-level outage data,
+    save the raw snapshot, and update talquin_outage_events lifecycle
+    tracking (start/end per county) - a county-rollup source like
+    FPL/JEA, not an incident list.
+    """
+    records = get_talquin_records()
+    if not records:
+        print("Skipping Talquin save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_talquin_outages(records, timestamp=timestamp)
+    db.sync_talquin_outage_events(records, timestamp=timestamp)
+
+
 def run_correlation_cycle():
     """
     Compute current outage/weather correlations (FPL, TECO, Duke, JEA,
-    and City of Tallahassee) and log a summary.
+    City of Tallahassee, and Talquin) and log a summary.
     """
     matches = find_correlations()
     if not matches:
@@ -198,6 +217,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    talquin_matches = find_talquin_correlations()
+    if not talquin_matches:
+        print("Talquin correlation: no matches this cycle")
+    else:
+        talquin_summary = correlation_summary(talquin_matches)
+        print(f"Talquin correlation: {len(talquin_matches)} matches across {len(talquin_summary)} counties")
+        for county, stats in talquin_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def main():
     """
@@ -249,6 +281,12 @@ def main():
             except Exception as e:
                 print(f"Tallahassee fetch cycle failed: {e}")
                 db.log_pipeline_error("tallahassee", str(e))
+
+            try:
+                run_talquin_cycle(db)
+            except Exception as e:
+                print(f"Talquin fetch cycle failed: {e}")
+                db.log_pipeline_error("talquin", str(e))
 
             try:
                 run_correlation_cycle()

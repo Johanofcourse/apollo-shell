@@ -282,6 +282,29 @@ class TestIncidentDetailLookup:
         assert detail["history"][0]["percentage_out"] == 1.0
         assert detail["history"][-1]["customers_out"] == 0
 
+    def test_talquin_outage_detail_returns_event_and_bounded_history(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_talquin_outages([_fpl_row("Gadsden", 50)], timestamp="2026-01-01T00:00:00")
+        db.sync_talquin_outage_events([_fpl_row("Gadsden", 50)], timestamp="2026-01-01T00:00:00")
+        db.log_talquin_outages([_fpl_row("Gadsden", 0)], timestamp="2026-01-01T00:15:00")
+        db.sync_talquin_outage_events([_fpl_row("Gadsden", 0)], timestamp="2026-01-01T00:15:00")
+
+        detail = db.get_talquin_outage_detail("Talquin Electric Cooperative, Inc.", "Gadsden", "2026-01-01T00:00:00")
+        db.close()
+
+        assert detail is not None
+        assert detail["event"]["end_time"] == "2026-01-01T00:15:00"
+        assert len(detail["history"]) == 2
+        assert detail["history"][0]["customers_out"] == 50
+        assert detail["history"][-1]["customers_out"] == 0
+
+    def test_talquin_outage_detail_none_for_unknown_occurrence(self, db_path):
+        db = OutageDatabase(db_path)
+        detail = db.get_talquin_outage_detail("Talquin Electric Cooperative, Inc.", "Gadsden", "2026-01-01T00:00:00")
+        db.close()
+
+        assert detail is None
+
 
 class TestOpenEventsCurrentVsPeak:
     """
@@ -385,3 +408,19 @@ class TestOpenEventsCurrentVsPeak:
         assert len(open_events) == 1
         assert open_events[0]["peak_customer_count"] == 200
         assert open_events[0]["current_customer_count"] == 40
+
+    def test_talquin_open_event_reports_current_alongside_peak(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_talquin_outages([_fpl_row("Gadsden", 50)], timestamp="2026-01-01T00:00:00")
+        db.sync_talquin_outage_events([_fpl_row("Gadsden", 50)], timestamp="2026-01-01T00:00:00")
+        db.log_talquin_outages([_fpl_row("Gadsden", 500)], timestamp="2026-01-01T00:15:00")
+        db.sync_talquin_outage_events([_fpl_row("Gadsden", 500)], timestamp="2026-01-01T00:15:00")
+        db.log_talquin_outages([_fpl_row("Gadsden", 10)], timestamp="2026-01-01T00:30:00")
+        db.sync_talquin_outage_events([_fpl_row("Gadsden", 10)], timestamp="2026-01-01T00:30:00")
+
+        open_events = db.get_talquin_open_events()
+        db.close()
+
+        assert len(open_events) == 1
+        assert open_events[0]["peak_customers_out"] == 500
+        assert open_events[0]["current_customers_out"] == 10

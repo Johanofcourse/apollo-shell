@@ -554,6 +554,65 @@ def find_jea_correlations(db_path="outages.db", days=None):
     return matches
 
 
+def find_talquin_correlations(db_path="outages.db", days=None):
+    """
+    Match Talquin Electric Cooperative's raw county-level snapshots to
+    weather alerts active in the same county at the same time. Same
+    logic/shape as find_correlations()/find_jea_correlations() - a
+    county-rollup source like FPL/JEA, not an incident shape like
+    TECO/Duke/Tallahassee - reads talquin_outages rather than outages,
+    kept as its own dedicated table per the same one-utility-per-table
+    convention used everywhere else in this project.
+
+    Only rows with a real outage (customers_out > 0) are considered -
+    same reasoning as find_correlations()/find_jea_correlations(): the
+    raw table logs a fresh row every poll cycle per county regardless of
+    whether anything was actually wrong.
+
+    days: same windowing as find_correlations().
+
+    Returns a list of {"outage": {...}, "alert": {...}} dicts - reuse
+    correlation_summary() below directly, since the shape matches FPL's.
+    """
+    db = OutageDatabase(db_path)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    cutoff = _window_cutoff(days)
+    if cutoff is not None:
+        cursor.execute('SELECT * FROM talquin_outages WHERE customers_out > 0 AND timestamp >= ?', (cutoff,))
+    else:
+        cursor.execute('SELECT * FROM talquin_outages WHERE customers_out > 0')
+    outages = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute('SELECT * FROM weather_alerts')
+    alerts = [dict(row) for row in cursor.fetchall()]
+
+    db.close()
+
+    matches = []
+    for outage in outages:
+        if not outage.get('county'):
+            continue
+
+        outage_time = _parse_timestamp(outage['timestamp'])
+        if outage_time is None:
+            continue
+
+        for alert in alerts:
+            if not _county_in_alert(outage['county'], alert['areas']):
+                continue
+
+            effective = _parse_timestamp(alert.get('effective'))
+            expires = _parse_timestamp(alert.get('expires'))
+
+            if _alert_covers_time(effective, expires, outage_time):
+                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
+                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
+
+    return matches
+
+
 def correlation_summary(matches):
     """
     Aggregate correlated outage/alert pairs by county (shared by FPL and
