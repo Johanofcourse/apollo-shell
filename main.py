@@ -15,11 +15,13 @@ from fetch_duke_outages import (
     get_system_alerts_summary as get_duke_system_alerts_summary,
 )
 from fetch_jea_outages import get_jea_summary
+from fetch_tallahassee_outages import get_incidents_summary as get_tallahassee_incidents_summary
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
     find_duke_correlations, duke_correlation_summary,
     find_jea_correlations,
+    find_tallahassee_correlations,
 )
 
 
@@ -110,10 +112,26 @@ def run_jea_cycle(db):
     db.sync_jea_outage_events(county_rollup, timestamp=timestamp)
 
 
+def run_tallahassee_cycle(db):
+    """
+    Fetch City of Tallahassee's live outage incidents, save them, and
+    update tallahassee_incident_events lifecycle tracking (start/end per
+    incident).
+    """
+    incidents = get_tallahassee_incidents_summary()
+    if not incidents:
+        print("Skipping Tallahassee save - no active incidents")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_tallahassee_incidents(incidents)
+    db.sync_tallahassee_incident_events(incidents, timestamp=timestamp)
+
+
 def run_correlation_cycle():
     """
-    Compute current outage/weather correlations (FPL, TECO, Duke, and
-    JEA) and log a summary.
+    Compute current outage/weather correlations (FPL, TECO, Duke, JEA,
+    and City of Tallahassee) and log a summary.
     """
     matches = find_correlations()
     if not matches:
@@ -167,6 +185,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    tallahassee_matches = find_tallahassee_correlations()
+    if not tallahassee_matches:
+        print("Tallahassee correlation: no matches this cycle")
+    else:
+        tallahassee_summary = duke_correlation_summary(tallahassee_matches)
+        print(f"Tallahassee correlation: {len(tallahassee_matches)} matches across {len(tallahassee_summary)} counties")
+        for county, stats in tallahassee_summary.items():
+            print(
+                f"  {county}: {stats['incident_count']} incident(s), "
+                f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def main():
     """
@@ -212,6 +243,12 @@ def main():
             except Exception as e:
                 print(f"JEA fetch cycle failed: {e}")
                 db.log_pipeline_error("jea", str(e))
+
+            try:
+                run_tallahassee_cycle(db)
+            except Exception as e:
+                print(f"Tallahassee fetch cycle failed: {e}")
+                db.log_pipeline_error("tallahassee", str(e))
 
             try:
                 run_correlation_cycle()

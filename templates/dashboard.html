@@ -358,7 +358,7 @@
 
   <div class="kpi-strip">
     <div class="kpi-card">
-      <div class="kpi-label">Customers Affected (All Utilities)</div>
+      <div class="kpi-label">Customers Out Right Now (All Utilities)</div>
       <div class="kpi-value">{{ "{:,}".format(total_customers_affected) }}</div>
     </div>
     <div class="kpi-card">
@@ -393,12 +393,13 @@
   <div class="wrap">
   {% if unified_open %}
     <table>
-      <tr><th>Utility</th><th>County</th><th>Customers Affected</th><th>Started</th><th>Ongoing</th></tr>
+      <tr><th>Utility</th><th>County</th><th>Customers Out Now</th><th>Peak This Episode</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in unified_open %}
       <tr>
         <td>{{ e.utility }}</td>
         <td>{{ e.county or "—" }}</td>
         <td class="pct-bad">{{ "{:,}".format(e.customers or 0) }}</td>
+        <td>{{ "{:,}".format(e.peak_customers or 0) }}</td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.duration }}</td>
       </tr>
@@ -413,10 +414,12 @@
   <div class="wrap">
   {% if open_events %}
     <table>
-      <tr><th>County</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      <tr><th>County</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in open_events %}
       <tr>
         <td><a href="/incident?source=fpl&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
+        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
         <td>{{ e.start_time | humanize }}</td>
@@ -521,11 +524,12 @@
   <div class="wrap">
   {% if teco_open_events %}
     <table>
-      <tr><th>Incident</th><th>County</th><th>Customers</th><th>Reason</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
+      <tr><th>Incident</th><th>County</th><th>Current</th><th>Peak</th><th>Reason</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in teco_open_events %}
       <tr>
         <td><a href="/incident?source=teco&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
         <td>{{ e.county or "—" }}</td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
         <td class="pct-bad">{{ e.peak_customer_count }}</td>
         <td>{{ e.reason or "—" }} <span style="color: var(--muted)">({{ e.reason_category }})</span></td>
         <td>{{ e.estimated_restoration or "—" }}</td>
@@ -594,11 +598,12 @@
   <div class="wrap">
   {% if duke_open_events %}
     <table>
-      <tr><th>Incident</th><th>County</th><th>Customers</th><th>Cause</th><th>Started</th><th>Ongoing</th></tr>
+      <tr><th>Incident</th><th>County</th><th>Current</th><th>Peak</th><th>Cause</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in duke_open_events %}
       <tr>
         <td><a href="/incident?source=duke&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
         <td>{{ e.county or "—" }}</td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
         <td class="pct-bad">{{ e.peak_customer_count }}</td>
         <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
         <td>{{ e.start_time | humanize }}</td>
@@ -666,10 +671,12 @@
   <div class="wrap">
   {% if jea_open_events %}
     <table>
-      <tr><th>County</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      <tr><th>County</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in jea_open_events %}
       <tr>
         <td><a href="/incident?source=jea&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
+        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
         <td>{{ e.start_time | humanize }}</td>
@@ -728,6 +735,83 @@
     </table>
   {% else %}
     <div class="empty">No correlated JEA outage/weather events right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>City of Tallahassee — Currently Open Incidents ({{ tallahassee_open_events|length }})</h2>
+  <div class="wrap">
+  {% if tallahassee_open_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Area</th><th>Current</th><th>Peak</th><th>Cause</th><th>Status</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in tallahassee_open_events %}
+      <tr>
+        <td><a href="/incident?source=tallahassee&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td>{{ e.region_name or "—" }}</td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
+        <td>{{ e.current_status or "—" }}</td>
+        <td>{{ e.current_estimated_restoration | humanize }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open Tallahassee incidents right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>City of Tallahassee — Recently Resolved</h2>
+  <div class="wrap">
+  {% if tallahassee_closed_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Area</th><th>Peak Customers</th><th>Cause</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in tallahassee_closed_events %}
+      <tr>
+        <td><a href="/incident?source=tallahassee&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td>{{ e.region_name or "—" }}</td>
+        <td class="pct-ok">{{ e.peak_customer_count }}</td>
+        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h2>Weather / Outage Correlation (City of Tallahassee) &mdash; last {{ window_days }} days</h2>
+  <div class="wrap">
+  {% if tallahassee_correlation %}
+    <table>
+      <tr><th>County</th><th>Correlated Incidents</th><th>Max Customers</th><th>Alert Types</th><th>Confidence</th></tr>
+      {% for county, stats in tallahassee_correlation.items() %}
+      <tr>
+        <td>{{ county }}</td>
+        <td>{{ stats.incident_count }}</td>
+        <td>{{ stats.max_customer_count }}</td>
+        <td>{{ stats.alert_types_display }}</td>
+        <td>
+          {% if stats.confidence_bar %}
+          <div class="conf-bar">
+            {% for seg in stats.confidence_bar %}
+            <div class="conf-seg-{{ seg.tier }}" style="width: {{ seg.pct }}%;" title="{{ seg.tier }} ×{{ seg.count }}"></div>
+            {% endfor %}
+          </div>
+          <div class="conf-caption">{{ stats.confidence_display }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No correlated Tallahassee incident/weather events right now.</div>
   {% endif %}
   </div>
 </body>

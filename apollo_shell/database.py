@@ -272,6 +272,57 @@ class OutageDatabase:
             )
         ''')
 
+        # City of Tallahassee raw incident snapshots - same incident-level
+        # shape as duke_incidents (no per-record update_time of its own,
+        # so a fresh row every poll cycle keyed on our own fetched_at is
+        # the real timeline), plus two fields unique to this source:
+        # region_name (Tallahassee's own 5-zone sub-county breakdown) and
+        # status/status_category (reuses TECO's free-text categorizer).
+        # Its whole territory is Leon County only (confirmed against real
+        # historical PSC storm reports), so there's no per-record
+        # reverse-geocoded county the way Duke's lat/lon needs.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS tallahassee_incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                utility TEXT,
+                customer_count INTEGER,
+                lat REAL,
+                lon REAL,
+                county TEXT,
+                region_name TEXT,
+                status TEXT,
+                status_category TEXT,
+                cause TEXT,
+                cause_category TEXT,
+                outage_type TEXT,
+                reported_start_time TEXT,
+                estimated_restoration TEXT
+            )
+        ''')
+
+        # City of Tallahassee incident lifecycle tracking - same
+        # open-on-first-seen/close-on-disappearance approach as
+        # teco_incident_events/duke_incident_events (the feed only lists
+        # currently-active incidents).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS tallahassee_incident_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                utility TEXT,
+                county TEXT,
+                region_name TEXT,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customer_count INTEGER,
+                cause TEXT,
+                cause_category TEXT,
+                lat REAL,
+                lon REAL
+            )
+        ''')
+
         # JEA raw ZIP-level snapshots - JEA's live feed (Kubra's "Storm
         # Center" product) rolls up by ZIP code, not county, and includes
         # a real ETR + a labeled confidence on that estimate (richer than
@@ -338,6 +389,11 @@ class OutageDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_jea_outage_events_open
             ON jea_outage_events(utility, county, end_time)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_tallahassee_incident_events_open
+            ON tallahassee_incident_events(incident_id, end_time)
         ''')
 
         # Uniqueness guards so re-running an import (e.g. replaying the same
@@ -419,6 +475,20 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_duke_system_alerts_unique
             ON duke_system_alerts(duke_alert_id)
+        ''')
+
+        # Same reasoning as duke_incidents above: no per-record update
+        # timestamp of its own, so this is mostly a defensive guard
+        # against a literal double-run within one cycle rather than real
+        # content-based dedup.
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_tallahassee_incidents_unique
+            ON tallahassee_incidents(incident_id, fetched_at)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_tallahassee_incident_events_unique
+            ON tallahassee_incident_events(incident_id, start_time)
         ''')
 
         cursor.execute('''
@@ -900,15 +970,30 @@ class OutageDatabase:
 
     def get_open_events(self):
         """
-        Return currently open outage_events (end_time IS NULL), worst first.
+        Return currently open outage_events (end_time IS NULL), worst
+        first. Includes current_customers_out/current_percentage_out from
+        the latest raw outages snapshot for that county, alongside the
+        lifecycle peak - added 2026-07-12 after comparing a peak reading
+        against poweroutage.us's live count and realizing they're
+        genuinely different numbers (peak-of-episode vs. right-now), not
+        a bug, but confusing without both shown side by side.
         """
         conn = self.connect()
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT * FROM outage_events
-            WHERE end_time IS NULL
-            ORDER BY peak_percentage_out DESC
+            SELECT oe.*,
+                   o.customers_out AS current_customers_out,
+                   o.percentage_out AS current_percentage_out
+            FROM outage_events oe
+            LEFT JOIN outages o
+                ON o.utility = oe.utility AND o.county = oe.county
+                AND o.timestamp = (
+                    SELECT MAX(timestamp) FROM outages o2
+                    WHERE o2.utility = oe.utility AND o2.county = oe.county
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_percentage_out DESC
         ''')
         return [dict(row) for row in cursor.fetchall()]
 
@@ -932,15 +1017,31 @@ class OutageDatabase:
     def get_jea_open_events(self):
         """
         Return currently open jea_outage_events (end_time IS NULL), worst
-        (by peak percentage out) first.
+        (by peak percentage out) first. Includes current_customers_out/
+        current_percentage_out, rolled up from the latest per-ZIP jea_outages
+        snapshot for that county - same "peak vs. right now" reasoning as
+        get_open_events().
         """
         conn = self.connect()
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT * FROM jea_outage_events
-            WHERE end_time IS NULL
-            ORDER BY peak_percentage_out DESC
+            SELECT oe.*,
+                   cur.customers_out AS current_customers_out,
+                   cur.percentage_out AS current_percentage_out
+            FROM jea_outage_events oe
+            LEFT JOIN (
+                SELECT county,
+                       SUM(customers_out) AS customers_out,
+                       CASE WHEN SUM(customers_served) > 0
+                            THEN SUM(customers_out) * 100.0 / SUM(customers_served)
+                            ELSE 0 END AS percentage_out
+                FROM jea_outages
+                WHERE timestamp = (SELECT MAX(timestamp) FROM jea_outages)
+                GROUP BY county
+            ) cur ON cur.county = oe.county
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_percentage_out DESC
         ''')
         return [dict(row) for row in cursor.fetchall()]
 
@@ -1009,6 +1110,16 @@ class OutageDatabase:
         return {
             "events": self._get_incident_events("duke_incident_events", incident_id),
             "history": self._get_incident_raw_history("duke_incidents", incident_id),
+        }
+
+    def get_tallahassee_incident_detail(self, incident_id):
+        """
+        Same as get_teco_incident_detail(), for a City of Tallahassee
+        ticket number.
+        """
+        return {
+            "events": self._get_incident_events("tallahassee_incident_events", incident_id),
+            "history": self._get_incident_raw_history("tallahassee_incidents", incident_id),
         }
 
     def get_fpl_outage_detail(self, utility, county, start_time):
@@ -1081,15 +1192,26 @@ class OutageDatabase:
     def get_teco_open_events(self):
         """
         Return currently open teco_incident_events (end_time IS NULL),
-        worst (by peak customer count) first.
+        worst (by peak customer count) first. Includes
+        current_customer_count from the latest teco_incidents row fetched
+        for that incident_id, alongside the lifecycle peak - same "peak
+        vs. right now" reasoning as get_open_events().
         """
         conn = self.connect()
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT * FROM teco_incident_events
-            WHERE end_time IS NULL
-            ORDER BY peak_customer_count DESC
+            SELECT oe.*,
+                   cur.customer_count AS current_customer_count
+            FROM teco_incident_events oe
+            LEFT JOIN teco_incidents cur
+                ON cur.incident_id = oe.incident_id
+                AND cur.fetched_at = (
+                    SELECT MAX(fetched_at) FROM teco_incidents t2
+                    WHERE t2.incident_id = oe.incident_id
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_customer_count DESC
         ''')
         return [dict(row) for row in cursor.fetchall()]
 
@@ -1456,15 +1578,26 @@ class OutageDatabase:
     def get_duke_open_events(self):
         """
         Return currently open duke_incident_events (end_time IS NULL),
-        worst (by peak customer count) first.
+        worst (by peak customer count) first. Includes
+        current_customer_count from the latest duke_incidents row fetched
+        for that incident_id, alongside the lifecycle peak - same "peak
+        vs. right now" reasoning as get_open_events().
         """
         conn = self.connect()
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT * FROM duke_incident_events
-            WHERE end_time IS NULL
-            ORDER BY peak_customer_count DESC
+            SELECT oe.*,
+                   cur.customer_count AS current_customer_count
+            FROM duke_incident_events oe
+            LEFT JOIN duke_incidents cur
+                ON cur.incident_id = oe.incident_id
+                AND cur.fetched_at = (
+                    SELECT MAX(fetched_at) FROM duke_incidents t2
+                    WHERE t2.incident_id = oe.incident_id
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_customer_count DESC
         ''')
         return [dict(row) for row in cursor.fetchall()]
 
@@ -1478,6 +1611,170 @@ class OutageDatabase:
 
         cursor.execute('''
             SELECT * FROM duke_incident_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def log_tallahassee_incidents(self, records):
+        """
+        Insert City of Tallahassee live outage incidents (from
+        fetch_tallahassee_outages.py).
+
+        Args:
+            records: list of dicts with keys: incident_id, utility,
+                     customer_count, lat, lon, county, region_name, status,
+                     status_category, cause, cause_category, outage_type,
+                     reported_start_time, estimated_restoration
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        fetched_at = datetime.now().isoformat()
+
+        rows = [
+            (
+                r['incident_id'], fetched_at, r.get('utility'),
+                r.get('customer_count'), r.get('lat'), r.get('lon'),
+                r.get('county'), r.get('region_name'),
+                r.get('status'), r.get('status_category'),
+                r.get('cause'), r.get('cause_category'), r.get('outage_type'),
+                r.get('reported_start_time'), r.get('estimated_restoration'),
+            )
+            for r in records
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO tallahassee_incidents
+                (incident_id, fetched_at, utility, customer_count, lat, lon,
+                 county, region_name, status, status_category, cause,
+                 cause_category, outage_type, reported_start_time,
+                 estimated_restoration)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+
+        conn.commit()
+        print(f"Logged {len(rows)} City of Tallahassee incident records")
+
+
+    def sync_tallahassee_incident_events(self, records, timestamp=None):
+        """
+        Track City of Tallahassee incident lifecycle. Same approach as
+        sync_duke_incident_events: an event opens the first time an
+        incident_id is seen, stays updated with the latest known values
+        while still being reported, and closes once an incident_id that
+        was open stops appearing in a poll at all (this feed, like TECO's
+        and Duke's, only lists currently-active incidents).
+
+        NOT SAFE TO REPLAY - same characteristic as
+        sync_teco_incident_events/sync_duke_incident_events (see their
+        docstrings): only safe for calls arriving in real chronological
+        order, one live poll at a time.
+
+        Args:
+            records: list of dicts as returned by
+                fetch_tallahassee_outages.parse_incidents()
+            timestamp: ISO timestamp for this poll; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        current_ids = {r['incident_id'] for r in records}
+
+        opened = 0
+        closed = 0
+
+        for r in records:
+            cursor.execute('''
+                SELECT id, peak_customer_count FROM tallahassee_incident_events
+                WHERE incident_id = ? AND end_time IS NULL
+            ''', (r['incident_id'],))
+            open_event = cursor.fetchone()
+
+            if open_event is None:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO tallahassee_incident_events
+                        (incident_id, utility, county, region_name, start_time,
+                         end_time, peak_customer_count, cause, cause_category,
+                         lat, lon)
+                    VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
+                ''', (
+                    r['incident_id'], r.get('utility'), r.get('county'), r.get('region_name'),
+                    timestamp, r.get('customer_count'), r.get('cause'), r.get('cause_category'),
+                    r.get('lat'), r.get('lon'),
+                ))
+                if cursor.rowcount > 0:
+                    opened += 1
+            else:
+                peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
+                cursor.execute('''
+                    UPDATE tallahassee_incident_events
+                    SET peak_customer_count = ?, utility = ?, county = ?, region_name = ?,
+                        cause = ?, cause_category = ?, lat = ?, lon = ?
+                    WHERE id = ?
+                ''', (
+                    peak, r.get('utility'), r.get('county'), r.get('region_name'),
+                    r.get('cause'), r.get('cause_category'),
+                    r.get('lat'), r.get('lon'), open_event['id'],
+                ))
+
+        cursor.execute('SELECT id, incident_id FROM tallahassee_incident_events WHERE end_time IS NULL')
+        for row in cursor.fetchall():
+            if row['incident_id'] not in current_ids:
+                cursor.execute('''
+                    UPDATE tallahassee_incident_events SET end_time = ? WHERE id = ?
+                ''', (timestamp, row['id']))
+                closed += 1
+
+        conn.commit()
+        print(f"Tallahassee incident events: {opened} opened, {closed} closed this cycle")
+
+
+    def get_tallahassee_open_events(self):
+        """
+        Return currently open tallahassee_incident_events (end_time IS
+        NULL), worst (by peak customer count) first. Includes
+        current_customer_count, current status, and estimated_restoration
+        from the latest tallahassee_incidents row fetched for that
+        incident_id, alongside the lifecycle peak - same "peak vs. right
+        now" reasoning as get_open_events(). Unlike TECO's equivalent
+        (whose lifecycle table never actually stored estimated_restoration
+        at all, so its dashboard column has always silently shown "—"),
+        this join pulls both fields for real since the raw data is there.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT oe.*,
+                   cur.customer_count AS current_customer_count,
+                   cur.status AS current_status,
+                   cur.estimated_restoration AS current_estimated_restoration
+            FROM tallahassee_incident_events oe
+            LEFT JOIN tallahassee_incidents cur
+                ON cur.incident_id = oe.incident_id
+                AND cur.fetched_at = (
+                    SELECT MAX(fetched_at) FROM tallahassee_incidents t2
+                    WHERE t2.incident_id = oe.incident_id
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_customer_count DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_tallahassee_recent_closed_events(self, limit=10):
+        """
+        Return the most recently closed tallahassee_incident_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM tallahassee_incident_events
             WHERE end_time IS NOT NULL
             ORDER BY end_time DESC
             LIMIT ?

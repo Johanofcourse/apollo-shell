@@ -439,6 +439,59 @@ def duke_correlation_summary(matches):
     return summary
 
 
+def find_tallahassee_correlations(db_path="outages.db", days=None):
+    """
+    Match City of Tallahassee incidents to weather alerts active in the
+    same county at the same time. Same logic/shape as
+    find_duke_correlations() - Tallahassee's raw incidents have no
+    per-record update time either, so fetched_at (our own poll
+    timestamp) is used as the incident time, same reasoning as Duke.
+
+    days: same windowing as find_correlations()/find_teco_correlations().
+
+    Returns a list of {"incident": {...}, "alert": {...}} dicts - reuse
+    duke_correlation_summary() directly for aggregation, since the shape
+    (and even the summary function's body) is identical to Duke's/TECO's.
+    """
+    db = OutageDatabase(db_path)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    cutoff = _window_cutoff(days)
+    if cutoff is not None:
+        cursor.execute('SELECT * FROM tallahassee_incidents WHERE fetched_at >= ?', (cutoff,))
+    else:
+        cursor.execute('SELECT * FROM tallahassee_incidents')
+    incidents = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute('SELECT * FROM weather_alerts')
+    alerts = [dict(row) for row in cursor.fetchall()]
+
+    db.close()
+
+    matches = []
+    for incident in incidents:
+        if not incident.get('county'):
+            continue
+
+        incident_time = _parse_timestamp(incident.get('fetched_at'))
+        if incident_time is None:
+            continue
+
+        for alert in alerts:
+            if not _county_in_alert(incident['county'], alert['areas']):
+                continue
+
+            effective = _parse_timestamp(alert.get('effective'))
+            expires = _parse_timestamp(alert.get('expires'))
+
+            if _alert_covers_time(effective, expires, incident_time):
+                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
+                matches.append({"incident": incident, "alert": alert, "confidence": confidence})
+
+    return matches
+
+
 def find_jea_correlations(db_path="outages.db", days=None):
     """
     Match JEA's raw per-ZIP outage snapshots to weather alerts active in

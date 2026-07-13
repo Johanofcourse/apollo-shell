@@ -13,7 +13,7 @@ from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
     find_duke_correlations, duke_correlation_summary,
-    find_jea_correlations, _alert_identity,
+    find_jea_correlations, find_tallahassee_correlations, _alert_identity,
 )
 from fetch_fpl_outages import UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_jea_outages import UTILITY_NAME as JEA_UTILITY_NAME
@@ -57,6 +57,7 @@ def _get_cached_correlations(db_path, days):
         find_teco_correlations(db_path, days=days),
         find_duke_correlations(db_path, days=days),
         find_jea_correlations(db_path, days=days),
+        find_tallahassee_correlations(db_path, days=days),
     )
     _correlation_cache[days] = {"data": data, "computed_at": now}
     return data
@@ -220,7 +221,7 @@ def _percentage_tier(percentage_out):
     return "low"
 
 
-def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events):
+def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events):
     """
     Normalize FPL's/JEA's county-level outage_events-shaped tables and
     TECO's/Duke's incident-level *_incident_events into one common shape
@@ -230,6 +231,13 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
     per-source fields (TECO's/Duke's cause/ETR, FPL's/JEA's percentage-
     of-county) stay in their own detailed sections below, not squeezed
     in here.
+
+    Both "customers" (the live count right now) and "peak_customers" (the
+    high-water mark for the whole ongoing episode) are kept - sorted and
+    summed by "customers", since this feeds the "right now" KPI strip,
+    not a peak-of-episode one. Added 2026-07-12 after comparing a peak
+    reading against poweroutage.us's live count for Palm Beach and
+    realizing the two numbers are legitimately different things.
     """
     unified = []
 
@@ -237,7 +245,8 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
         unified.append({
             "utility": e["utility"],
             "county": e["county"],
-            "customers": e["peak_customers_out"],
+            "customers": e["current_customers_out"],
+            "peak_customers": e["peak_customers_out"],
             "start_time": e["start_time"],
             "duration": e["duration"],
         })
@@ -246,7 +255,8 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
         unified.append({
             "utility": e["utility"],
             "county": e["county"],
-            "customers": e["peak_customer_count"],
+            "customers": e["current_customer_count"],
+            "peak_customers": e["peak_customer_count"],
             "start_time": e["start_time"],
             "duration": e["duration"],
         })
@@ -255,7 +265,8 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
         unified.append({
             "utility": e["utility"],
             "county": e["county"],
-            "customers": e["peak_customer_count"],
+            "customers": e["current_customer_count"],
+            "peak_customers": e["peak_customer_count"],
             "start_time": e["start_time"],
             "duration": e["duration"],
         })
@@ -264,7 +275,18 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
         unified.append({
             "utility": e["utility"],
             "county": e["county"],
-            "customers": e["peak_customers_out"],
+            "customers": e["current_customers_out"],
+            "peak_customers": e["peak_customers_out"],
+            "start_time": e["start_time"],
+            "duration": e["duration"],
+        })
+
+    for e in tallahassee_open_events:
+        unified.append({
+            "utility": e["utility"],
+            "county": e["county"],
+            "customers": e["current_customer_count"],
+            "peak_customers": e["peak_customer_count"],
             "start_time": e["start_time"],
             "duration": e["duration"],
         })
@@ -295,8 +317,10 @@ def index():
     duke_closed_events = db.get_duke_recent_closed_events(limit=10)
     jea_open_events = db.get_jea_open_events()
     jea_closed_events = db.get_jea_recent_closed_events(limit=10)
+    tallahassee_open_events = db.get_tallahassee_open_events()
+    tallahassee_closed_events = db.get_tallahassee_recent_closed_events(limit=10)
 
-    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "correlation"])
+    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "tallahassee", "correlation"])
     heat_summary = db.get_heat_advisory_summary()
 
     db.close()
@@ -317,8 +341,12 @@ def index():
         event["duration"] = _duration_since(event["start_time"])
     for event in jea_closed_events:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
+    for event in tallahassee_open_events:
+        event["duration"] = _duration_since(event["start_time"])
+    for event in tallahassee_closed_events:
+        event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
-    matches, teco_matches, duke_matches, jea_matches = _get_cached_correlations(db_path, window_days)
+    matches, teco_matches, duke_matches, jea_matches, tallahassee_matches = _get_cached_correlations(db_path, window_days)
 
     correlation = correlation_summary(matches)
     for stats in correlation.values():
@@ -344,7 +372,13 @@ def index():
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
         stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
-    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events)
+    tallahassee_correlation = duke_correlation_summary(tallahassee_matches)
+    for stats in tallahassee_correlation.values():
+        stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
+        stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
+        stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
+
+    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events)
 
     for event in open_events:
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
@@ -365,6 +399,7 @@ def index():
         "teco": "TECO",
         "duke": "Duke Energy",
         "jea": "JEA",
+        "tallahassee": "City of Tallahassee",
         "correlation": "Correlation",
     }
     for source, info in pipeline_health.items():
@@ -381,7 +416,7 @@ def index():
     # read before scrolling into the detailed per-utility tables below.
     total_customers_affected = sum(row["customers"] or 0 for row in unified_open)
     worst_row = unified_open[0] if unified_open else None
-    combined_confidence = _combine_confidence_breakdowns(matches, teco_matches, duke_matches, jea_matches)
+    combined_confidence = _combine_confidence_breakdowns(matches, teco_matches, duke_matches, jea_matches, tallahassee_matches)
     combined_confidence_bar = _confidence_bar_segments(combined_confidence)
     combined_confidence_display = _format_confidence(combined_confidence)
 
@@ -401,6 +436,9 @@ def index():
         jea_open_events=jea_open_events,
         jea_closed_events=jea_closed_events,
         jea_correlation=jea_correlation,
+        tallahassee_open_events=tallahassee_open_events,
+        tallahassee_closed_events=tallahassee_closed_events,
+        tallahassee_correlation=tallahassee_correlation,
         unified_open=unified_open,
         total_customers_affected=total_customers_affected,
         worst_row=worst_row,
@@ -590,13 +628,15 @@ def incident():
     db = OutageDatabase()
 
     detail = None
-    if source in ("teco", "duke"):
+    if source in ("teco", "duke", "tallahassee"):
         incident_id = request.args.get("incident_id", "").strip()
         if incident_id:
-            raw_detail = (
-                db.get_teco_incident_detail(incident_id) if source == "teco"
-                else db.get_duke_incident_detail(incident_id)
-            )
+            detail_fns = {
+                "teco": db.get_teco_incident_detail,
+                "duke": db.get_duke_incident_detail,
+                "tallahassee": db.get_tallahassee_incident_detail,
+            }
+            raw_detail = detail_fns[source](incident_id)
             if raw_detail["events"] or raw_detail["history"]:
                 detail = raw_detail
     elif source in ("fpl", "jea"):
@@ -610,7 +650,7 @@ def incident():
     db.close()
 
     if detail:
-        if source in ("teco", "duke"):
+        if source in ("teco", "duke", "tallahassee"):
             for ev in detail["events"]:
                 ev["duration"] = _duration_since(ev["start_time"], ev["end_time"])
         else:
