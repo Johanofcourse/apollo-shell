@@ -811,6 +811,35 @@ class OutageDatabase:
 
         return health
 
+    def get_pipeline_error_history(self, source=None, limit=200):
+        """
+        Raw pipeline_errors rows, most recent first - the drill-down
+        behind get_pipeline_health()'s "count + last message" summary.
+        That summary answers "is anything wrong right now"; this answers
+        "what actually happened, and when" - e.g. seeing that a source's
+        failures always cluster around a specific time of day, or always
+        say the same thing, rather than just a single latest message.
+
+        source=None returns every source's errors combined (still
+        useful: shows whether failures are correlated across sources at
+        the same moment, e.g. a shared network blip, vs. one source
+        alone).
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        if source:
+            cursor.execute('''
+                SELECT * FROM pipeline_errors WHERE source = ?
+                ORDER BY timestamp DESC LIMIT ?
+            ''', (source, limit))
+        else:
+            cursor.execute('''
+                SELECT * FROM pipeline_errors
+                ORDER BY timestamp DESC LIMIT ?
+            ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
     def get_heat_advisory_summary(self, reference_date=None):
         """
         "Heat this month" summary for the dashboard strip. Heat Advisory

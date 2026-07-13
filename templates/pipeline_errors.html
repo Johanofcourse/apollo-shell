@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Apollo Sentinel — Pipeline Error History</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #161d27;
+      --border: #26313f;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --accent: #e8734a;
+      --pink: #ff1f8f;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --crit: #f85149;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 2rem;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+    .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
+    .meta a { color: var(--pink); }
+    .explainer {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .explainer strong { color: var(--text); }
+    .explainer p { margin: 0 0 0.6rem; }
+    .explainer p:last-child { margin-bottom: 0; }
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .filter-chip {
+      display: inline-block;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.35rem 0.9rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .filter-chip:hover { border-color: var(--pink); color: var(--text); }
+    .filter-chip-active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #1a0f0a;
+      font-weight: 600;
+    }
+    .wrap { overflow-x: auto; margin-bottom: 1.5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th {
+      text-align: left;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.7rem;
+      letter-spacing: 0.04em;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    .source-chip {
+      display: inline-block;
+      background: rgba(248, 81, 73, 0.12);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.15rem 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .msg { color: var(--text); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.8rem; }
+    .when { color: var(--muted); white-space: nowrap; }
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      padding: 1.5rem 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Pipeline Error History</h1>
+  <div class="meta"><a href="/">&larr; Back to live status</a></div>
+
+  <div class="explainer">
+    <p>
+      <strong>What is this?</strong> Apollo Sentinel checks each utility's and NWS's live data feed on its own
+      schedule (about every 15 minutes). Every so often a single check fails &mdash; a utility's server is briefly
+      slow, a network request times out, and so on. Every one of those is caught automatically and recorded here,
+      then the system simply tries again on its next scheduled check.
+    </p>
+    <p>
+      <strong>This list is not a live problem report.</strong> A handful of entries here, especially old ones or
+      ones that only happened once, is normal and expected &mdash; it's the same kind of thing any website or app
+      quietly recovers from. The main dashboard's pipeline-health strip is the place to check whether something is
+      failing <em>right now</em> (it turns amber/red only when a source has failed repeatedly, recently). This
+      page exists purely for transparency: a plain, complete record of what happened and when, in case anyone
+      &mdash; including a client &mdash; ever wants to see it for themselves.
+    </p>
+  </div>
+
+  <div class="filter-row">
+    <a href="/pipeline-errors" class="filter-chip {{ 'filter-chip-active' if not selected_source else '' }}">All sources</a>
+    {% for src in all_sources %}
+      <a href="/pipeline-errors?source={{ src }}" class="filter-chip {{ 'filter-chip-active' if selected_source == src else '' }}">
+        {{ source_display_names.get(src, src.title()) }}
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="wrap">
+  {% if errors %}
+    <table>
+      <tr><th>Source</th><th>When</th><th>How Long Ago</th><th>Message</th></tr>
+      {% for e in errors %}
+      <tr>
+        <td><span class="source-chip">{{ e.display_name }}</span></td>
+        <td class="when">{{ e.timestamp | humanize }}</td>
+        <td class="when">{{ e.time_ago }} ago</td>
+        <td class="msg">{{ e.error_message }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">
+      No caught failures on file{{ ' for ' ~ source_display_names.get(selected_source, selected_source.title()) if selected_source else '' }}. Clean record.
+    </div>
+  {% endif %}
+  </div>
+</body>
+</html>

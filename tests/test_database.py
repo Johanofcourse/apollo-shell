@@ -553,3 +553,58 @@ class TestOpenEventsCurrentVsPeak:
         assert len(open_events) == 1
         assert open_events[0]["peak_customer_count"] == 400
         assert open_events[0]["current_customer_count"] == 60
+
+
+class TestPipelineErrorHistory:
+    """
+    get_pipeline_error_history() - the drill-down behind
+    get_pipeline_health()'s "count + last message" summary, added
+    2026-07-13 so the raw failure history is actually browsable, not
+    just summarized.
+    """
+
+    def test_returns_most_recent_first(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_pipeline_error("fpl", "first failure", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("fpl", "second failure", timestamp="2026-01-01T00:15:00")
+        history = db.get_pipeline_error_history(source="fpl")
+        db.close()
+
+        assert len(history) == 2
+        assert history[0]["error_message"] == "second failure"
+        assert history[1]["error_message"] == "first failure"
+
+    def test_filters_by_source(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_pipeline_error("fpl", "fpl failure", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("preco", "preco failure", timestamp="2026-01-01T00:00:00")
+        history = db.get_pipeline_error_history(source="preco")
+        db.close()
+
+        assert len(history) == 1
+        assert history[0]["source"] == "preco"
+
+    def test_no_source_returns_all_combined(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_pipeline_error("fpl", "fpl failure", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("preco", "preco failure", timestamp="2026-01-01T00:00:01")
+        history = db.get_pipeline_error_history()
+        db.close()
+
+        assert len(history) == 2
+
+    def test_respects_limit(self, db_path):
+        db = OutageDatabase(db_path)
+        for i in range(5):
+            db.log_pipeline_error("fpl", f"failure {i}", timestamp=f"2026-01-01T00:0{i}:00")
+        history = db.get_pipeline_error_history(source="fpl", limit=2)
+        db.close()
+
+        assert len(history) == 2
+
+    def test_empty_when_no_errors_logged(self, db_path):
+        db = OutageDatabase(db_path)
+        history = db.get_pipeline_error_history(source="fpl")
+        db.close()
+
+        assert history == []

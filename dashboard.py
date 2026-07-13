@@ -50,6 +50,22 @@ DEFAULT_CORRELATION_WINDOW_DAYS = 30
 CORRELATION_WINDOW_CHOICES = (7, 30)
 _correlation_cache = {}
 
+# Shared between the pipeline-health strip on the main dashboard and the
+# /pipeline-errors drill-down page, so a source's display name can't
+# drift between the two.
+PIPELINE_SOURCE_DISPLAY_NAMES = {
+    "fpl": "FPL",
+    "weather": "NWS Weather",
+    "teco": "TECO",
+    "duke": "Duke Energy",
+    "jea": "JEA",
+    "tallahassee": "City of Tallahassee",
+    "talquin": "Talquin Electric Cooperative",
+    "fpuc": "Florida Public Utilities Corporation",
+    "preco": "Peace River Electric Cooperative",
+    "correlation": "Correlation",
+}
+
 
 def _get_cached_correlations(db_path, days):
     now = time.time()
@@ -485,20 +501,9 @@ def index():
     # (see OutageDatabase.log_pipeline_error/get_pipeline_health) that
     # used to only ever exist as a print() line in a growing text log
     # file nobody was watching.
-    source_display_names = {
-        "fpl": "FPL",
-        "weather": "NWS Weather",
-        "teco": "TECO",
-        "duke": "Duke Energy",
-        "jea": "JEA",
-        "tallahassee": "City of Tallahassee",
-        "talquin": "Talquin Electric Cooperative",
-        "fpuc": "Florida Public Utilities Corporation",
-        "preco": "Peace River Electric Cooperative",
-        "correlation": "Correlation",
-    }
     for source, info in pipeline_health.items():
-        info["display_name"] = source_display_names.get(source, source.title())
+        info["source"] = source
+        info["display_name"] = PIPELINE_SOURCE_DISPLAY_NAMES.get(source, source.title())
         info["last_error_ago"] = _duration_since(info["last_error_time"]) if info["last_error_time"] else None
     pipeline_status_order = {"critical": 0, "warning": 1, "healthy": 2}
     pipeline_health_list = sorted(
@@ -711,6 +716,40 @@ def heat():
     db.close()
 
     return render_template("heat.html", heat_summary=heat_summary)
+
+
+@app.route("/pipeline-errors")
+def pipeline_errors():
+    """
+    Detail view behind the main dashboard's pipeline-health strip - the
+    strip only ever shows a count and the single latest message per
+    source (see OutageDatabase.get_pipeline_health()); this shows the
+    actual raw history so a real pattern (recurring at the same time of
+    day, several sources failing at once, one message repeating) is
+    visible instead of just "something failed once."
+
+    source=<name> filters to just that source (matches the same keys
+    used in main.py's log_pipeline_error() calls, e.g. "fpl"/"preco");
+    omitted shows every source combined, most recent first.
+    """
+    selected_source = request.args.get("source", "").strip().lower()
+
+    db = OutageDatabase()
+    all_sources = sorted(PIPELINE_SOURCE_DISPLAY_NAMES.keys())
+    errors = db.get_pipeline_error_history(source=selected_source or None, limit=200)
+    db.close()
+
+    for e in errors:
+        e["display_name"] = PIPELINE_SOURCE_DISPLAY_NAMES.get(e["source"], e["source"].title())
+        e["time_ago"] = _duration_since(e["timestamp"])
+
+    return render_template(
+        "pipeline_errors.html",
+        errors=errors,
+        selected_source=selected_source,
+        all_sources=all_sources,
+        source_display_names=PIPELINE_SOURCE_DISPLAY_NAMES,
+    )
 
 
 @app.route("/incident")

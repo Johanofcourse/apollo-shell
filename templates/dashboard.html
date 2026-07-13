@@ -355,11 +355,14 @@
 
   <div class="pipeline-health {{ 'pipeline-health-issue' if any_pipeline_issue else '' }}">
     <div class="pipeline-health-header">
-      {% if any_pipeline_issue %}
-        &#9888; Pipeline has caught failures - see below
-      {% else %}
-        &#10003; Pipeline healthy - no caught failures in the last 24h
-      {% endif %}
+      <span>
+        {% if any_pipeline_issue %}
+          &#9888; Pipeline has caught failures - see below
+        {% else %}
+          &#10003; Pipeline healthy - no caught failures in the last 24h
+        {% endif %}
+      </span>
+      <a href="/pipeline-errors" style="float: right; color: var(--pink); font-weight: 400; font-size: 0.8rem;">View error history &rarr;</a>
     </div>
     <div class="pipeline-health-row">
       {% for source in pipeline_health_list %}
@@ -371,8 +374,10 @@
         <div class="pipeline-source-detail">No failures in 24h</div>
         {% else %}
         <div class="pipeline-source-detail">
-          {{ source.count_today }} failure{{ "s" if source.count_today != 1 else "" }} in 24h
-          {% if source.count_recent >= 3 %}({{ source.count_recent }} in the last hour){% endif %}
+          <a href="/pipeline-errors?source={{ source.source }}" style="color: inherit;">
+            {{ source.count_today }} failure{{ "s" if source.count_today != 1 else "" }} in 24h
+            {% if source.count_recent >= 3 %}({{ source.count_recent }} in the last hour){% endif %}
+          </a>
         </div>
         <div class="pipeline-source-detail" style="color: var(--muted);">
           Last: {{ source.last_error_ago }} ago &mdash; {{ source.last_error_message }}
