@@ -435,23 +435,46 @@ thin sample per county, not something to treat as a reliable average yet.
       below (raw feeds themselves stay off-limits, permanently) - it
       specifically resolves the narrower derived-verdict question.
 - [x] **Checked whether there's a real live-data geographic gap in
-      Florida (2026-07-12) - there is.** Cross-referenced the master
-      Florida county list against every county that's ever appeared in
-      any of the 4 live sources' raw tables (normalized for punctuation,
-      after a first pass falsely flagged St. Lucie as missing due to a
-      "St Lucie" vs. "ST. LUCIE" spelling mismatch - the same class of
-      bug that hid Miami-Dade in the historical importer). Real result:
-      11 of 67 counties have zero live coverage from any source, and 10
-      of those 11 are contiguous Florida Panhandle counties (Escambia,
-      Santa Rosa, Okaloosa, Walton, Holmes, Washington, Calhoun, Jackson,
-      Gadsden, Liberty) - almost certainly Gulf Power's former territory,
-      which merged into FPL corporately in 2021 but likely still runs its
-      own separate live outage-map system our FPL integration never
-      reaches. DeSoto County is the one outlier elsewhere (possibly a
-      smaller rural co-op's territory - not independently verified the
-      way the Panhandle finding was). This is now the best-scoped
-      candidate for a fifth utility integration, whenever that's picked
-      up - a real, checked gap, not a guess.
+      Florida (2026-07-12) - there is, and it's exactly the Panhandle.**
+      Cross-referenced the master Florida county list against every
+      county that's ever appeared in any of the 4 live sources' raw
+      tables, normalized for spelling drift - this took two passes to
+      get right. First pass (punctuation-only normalization) falsely
+      flagged St. Lucie as missing ("St Lucie" in FPL's own raw feed vs.
+      "ST. LUCIE" canonical). Second pass still falsely flagged DeSoto
+      (FPL's raw feed genuinely spells it "De Soto," two words, vs.
+      "DESOTO" canonical - confirmed directly against the live feed, not
+      assumed) until normalization also stripped internal spaces. Both
+      are the same class of bug that hid Miami-Dade in the historical
+      importer - a spelling/spacing mismatch masquerading as a real gap.
+      Final, fully-verified result: exactly 10 of 67 counties have zero
+      live coverage from any of our 4 sources, and all 10 are contiguous
+      Florida Panhandle counties (Escambia, Santa Rosa, Okaloosa, Walton,
+      Holmes, Washington, Calhoun, Jackson, Gadsden, Liberty) - no
+      outlier elsewhere once the false positives were cleared. Also
+      independently confirmed the main FPL feed itself (the one we
+      already integrate) has exactly 35 counties and genuinely never
+      includes any Panhandle county - ruling out "maybe it's our own
+      parsing bug" before concluding a separate system is needed.
+      Strongly suspected to be Gulf Power's former territory (merged
+      into FPL corporately in 2021, likely still runs its own separate
+      live outage-map system) - real lead found 2026-07-12: FPL
+      maintains a distinct regional map at fplmaps.com/northwest.html,
+      confirmed to reference its own separate JS/data bundle
+      (`/content/dam/fplmaps/power-tracker/northwest/...`), not the main
+      site's. Discovery stalled there for the night - the underlying
+      data endpoint sits behind real Incapsula/Imperva bot protection
+      (confirmed: our own unauthenticated request to the main
+      CountyOutages.json endpoint returns an Incapsula challenge page
+      when the right headers aren't sent, and the northwest page's
+      Network tab only ever showed analytics/bot-challenge requests, not
+      the real data call, even after interacting with the map). Same
+      class of wall TECO/Duke needed a human driving a real browser
+      through devtools to get past - worth another look with fresh eyes,
+      not a dead end. This is still the best-scoped candidate for a
+      fifth utility integration, whenever that's picked up - a real,
+      checked gap, not a guess, even though the endpoint itself isn't
+      found yet.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida

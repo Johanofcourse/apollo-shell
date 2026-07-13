@@ -447,3 +447,38 @@ a live feed replay, and not a substitute for checking your own
 utility's outage map. Nothing here is live in the real app yet - still
 a concept, still waiting on an actual test/production environment that
 doesn't exist yet either.
+
+## The Panhandle hunt, and a bug that needed catching twice
+One more section landed in the public concept that night - Current
+Weather Alerts, showing every active NWS alert statewide, not just
+heat. Real and small: two alerts active at the time, one of them a rip
+current statement for the Panhandle coast, which turned out to matter
+more than expected.
+
+Because the real project that night was finding out who actually serves
+power to that missing corner of the state. A real lead turned up fast -
+FPL runs a whole separate regional map for the Panhandle, distinct
+JS bundle and everything, clearly built around exactly that geography.
+Getting past it wasn't so fast - real bot protection (Incapsula) sits in
+front of the actual data, and it held. Confirmed that much for certain
+by tripping the same wall on our own already-working FPL integration
+with the wrong headers on purpose - so this isn't a guess about what's
+blocking things, it's a checked fact. Worth another pass with fresh
+eyes, not a dead end.
+
+Before chasing a whole separate system, checked the obvious alternative
+first: maybe the Panhandle was sitting in data we already have, quietly
+dropped by our own code the way Miami-Dade once was. It wasn't - the
+main feed genuinely never mentions those counties at all. Good to rule
+out before building anything.
+
+The county-gap count itself needed fixing twice in the same sitting.
+First "St Lucie" (no period, straight from FPL's own feed) got flagged
+as missing against a canonical "ST. LUCIE" - not a real gap, just
+punctuation. Fixed that, then found the exact same shape of mistake
+again five minutes later: "De Soto," two words, in the real feed,
+flagged as missing against "DESOTO." Both are the same lesson the
+original Miami-Dade bug already taught this project once - a spelling
+mismatch reads exactly like a real gap until you check the raw source
+directly. The real, final count: ten counties missing, every one of
+them Panhandle, no outliers left once both mistakes were caught.
