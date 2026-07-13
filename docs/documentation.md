@@ -414,3 +414,36 @@ a certain other well-known site's branding. Swapped it for the same
 pink already living in the Artifact's design language - kept the
 orange exactly where it still means something (the severity badges,
 the confidence bar's low segment), and moved on.
+
+## The first real shape of a public page
+A bigger question arrived next: what would it actually look like to
+ship this for real, not just as an internal tool? Answering it honestly
+meant admitting the existing design sandbox quietly mixed two different
+things - a heat panel and storm history section that were already clear
+to publish, sitting right next to a live per-county verdict map whose
+publish-safety had never actually been decided, just assumed. Said so
+plainly before building anything further.
+
+The map question resolved fast, and in the opposite direction expected:
+keep it, live verdict and all. The reasoning was refreshingly direct -
+a sufficiently attentive visitor might work out that the site pulls
+from several utilities' outage maps, and that's fine, because the
+information itself is genuinely useful to the person looking at it.
+Not every risk is worth avoiding at the cost of the thing actually
+being useful. The internal-only ops telemetry - utility breakdowns,
+confidence-score bars, top alert types - didn't get the same reprieve,
+and rightly so: that's monitoring language for someone running the
+system, not information a resident showed up looking for.
+
+What came out of it is a genuinely new artifact, not an update to the
+old design sandbox - a real pivot, so it earned its own URL. Same
+isometric map, same real Census county data, same heat panel, same
+storm history timeline, restructured as an actual front page: a plain-
+language lede explaining what the site is, the map and two live KPIs up
+top, heat and storm history given full-width room to breathe instead of
+living as sidebar widgets, and a footer that says outright what the
+page does and doesn't show - a derived read on weather and outages, not
+a live feed replay, and not a substitute for checking your own
+utility's outage map. Nothing here is live in the real app yet - still
+a concept, still waiting on an actual test/production environment that
+doesn't exist yet either.

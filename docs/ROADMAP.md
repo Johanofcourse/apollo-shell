@@ -369,6 +369,26 @@ thin sample per county, not something to treat as a reliable average yet.
   3. [ ] Enough live volume for restoration confidence to mean anything
      (Phase 3's data-volume bar)
 - Not scoped in detail yet - revisit once the above are real, not before.
+- [x] **First real concept for the actual public-facing page, built
+      2026-07-12** (separate Artifact, not the ops-dashboard-redesign
+      sandbox - a genuine pivot in what the design represents, so it got
+      its own URL/favicon rather than overwriting that one). Combines
+      the map/hero (kept, including the live per-county verdict - see
+      the resolved decision above), the Heat This Month panel, and the
+      Storm History section into one real page layout, built on real
+      live data (51 counties with live coverage, real customer/incident
+      counts, real all-time confidence patterns) rather than
+      placeholders. Deliberately dropped the ops-style telemetry
+      sidebar (by-utility breakdown, statewide confidence bars, top
+      alert types, worst %, longest open outage) from this version -
+      that's internal monitoring language that doesn't answer a real
+      visitor's question, not something to carry over just because it
+      existed in the ops sandbox. Ends with an honest footer stating
+      plainly what the page does and doesn't show (derived patterns,
+      not a replay of any utility's raw live feed) rather than leaving
+      the omission unexplained. Still just a design concept - nothing
+      here is a real route in the app yet, and the test/prod
+      environment prerequisite noted above hasn't been started.
 - [ ] **Public-facing heat advisory view.** Different risk profile than
       the outage/utility data this whole gate exists for - heat
       advisories are NWS's own already-public alerts, not a reverse-
@@ -398,16 +418,22 @@ thin sample per county, not something to treat as a reliable average yet.
       only then a genuine staging/test copy separate from whatever counts
       as production - in that order, since "test vs. prod" is meaningless
       without a real prod to split from first.
-- [ ] **Scope exactly what "publish the whole Artifact" would mean before
-      doing it - the Artifact currently mixes two different risk
-      profiles.** Heat and storm history are both confirmed clear of this
-      phase's gate (derived/aggregated data, not raw feeds). But the
-      Artifact's map/hero also shows live, current-state *verdicts* per
-      county, derived from FPL's/TECO's/Duke's/JEA's live feeds - whether
-      a derived label counts as safely "derived/aggregated" or edges
-      toward the kind of live-feed exposure explicitly ruled out under
-      "Explicitly not planned" below is a real, undecided question, not
-      an assumption to make while porting the design over.
+- [x] **Resolved: the live per-county verdict map (and hero KPIs) are OK
+      to include in the public-facing page - a real decision, not an
+      assumption.** Raised as an open question (2026-07-12): does a
+      derived per-county verdict count as safe "derived/aggregated" data
+      like heat/storm-history, or does it edge toward the live-feed
+      exposure explicitly ruled out under "Explicitly not planned" below?
+      User's call, same day: keep it - "if someone is shrewd enough
+      they'll realize we are collecting data from a bunch of outage
+      maps, but either way this info is necessary for the user." Accepts
+      that a sufficiently attentive visitor could infer the site
+      aggregates several utilities' outage maps; the verdict itself is
+      still a derived label, not a raw feed pass-through, and the
+      product judgment is that the value to a real user outweighs that
+      inference risk. This does NOT reopen "Explicitly not planned"
+      below (raw feeds themselves stay off-limits, permanently) - it
+      specifically resolves the narrower derived-verdict question.
 - [x] **Checked whether there's a real live-data geographic gap in
       Florida (2026-07-12) - there is.** Cross-referenced the master
       Florida county list against every county that's ever appeared in
