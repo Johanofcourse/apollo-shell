@@ -504,6 +504,52 @@ thin sample per county, not something to treat as a reliable average yet.
       poller and the dashboard to pick up the new code, re-ran the
       county-coverage check live and watched it drop from 10 missing
       counties to 3.
+- [x] **City of Tallahassee integrated as a fifth live utility** -
+      found via a plain Esri ArcGIS REST endpoint (esriemcs.com), no bot
+      protection. Incident-level shape like TECO/Duke (own
+      `tallahassee_incidents`/`tallahassee_incident_events` tables), plus
+      a real 5-zone sub-county "region" field unique to this source. Real
+      bug caught before shipping (not by a crash): the captured query URL
+      pointed at ArcGIS layer 1 (a boundary polygon), not layer 0 (the
+      actual "Outages" point layer) - looked identical to a valid empty
+      response until a real request came back as the wrong shape;
+      caught by re-querying the service's own layer list directly. A
+      second mapping bug also caught: the zone-name layer numbers its
+      rows by internal OBJECTID, not by the digit in each zone's own
+      name - same class of silent-join bug as the Miami-Dade/St Lucie/
+      DeSoto county-name mismatches.
+- [x] **Talquin Electric Cooperative integrated as a sixth live
+      utility** - found via a third distinct vendor platform (Siena
+      Technologies, cache.sienatech.com). County-rollup shape like
+      FPL/JEA (own `talquin_outages`/`talquin_outage_events` tables).
+      Confirmed real coverage: Gadsden, Leon, Liberty, Wakulla - closed
+      2 of the 3 remaining Panhandle gaps (Gadsden, Liberty).
+- [ ] **Florida Public Utilities Corporation (FPUC) integrated as a
+      seventh live utility - real, but with a real, unresolved
+      limitation worth tracking as a priority.** Found via a fourth
+      distinct vendor platform (DataVoice's "Apprise" system,
+      outageentry.com). The live feed only ever reports ONE combined
+      total across FPUC's whole non-adjacent Florida territory
+      (historically Calhoun, Jackson, Liberty, Nassau, Wakulla per PSC
+      storm reports) - no per-county/substation breakdown could be
+      found despite a real search (the app's own config confirms a
+      "Substation" view exists, but no live outage existed to trigger
+      capturing its actual request; blind-guessing further endpoint
+      names stopped being productive and was deliberately not pursued
+      further). Modeled honestly: a fixed placeholder "county" label
+      that can't match any real NWS alert area, so
+      `find_fpuc_correlations()` always returns empty by design, not a
+      special-cased skip.
+
+      **Why this stays flagged**: this technically "closes" Calhoun (the
+      last Florida county with zero coverage across the other 6
+      sources), but only as part of one blended number covering five
+      counties together - there is still no verified, standalone reading
+      for Calhoun specifically. Revisit during a real active FPUC outage
+      (check whether `markers`/`polygons` populate with per-device
+      lat/lon we could reverse-geocode to county, same approach Duke's
+      fetch module already uses) or if the real "Substation" endpoint is
+      ever found by accident while browsing the live map.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida
