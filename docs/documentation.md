@@ -394,3 +394,23 @@ between 7 and 30 days now sits right on the dashboard, defaulting to
 outage side. Broward's "x190" became something closer to a small,
 believable number of actual distinct events - the kind of thing someone
 could read out loud and have it mean something.
+
+Then, completely unrelated - asked to make the new toggle buttons a bit
+"more bubbly," rounder, with real depth - and while checking that the
+color swap hadn't broken anything, the exact same bug turned up a
+second time, in a different spot. The combined statewide confidence
+strip at the top of the page still read "low x27118," even after
+everything else got fixed. Confidence turned out to be its own little
+loose end: it's purely a property of the alert itself, not of which
+outage it happened to overlap, so it needed the identical
+one-distinct-alert-not-one-per-match treatment the rest of the fix
+already got - just living in a second function nobody had touched yet.
+Fixed the same way, reusing the same dedup logic instead of writing it
+twice. "low x27118" is now "high x73, medium x222, low x75."
+
+The buttons themselves ended up pink, for a much less technical reason:
+the original orange-on-black combination looked a little too much like
+a certain other well-known site's branding. Swapped it for the same
+pink already living in the Artifact's design language - kept the
+orange exactly where it still means something (the severity badges,
+the confidence bar's low segment), and moved on.

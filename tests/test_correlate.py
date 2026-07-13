@@ -144,6 +144,13 @@ class TestCorrelationSummaryDistinctCounting:
     Quality Alert x190" for what was actually a handful of distinct
     alerts). Now counts distinct alert_ids per event type, and distinct
     (county, timestamp) snapshots for outage_count.
+
+    A second real instance of the same bug was caught the same day,
+    after the first fix shipped: confidence_breakdown was still counting
+    raw matches (a live combined KPI strip showed "low x27118"), because
+    confidence is a pure function of the alert's own event_type +
+    severity, not of which outage snapshot it happened to match, and so
+    needs the exact same per-alert deduplication as alert_types.
     """
 
     def test_one_alert_matching_many_snapshots_counts_once(self, db_path):
@@ -162,6 +169,9 @@ class TestCorrelationSummaryDistinctCounting:
         summary = correlation_summary(find_correlations(db_path))
         assert summary["ALACHUA"]["alert_types"]["Heat Advisory"] == 1
         assert summary["ALACHUA"]["outage_count"] == 5
+        # Same alert matched 5 times (once per poll cycle) - still only
+        # one distinct confidence signal, not five.
+        assert summary["ALACHUA"]["confidence_breakdown"] == {"low": 1}
 
     def test_one_snapshot_matching_two_alerts_counts_as_one_outage(self, db_path):
         db = OutageDatabase(db_path)

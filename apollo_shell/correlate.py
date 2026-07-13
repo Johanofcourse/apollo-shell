@@ -272,13 +272,21 @@ def teco_correlation_summary(matches):
     """
     Aggregate correlated TECO incident/alert pairs by county.
 
-    incident_count and alert_types both count DISTINCT things (added
-    2026-07-12, alongside days= windowing in find_teco_correlations()) -
-    previously counted every matched (incident-snapshot, alert) PAIR, so
-    one long-running alert overlapping many 15-minute poll cycles for
-    the same incident inflated the number far past anything meaningful.
+    incident_count, alert_types, AND confidence_breakdown all count
+    DISTINCT things (added 2026-07-12, alongside days= windowing in
+    find_teco_correlations()) - previously counted every matched
+    (incident-snapshot, alert) PAIR, so one long-running alert
+    overlapping many 15-minute poll cycles for the same incident
+    inflated every one of these numbers far past anything meaningful (a
+    real example caught after the first pass at this fix only covered
+    alert_types: the combined KPI strip still showed "low x27118" -
+    confidence is purely a function of the alert's own event_type +
+    severity via weather_match_confidence(), not of which incident it
+    happened to match, so it needs the exact same per-alert
+    deduplication as alert_types, not its own separate count).
     incident_count counts distinct (incident_id, fetched_at) snapshots;
-    alert_types counts distinct alert_id per event type.
+    alert_types and confidence_breakdown are both derived from the same
+    set of distinct matched alerts (by alert_id) per county.
 
     Returns a dict keyed by county:
         {
@@ -298,30 +306,32 @@ def teco_correlation_summary(matches):
         entry = raw.setdefault(county, {
             "incident_keys": set(),
             "max_customer_count": 0,
-            "alert_type_ids": {},
-            "confidence_breakdown": {},
+            "matched_alerts": {},
         })
 
         entry["incident_keys"].add((match["incident"]["incident_id"], match["incident"]["fetched_at"]))
         entry["max_customer_count"] = max(
             entry["max_customer_count"], match["incident"]["customer_count"] or 0
         )
+        entry["matched_alerts"][_alert_identity(match["alert"])] = (
+            match["alert"]["event_type"], match["confidence"]
+        )
 
-        event_type = match["alert"]["event_type"]
-        entry["alert_type_ids"].setdefault(event_type, set()).add(_alert_identity(match["alert"]))
+    summary = {}
+    for county, entry in raw.items():
+        alert_types = {}
+        confidence_breakdown = {}
+        for event_type, confidence in entry["matched_alerts"].values():
+            alert_types[event_type] = alert_types.get(event_type, 0) + 1
+            confidence_breakdown[confidence] = confidence_breakdown.get(confidence, 0) + 1
 
-        confidence = match["confidence"]
-        entry["confidence_breakdown"][confidence] = entry["confidence_breakdown"].get(confidence, 0) + 1
-
-    return {
-        county: {
+        summary[county] = {
             "incident_count": len(entry["incident_keys"]),
             "max_customer_count": entry["max_customer_count"],
-            "alert_types": {et: len(ids) for et, ids in entry["alert_type_ids"].items()},
-            "confidence_breakdown": entry["confidence_breakdown"],
+            "alert_types": alert_types,
+            "confidence_breakdown": confidence_breakdown,
         }
-        for county, entry in raw.items()
-    }
+    return summary
 
 
 def find_duke_correlations(db_path="outages.db", days=None):
@@ -378,8 +388,10 @@ def find_duke_correlations(db_path="outages.db", days=None):
 def duke_correlation_summary(matches):
     """
     Aggregate correlated Duke incident/alert pairs by county. Same
-    distinct-counting fix as teco_correlation_summary() above (2026-07-12) -
-    see its docstring.
+    distinct-counting fix as teco_correlation_summary() above (2026-07-12,
+    extended same day to also cover confidence_breakdown - see its
+    docstring for why confidence needed the same per-alert
+    deduplication as alert_types, not its own separate count).
 
     Returns a dict keyed by county:
         {
@@ -399,30 +411,32 @@ def duke_correlation_summary(matches):
         entry = raw.setdefault(county, {
             "incident_keys": set(),
             "max_customer_count": 0,
-            "alert_type_ids": {},
-            "confidence_breakdown": {},
+            "matched_alerts": {},
         })
 
         entry["incident_keys"].add((match["incident"]["incident_id"], match["incident"]["fetched_at"]))
         entry["max_customer_count"] = max(
             entry["max_customer_count"], match["incident"]["customer_count"] or 0
         )
+        entry["matched_alerts"][_alert_identity(match["alert"])] = (
+            match["alert"]["event_type"], match["confidence"]
+        )
 
-        event_type = match["alert"]["event_type"]
-        entry["alert_type_ids"].setdefault(event_type, set()).add(_alert_identity(match["alert"]))
+    summary = {}
+    for county, entry in raw.items():
+        alert_types = {}
+        confidence_breakdown = {}
+        for event_type, confidence in entry["matched_alerts"].values():
+            alert_types[event_type] = alert_types.get(event_type, 0) + 1
+            confidence_breakdown[confidence] = confidence_breakdown.get(confidence, 0) + 1
 
-        confidence = match["confidence"]
-        entry["confidence_breakdown"][confidence] = entry["confidence_breakdown"].get(confidence, 0) + 1
-
-    return {
-        county: {
+        summary[county] = {
             "incident_count": len(entry["incident_keys"]),
             "max_customer_count": entry["max_customer_count"],
-            "alert_types": {et: len(ids) for et, ids in entry["alert_type_ids"].items()},
-            "confidence_breakdown": entry["confidence_breakdown"],
+            "alert_types": alert_types,
+            "confidence_breakdown": confidence_breakdown,
         }
-        for county, entry in raw.items()
-    }
+    return summary
 
 
 def find_jea_correlations(db_path="outages.db", days=None):
@@ -492,16 +506,24 @@ def correlation_summary(matches):
     Aggregate correlated outage/alert pairs by county (shared by FPL and
     JEA - their match shape is identical, keyed "outage"/percentage_out).
 
-    outage_count and alert_types both count DISTINCT things (added
-    2026-07-12, alongside days= windowing in find_correlations()/
-    find_jea_correlations()) - previously counted every matched (outage-
-    snapshot, alert) PAIR, so one long-running alert overlapping many
-    15-minute poll cycles for the same outage inflated the number far
-    past anything meaningful (a real example: "Air Quality Alert x190"
-    on a live dashboard row, which was really a handful of distinct
-    alerts re-counted once per poll cycle each happened to overlap).
-    outage_count now counts distinct (county, timestamp) raw snapshots;
-    alert_types counts distinct alert_id per event type.
+    outage_count, alert_types, AND confidence_breakdown all count
+    DISTINCT things (added 2026-07-12, alongside days= windowing in
+    find_correlations()/find_jea_correlations()) - previously counted
+    every matched (outage-snapshot, alert) PAIR, so one long-running
+    alert overlapping many 15-minute poll cycles for the same outage
+    inflated every one of these numbers far past anything meaningful (a
+    real example: "Air Quality Alert x190" on a live dashboard row,
+    which was really a handful of distinct alerts re-counted once per
+    poll cycle each happened to overlap; a second real example caught
+    after the first pass at this fix only covered alert_types: the
+    combined KPI strip still showed "low x27118" - confidence is purely
+    a function of the alert's own event_type + severity via
+    weather_match_confidence(), not of which outage it happened to
+    match, so it needs the exact same per-alert deduplication as
+    alert_types, not its own separate count). outage_count counts
+    distinct (county, timestamp) raw snapshots; alert_types and
+    confidence_breakdown are both derived from the same set of distinct
+    matched alerts (by alert_id) per county.
 
     Returns a dict keyed by county:
         {
@@ -521,30 +543,32 @@ def correlation_summary(matches):
         entry = raw.setdefault(county, {
             "outage_keys": set(),
             "max_percentage_out": 0.0,
-            "alert_type_ids": {},
-            "confidence_breakdown": {},
+            "matched_alerts": {},
         })
 
         entry["outage_keys"].add((match["outage"]["county"], match["outage"]["timestamp"]))
         entry["max_percentage_out"] = max(
             entry["max_percentage_out"], match["outage"]["percentage_out"]
         )
+        entry["matched_alerts"][_alert_identity(match["alert"])] = (
+            match["alert"]["event_type"], match["confidence"]
+        )
 
-        event_type = match["alert"]["event_type"]
-        entry["alert_type_ids"].setdefault(event_type, set()).add(_alert_identity(match["alert"]))
+    summary = {}
+    for county, entry in raw.items():
+        alert_types = {}
+        confidence_breakdown = {}
+        for event_type, confidence in entry["matched_alerts"].values():
+            alert_types[event_type] = alert_types.get(event_type, 0) + 1
+            confidence_breakdown[confidence] = confidence_breakdown.get(confidence, 0) + 1
 
-        confidence = match["confidence"]
-        entry["confidence_breakdown"][confidence] = entry["confidence_breakdown"].get(confidence, 0) + 1
-
-    return {
-        county: {
+        summary[county] = {
             "outage_count": len(entry["outage_keys"]),
             "max_percentage_out": entry["max_percentage_out"],
-            "alert_types": {et: len(ids) for et, ids in entry["alert_type_ids"].items()},
-            "confidence_breakdown": entry["confidence_breakdown"],
+            "alert_types": alert_types,
+            "confidence_breakdown": confidence_breakdown,
         }
-        for county, entry in raw.items()
-    }
+    return summary
 
 
 def main():

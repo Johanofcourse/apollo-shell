@@ -247,6 +247,40 @@
       482 post over-count-fix) down to a real, readable 16. 8 new tests
       covering the distinct-counting logic and the window boundary
       itself (old data excluded, recent data included).
+- [x] **Same-day follow-up: `confidence_breakdown` had the identical bug,
+      missed by the fix above.** Caught while doing an unrelated color
+      pass on the dashboard's buttons - the combined statewide KPI strip
+      still showed "low x27118" even after `alert_types`/`outage_count`
+      were fixed. Confidence is a pure function of the alert's own
+      event_type + severity (`weather_match_confidence()`), not of which
+      outage/incident it happened to match, so it needed the exact same
+      per-alert deduplication, not its own separate running count.
+      `correlation_summary()`/`teco_correlation_summary()`/
+      `duke_correlation_summary()` in `correlate.py` now derive
+      `alert_types` *and* `confidence_breakdown` from one shared
+      deduplicated `matched_alerts` map per county, rather than
+      incrementing two separate counters per raw match.
+      `dashboard.py`'s `_combine_confidence_breakdowns()` (the combined
+      KPI strip, a separate function, not something `correlate.py` could
+      fix on its own) had the identical flaw and got the same fix,
+      reusing `correlate.py`'s own `_alert_identity()` rather than
+      re-deriving the same synthetic-key logic in a second place.
+      Verified against real data: combined statewide confidence went
+      from "low x27118" to "high x73, medium x222, low x75." 1 new test.
+- [x] **Dashboard control buttons made real UI, not text links.** The
+      county-history link and window toggle used to live as plain
+      accent-colored text inside the small `.meta` subtitle line - easy
+      to miss entirely. Pulled into their own `.controls-strip`: real
+      pill-shaped buttons with a drop shadow and a subtle hover lift,
+      and the window toggle as a proper segmented control (active choice
+      filled in, inactive one a plain link). Also swapped the orange
+      accent color used for buttons/navigation links to the same pink
+      (`#ff1f8f`) already used in the Artifact design sandbox, after the
+      original orange-on-dark-panel combination read as an unintended
+      resemblance to an unrelated brand - the orange itself is kept for
+      severity/confidence indicators (`pct-bad`, `badge-high`, the
+      confidence bar's low segment), which are a different, deliberately
+      unrelated color system.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration)
 - [x] Visual direction settled on, explored entirely in an isolated

@@ -13,7 +13,7 @@ from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
     find_duke_correlations, duke_correlation_summary,
-    find_jea_correlations,
+    find_jea_correlations, _alert_identity,
 )
 from fetch_fpl_outages import UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_jea_outages import UTILITY_NAME as JEA_UTILITY_NAME
@@ -175,14 +175,29 @@ def _confidence_bar_segments(confidence_breakdown):
 def _combine_confidence_breakdowns(*match_lists):
     """
     Merge confidence counts across multiple correlation match lists
-    (FPL + TECO + Duke) into one combined breakdown, for a single
+    (FPL + TECO + Duke + JEA) into one combined breakdown, for a single
     state-wide summary bar.
+
+    Deduplicated by distinct alert (2026-07-12) - same fix as
+    correlation_summary()/teco_correlation_summary()/
+    duke_correlation_summary() in correlate.py, caught right after
+    shipping those: this function still counted every matched pair, so
+    the combined KPI strip kept showing an inflated "low x27118" even
+    after the per-county tables were fixed. Confidence is a pure
+    function of the alert's own event_type + severity, not of which
+    outage/incident it happened to match, so it needs the same per-alert
+    deduplication - reuses correlate.py's own _alert_identity() rather
+    than re-deriving the same synthetic-key logic here, so the two stay
+    in sync if that logic ever changes.
     """
-    combined = {}
+    matched_alerts = {}
     for matches in match_lists:
         for match in matches:
-            confidence = match["confidence"]
-            combined[confidence] = combined.get(confidence, 0) + 1
+            matched_alerts[_alert_identity(match["alert"])] = match["confidence"]
+
+    combined = {}
+    for confidence in matched_alerts.values():
+        combined[confidence] = combined.get(confidence, 0) + 1
     return combined
 
 
