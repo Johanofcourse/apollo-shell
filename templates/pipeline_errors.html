@@ -63,41 +63,91 @@
       color: #1a0f0a;
       font-weight: 600;
     }
-    .wrap { overflow-x: auto; margin-bottom: 1.5rem; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    th {
-      text-align: left;
-      color: var(--muted);
-      font-weight: 600;
-      text-transform: uppercase;
-      font-size: 0.7rem;
-      letter-spacing: 0.04em;
-      padding: 0.5rem 0.75rem;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-    td {
-      padding: 0.6rem 0.75rem;
-      border-bottom: 1px solid var(--border);
-      vertical-align: top;
-    }
-    tr:last-child td { border-bottom: none; }
-    .source-chip {
-      display: inline-block;
-      background: rgba(248, 81, 73, 0.12);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.15rem 0.5rem;
-      font-size: 0.78rem;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    .msg { color: var(--text); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.8rem; }
-    .when { color: var(--muted); white-space: nowrap; }
     .empty {
       color: var(--muted);
       font-style: italic;
       padding: 1.5rem 0;
+    }
+
+    /* Error cards, one per caught failure. Severity is the visual
+       anchor - a colored left rail plus a matching badge, same
+       "form encodes state, not just the number" pattern as the
+       percentage-tier badges on the main dashboard - so a reader can
+       tell "shrug" from "worth watching" at a glance, before reading
+       a word of prose. */
+    .error-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .error-card-info { border-left-color: var(--ok); }
+    .error-card-warn { border-left-color: var(--warn); }
+    .error-card-crit { border-left-color: var(--crit); }
+
+    .error-card-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.65rem;
+    }
+    .source-chip {
+      display: inline-block;
+      background: rgba(255, 31, 143, 0.12);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .severity-badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 0.2rem 0.7rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+    .severity-badge-info { background: rgba(63, 185, 80, 0.16); color: var(--ok); }
+    .severity-badge-warn { background: rgba(210, 153, 34, 0.16); color: var(--warn); }
+    .severity-badge-crit { background: rgba(248, 81, 73, 0.16); color: var(--crit); }
+    .error-when {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 0.8rem;
+      white-space: nowrap;
+    }
+    .error-explanation {
+      font-size: 0.95rem;
+      line-height: 1.55;
+      margin-bottom: 0.75rem;
+    }
+    .error-raw {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .error-raw-label {
+      display: block;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 0.3rem;
     }
   </style>
 </head>
@@ -120,6 +170,15 @@
       page exists purely for transparency: a plain, complete record of what happened and when, in case anyone
       &mdash; including a client &mdash; ever wants to see it for themselves.
     </p>
+    <p>
+      Each entry below is color-coded by how much attention it deserves:
+      <span class="severity-badge severity-badge-info">green</span> means self-inflicted and harmless,
+      <span class="severity-badge severity-badge-warn">amber</span> means a normal, temporary hiccup on the
+      data source's end, and <span class="severity-badge severity-badge-crit">red</span> means it's worth a
+      second look if it keeps recurring. The plain-language explanation is our best interpretation of the raw
+      technical message underneath it - the raw message itself is always kept too, in case anyone wants to see
+      exactly what the computer said.
+    </p>
   </div>
 
   <div class="filter-row">
@@ -131,24 +190,24 @@
     {% endfor %}
   </div>
 
-  <div class="wrap">
   {% if errors %}
-    <table>
-      <tr><th>Source</th><th>When</th><th>How Long Ago</th><th>Message</th></tr>
-      {% for e in errors %}
-      <tr>
-        <td><span class="source-chip">{{ e.display_name }}</span></td>
-        <td class="when">{{ e.timestamp | humanize }}</td>
-        <td class="when">{{ e.time_ago }} ago</td>
-        <td class="msg">{{ e.error_message }}</td>
-      </tr>
-      {% endfor %}
-    </table>
+    {% for e in errors %}
+    <div class="error-card error-card-{{ e.explanation_severity }}">
+      <div class="error-card-head">
+        <span class="source-chip">{{ e.display_name }}</span>
+        <span class="severity-badge severity-badge-{{ e.explanation_severity }}">{{ e.explanation_label | replace("-", " ") }}</span>
+        <span class="error-when">{{ e.timestamp | humanize }} &middot; {{ e.time_ago }} ago</span>
+      </div>
+      <div class="error-explanation">{{ e.explanation_text }}</div>
+      <div class="error-raw">
+        <span class="error-raw-label">Raw message</span>{{ e.error_message }}
+      </div>
+    </div>
+    {% endfor %}
   {% else %}
     <div class="empty">
       No caught failures on file{{ ' for ' ~ source_display_names.get(selected_source, selected_source.title()) if selected_source else '' }}. Clean record.
     </div>
   {% endif %}
-  </div>
 </body>
 </html>

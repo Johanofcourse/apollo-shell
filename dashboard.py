@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -65,6 +66,73 @@ PIPELINE_SOURCE_DISPLAY_NAMES = {
     "preco": "Peace River Electric Cooperative",
     "correlation": "Correlation",
 }
+
+# Plain-English translations for the raw exception text landing in
+# pipeline_errors.error_message (str(e) from main.py's try/except
+# blocks - always a real Python/requests exception message, e.g.
+# "database is locked" or "HTTPSConnectionPool(...): Read timed out.").
+# Never replaces the raw message on the /pipeline-errors page - this is
+# a derived explanation shown alongside it, same non-destructive
+# principle as fetch_teco_outages.py's reason/status categorization.
+# Order matters: first matching pattern wins, most specific first.
+PIPELINE_ERROR_EXPLANATIONS = [
+    ("database-lock", [r"database is locked"],
+     "Two parts of our own system tried to write to the local database at "
+     "the exact same instant. Not related to the utility's feed at all - "
+     "it resolves itself automatically on the very next check.",
+     "info"),
+    ("rate-limited", [r"\b429\b", r"\b420\b", r"too many requests"],
+     "The data source temporarily blocked repeated requests, a common "
+     "anti-abuse measure most sites use. It backs off and tries again on "
+     "the next scheduled check.",
+     "warn"),
+    ("server-error", [r"\b50[0234]\b", r"server error", r"bad gateway", r"service unavailable"],
+     "The data source's own server reported a problem on its end - not "
+     "something wrong with our system. Usually brief.",
+     "warn"),
+    ("timeout", [r"timed? ?out", r"\btimeout\b"],
+     "The request to the data source took too long and gave up waiting. "
+     "Usually a brief network hiccup, not a sign anything is actually "
+     "broken - it tries again on the next scheduled check.",
+     "warn"),
+    ("connection", [r"connection refused", r"failed to establish a new connection",
+                     r"name or service not known", r"connection aborted", r"connection reset"],
+     "Couldn't reach the data source's server at all for a moment - a "
+     "brief network outage on one end or the other. Resolves on its own "
+     "once the connection path is available again.",
+     "crit"),
+    ("unexpected-format", [r"expecting value", r"jsondecodeerror", r"not valid json", r"unexpected.*shape"],
+     "The data source sent back something in a shape we didn't expect. "
+     "Worth a second look if this keeps happening - it can mean the "
+     "source changed how it formats its data.",
+     "crit"),
+]
+
+
+def _explain_pipeline_error(message):
+    """
+    Best-effort plain-English explanation for a raw pipeline error
+    message, for display on /pipeline-errors. Returns
+    (label, explanation, severity) - severity is a rough "how worried
+    should a reader be" hint (info/warn/crit), not the same thing as
+    get_pipeline_health()'s healthy/warning/critical status (that one
+    tracks sustained failure over time; this one is about a single
+    message's own nature - a lone "connection refused" is still crit-
+    flavored even if it's the source's only failure all week).
+
+    Falls back to an honest "not recognized" label rather than
+    guessing - better to admit a message wasn't understood than
+    to mislabel it.
+    """
+    if not message:
+        return ("unknown", "No error message was recorded.", "info")
+
+    lowered = message.lower()
+    for label, patterns, explanation, severity in PIPELINE_ERROR_EXPLANATIONS:
+        if any(re.search(pattern, lowered) for pattern in patterns):
+            return (label, explanation, severity)
+
+    return ("other", "An uncommon error - the raw message above is the best available detail.", "warn")
 
 
 def _get_cached_correlations(db_path, days):
@@ -742,6 +810,7 @@ def pipeline_errors():
     for e in errors:
         e["display_name"] = PIPELINE_SOURCE_DISPLAY_NAMES.get(e["source"], e["source"].title())
         e["time_ago"] = _duration_since(e["timestamp"])
+        e["explanation_label"], e["explanation_text"], e["explanation_severity"] = _explain_pipeline_error(e["error_message"])
 
     return render_template(
         "pipeline_errors.html",
