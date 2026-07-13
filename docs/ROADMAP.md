@@ -385,6 +385,47 @@ thin sample per county, not something to treat as a reliable average yet.
       (what it's allowed to query), grounding (how it avoids inventing
       numbers not actually in the data), or cost/abuse controls for a
       public-facing LLM endpoint. Revisit once Phase 4's gates are met.
+- [ ] **Real test/production environment split - not started, and needed
+      before any public page ships, not after.** Right now there is no
+      "production" to separate a test environment from: the app runs as
+      a Flask *development* server (Flask's own warning: "do not use in
+      a production deployment") on a personal laptop via launchd - fine
+      for an internal tool, not something to point real public traffic
+      at. Before "ship the whole shebang" makes sense, this needs: a
+      real host (resolves the long-open "Apollo Sentinel hosting
+      decision" - cloud VM vs. the old Acer laptop, still undecided), a
+      real WSGI server (gunicorn or similar, not the dev server), and
+      only then a genuine staging/test copy separate from whatever counts
+      as production - in that order, since "test vs. prod" is meaningless
+      without a real prod to split from first.
+- [ ] **Scope exactly what "publish the whole Artifact" would mean before
+      doing it - the Artifact currently mixes two different risk
+      profiles.** Heat and storm history are both confirmed clear of this
+      phase's gate (derived/aggregated data, not raw feeds). But the
+      Artifact's map/hero also shows live, current-state *verdicts* per
+      county, derived from FPL's/TECO's/Duke's/JEA's live feeds - whether
+      a derived label counts as safely "derived/aggregated" or edges
+      toward the kind of live-feed exposure explicitly ruled out under
+      "Explicitly not planned" below is a real, undecided question, not
+      an assumption to make while porting the design over.
+- [x] **Checked whether there's a real live-data geographic gap in
+      Florida (2026-07-12) - there is.** Cross-referenced the master
+      Florida county list against every county that's ever appeared in
+      any of the 4 live sources' raw tables (normalized for punctuation,
+      after a first pass falsely flagged St. Lucie as missing due to a
+      "St Lucie" vs. "ST. LUCIE" spelling mismatch - the same class of
+      bug that hid Miami-Dade in the historical importer). Real result:
+      11 of 67 counties have zero live coverage from any source, and 10
+      of those 11 are contiguous Florida Panhandle counties (Escambia,
+      Santa Rosa, Okaloosa, Walton, Holmes, Washington, Calhoun, Jackson,
+      Gadsden, Liberty) - almost certainly Gulf Power's former territory,
+      which merged into FPL corporately in 2021 but likely still runs its
+      own separate live outage-map system our FPL integration never
+      reaches. DeSoto County is the one outlier elsewhere (possibly a
+      smaller rural co-op's territory - not independently verified the
+      way the Panhandle finding was). This is now the best-scoped
+      candidate for a fifth utility integration, whenever that's picked
+      up - a real, checked gap, not a guess.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida
