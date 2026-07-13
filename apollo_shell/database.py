@@ -395,6 +395,50 @@ class OutageDatabase:
             )
         ''')
 
+        # FPUC raw per-incident markers - confirmed real 2026-07-13 once a
+        # live outage finally populated this part of the response (it had
+        # only ever been seen empty before, indistinguishable from "no
+        # per-county data exists"). Same shape/reasoning as duke_incidents
+        # (no per-record update time of its own, real lat/lon reverse-
+        # geocoded to county the same way Duke's fetch module does) - kept
+        # alongside fpuc_outages/fpuc_outage_events (the combined
+        # territory-wide total), not instead of it: the app's own config
+        # says some real outages are deliberately withheld from this list
+        # for privacy, so this is real and useful but not guaranteed
+        # complete.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fpuc_incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                utility TEXT,
+                customer_count INTEGER,
+                lat REAL,
+                lon REAL,
+                county TEXT,
+                substation TEXT,
+                feeder TEXT,
+                reported_start_time TEXT,
+                estimated_restoration TEXT
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fpuc_incident_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                utility TEXT,
+                county TEXT,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customer_count INTEGER,
+                substation TEXT,
+                feeder TEXT,
+                lat REAL,
+                lon REAL
+            )
+        ''')
+
         # JEA raw ZIP-level snapshots - JEA's live feed (Kubra's "Storm
         # Center" product) rolls up by ZIP code, not county, and includes
         # a real ETR + a labeled confidence on that estimate (richer than
@@ -476,6 +520,11 @@ class OutageDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_fpuc_outage_events_open
             ON fpuc_outage_events(utility, county, end_time)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_fpuc_incident_events_open
+            ON fpuc_incident_events(incident_id, end_time)
         ''')
 
         # Uniqueness guards so re-running an import (e.g. replaying the same
@@ -591,6 +640,16 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_fpuc_outage_events_unique
             ON fpuc_outage_events(utility, county, start_time)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_fpuc_incidents_unique
+            ON fpuc_incidents(incident_id, fetched_at)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_fpuc_incident_events_unique
+            ON fpuc_incident_events(incident_id, start_time)
         ''')
 
         cursor.execute('''
@@ -1197,6 +1256,115 @@ class OutageDatabase:
         print(f"FPUC outage events: {opened} opened, {closed} closed this cycle")
 
 
+    def log_fpuc_incidents(self, records):
+        """
+        Insert FPUC's real per-incident markers (from
+        fetch_fpuc_outages.markers_to_incidents()) - see that function's
+        docstring for the real caveat: this list may not include every
+        outage counted in the combined total (fpuc_outages), some are
+        deliberately withheld by the app itself for privacy.
+
+        Args:
+            records: list of dicts with keys: incident_id, utility,
+                     customer_count, lat, lon, county, substation, feeder,
+                     reported_start_time, estimated_restoration
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        fetched_at = datetime.now().isoformat()
+
+        rows = [
+            (
+                r['incident_id'], fetched_at, r.get('utility'),
+                r.get('customer_count'), r.get('lat'), r.get('lon'),
+                r.get('county'), r.get('substation'), r.get('feeder'),
+                r.get('reported_start_time'), r.get('estimated_restoration'),
+            )
+            for r in records
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO fpuc_incidents
+                (incident_id, fetched_at, utility, customer_count, lat, lon,
+                 county, substation, feeder, reported_start_time, estimated_restoration)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+
+        conn.commit()
+        print(f"Logged {len(rows)} FPUC incident records")
+
+
+    def sync_fpuc_incident_events(self, records, timestamp=None):
+        """
+        Track FPUC incident lifecycle. Same approach as
+        sync_duke_incident_events(): an event opens the first time an
+        incident_id is seen, stays updated with the latest known values
+        while still being reported, and closes once an incident_id that
+        was open stops appearing in a poll at all.
+
+        NOT SAFE TO REPLAY - same characteristic as
+        sync_duke_incident_events() (see its docstring).
+
+        Args:
+            records: list of dicts as returned by
+                fetch_fpuc_outages.markers_to_incidents()
+            timestamp: ISO timestamp for this poll; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        current_ids = {r['incident_id'] for r in records}
+
+        opened = 0
+        closed = 0
+
+        for r in records:
+            cursor.execute('''
+                SELECT id, peak_customer_count FROM fpuc_incident_events
+                WHERE incident_id = ? AND end_time IS NULL
+            ''', (r['incident_id'],))
+            open_event = cursor.fetchone()
+
+            if open_event is None:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO fpuc_incident_events
+                        (incident_id, utility, county, start_time, end_time,
+                         peak_customer_count, substation, feeder, lat, lon)
+                    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
+                ''', (
+                    r['incident_id'], r.get('utility'), r.get('county'), timestamp,
+                    r.get('customer_count'), r.get('substation'), r.get('feeder'),
+                    r.get('lat'), r.get('lon'),
+                ))
+                if cursor.rowcount > 0:
+                    opened += 1
+            else:
+                peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
+                cursor.execute('''
+                    UPDATE fpuc_incident_events
+                    SET peak_customer_count = ?, utility = ?, county = ?,
+                        substation = ?, feeder = ?, lat = ?, lon = ?
+                    WHERE id = ?
+                ''', (
+                    peak, r.get('utility'), r.get('county'),
+                    r.get('substation'), r.get('feeder'),
+                    r.get('lat'), r.get('lon'), open_event['id'],
+                ))
+
+        cursor.execute('SELECT id, incident_id FROM fpuc_incident_events WHERE end_time IS NULL')
+        for row in cursor.fetchall():
+            if row['incident_id'] not in current_ids:
+                cursor.execute('''
+                    UPDATE fpuc_incident_events SET end_time = ? WHERE id = ?
+                ''', (timestamp, row['id']))
+                closed += 1
+
+        conn.commit()
+        print(f"FPUC incident events: {opened} opened, {closed} closed this cycle")
+
+
     def log_weather_alerts(self, alert_list):
         """
         Insert multiple weather alert records at once
@@ -1440,6 +1608,53 @@ class OutageDatabase:
         return [dict(row) for row in cursor.fetchall()]
 
 
+    def get_fpuc_open_incidents(self):
+        """
+        Return currently open fpuc_incident_events (end_time IS NULL),
+        worst (by peak customer count) first. Includes
+        current_customer_count from the latest fpuc_incidents row
+        fetched for that incident_id, alongside the lifecycle peak - same
+        "peak vs. right now" reasoning as get_open_events(). Distinct
+        from get_fpuc_open_events() (the combined-territory tracker) -
+        this is the real per-incident, per-county view, confirmed
+        possible 2026-07-13 once a live outage populated FPUC's marker
+        data for the first time.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT oe.*,
+                   cur.customer_count AS current_customer_count
+            FROM fpuc_incident_events oe
+            LEFT JOIN fpuc_incidents cur
+                ON cur.incident_id = oe.incident_id
+                AND cur.fetched_at = (
+                    SELECT MAX(fetched_at) FROM fpuc_incidents t2
+                    WHERE t2.incident_id = oe.incident_id
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_customer_count DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_fpuc_recent_closed_incidents(self, limit=10):
+        """
+        Return the most recently closed fpuc_incident_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM fpuc_incident_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
     def _get_incident_events(self, events_table, incident_id):
         """
         Every lifecycle episode (there's usually just one, but an
@@ -1488,6 +1703,17 @@ class OutageDatabase:
         return {
             "events": self._get_incident_events("duke_incident_events", incident_id),
             "history": self._get_incident_raw_history("duke_incidents", incident_id),
+        }
+
+    def get_fpuc_incident_detail(self, incident_id):
+        """
+        Same as get_teco_incident_detail(), for an FPUC incident_id -
+        the real per-incident view, distinct from get_fpuc_outage_detail()
+        (the combined-territory tracker's own detail lookup).
+        """
+        return {
+            "events": self._get_incident_events("fpuc_incident_events", incident_id),
+            "history": self._get_incident_raw_history("fpuc_incidents", incident_id),
         }
 
     def get_tallahassee_incident_detail(self, incident_id):

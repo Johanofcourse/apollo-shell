@@ -16,7 +16,7 @@ import pytest
 from correlate import (
     weather_match_confidence, find_correlations, find_jea_correlations,
     find_tallahassee_correlations, find_talquin_correlations,
-    find_fpuc_correlations, duke_correlation_summary, correlation_summary,
+    find_fpuc_incident_correlations, duke_correlation_summary, correlation_summary,
 )
 from database import OutageDatabase
 
@@ -343,24 +343,45 @@ class TestFindTalquinCorrelations:
         assert find_talquin_correlations(db_path, days=None) == []
 
 
-class TestFindFpucCorrelations:
+class TestFindFpucIncidentCorrelations:
     """
-    FPUC has no real per-county breakdown (see
-    fetch_fpuc_outages.COMBINED_TERRITORY_LABEL) - these tests confirm
-    that's a deliberate, self-documenting empty result, not a silent
-    failure: even a real active outage, logged at the exact same time
-    as an overlapping alert for one of FPUC's real historical counties,
-    still can't match, because the placeholder territory string isn't a
-    real county name any alert's areas field would ever contain.
+    find_fpuc_incident_correlations() reads fpuc_incidents (real
+    per-incident markers with a reverse-geocoded county), not the
+    combined-territory table - confirmed real 2026-07-13 once a live
+    outage finally populated FPUC's marker data for the first time.
+    Replaces an earlier version of this function that always returned
+    an empty list by design (it read the combined-territory table's
+    fixed placeholder county, which could never match a real alert).
     """
 
-    def test_placeholder_territory_never_matches_a_real_county_alert(self, db_path):
+    def test_matches_a_real_fpuc_incident_to_an_overlapping_alert(self, db_path):
+        now = datetime.now()
         db = OutageDatabase(db_path)
-        db.log_weather_alerts(_weather_alert("Gadsden"))
-        db.log_fpuc_outages(
-            [{"county": "Multiple Counties (NW FL & Nassau)", "customers_out": 50, "customers_served": 30668}],
-            timestamp="2026-01-01T12:00:00",
-        )
+        db.log_weather_alerts([{
+            "id": "test-alert-1", "event": "Heat Advisory", "severity": "Severe",
+            "urgency": "Expected", "areas": "Liberty",
+            "effective": (now - timedelta(hours=1)).isoformat(),
+            "expires": (now + timedelta(hours=1)).isoformat(),
+            "headline": "test", "description": "test",
+        }])
+        db.log_fpuc_incidents([{
+            "incident_id": "D614473", "utility": "Florida Public Utilities Corporation",
+            "customer_count": 56, "lat": 30.43, "lon": -84.95, "county": "Liberty",
+            "substation": "5", "feeder": "9882",
+            "reported_start_time": "2026-01-01T00:00:00", "estimated_restoration": None,
+        }])
         db.close()
 
-        assert find_fpuc_correlations(db_path, days=None) == []
+        matches = find_fpuc_incident_correlations(db_path, days=None)
+        assert len(matches) == 1
+
+        summary = duke_correlation_summary(matches)
+        assert summary["Liberty"]["incident_count"] == 1
+        assert summary["Liberty"]["max_customer_count"] == 56
+
+    def test_no_matches_when_no_incidents_logged(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Liberty"))
+        db.close()
+
+        assert find_fpuc_incident_correlations(db_path, days=None) == []

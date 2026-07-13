@@ -894,10 +894,10 @@
 
   <h2>FPUC — Currently Open Outages ({{ fpuc_open_events|length }})</h2>
   <p class="section-note">
-    Florida Public Utilities Corporation's live feed only reports one combined total across its whole
+    Florida Public Utilities Corporation's live feed reports one combined, authoritative total across its whole
     (non-adjacent) Florida electric territory &mdash; historically Calhoun, Jackson, Liberty, Nassau, and Wakulla
-    counties. No real per-county breakdown is available from this source yet, so "Territory" below isn't a real
-    county name.
+    counties. "Territory" below isn't a real county name; see the per-incident section further down for real
+    county-level detail on whichever outages the feed exposes location data for.
   </p>
   <div class="wrap">
   {% if fpuc_open_events %}
@@ -940,19 +940,69 @@
   {% endif %}
   </div>
 
+  <h2>FPUC — Currently Open Incidents, Real Counties ({{ fpuc_open_incidents|length }})</h2>
+  <p class="section-note">
+    Confirmed real 2026-07-13: some (not all) FPUC outages come with real coordinates, reverse-geocoded to a
+    county the same way Duke's incidents are. The app's own config says some outages are deliberately withheld
+    here for privacy, so this list can undercount relative to the combined total above &mdash; treat it as real
+    and useful, not complete.
+  </p>
+  <div class="wrap">
+  {% if fpuc_open_incidents %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Substation / Feeder</th><th>Current</th><th>Peak</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in fpuc_open_incidents %}
+      <tr>
+        <td><a href="/incident?source=fpuc_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td>{{ e.substation or "—" }} / {{ e.feeder or "—" }}</td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open FPUC incidents with location data right now.</div>
+  {% endif %}
+  </div>
+
+  <h2>FPUC — Recently Resolved Incidents</h2>
+  <div class="wrap">
+  {% if fpuc_closed_incidents %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in fpuc_closed_incidents %}
+      <tr>
+        <td><a href="/incident?source=fpuc_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-ok">{{ e.peak_customer_count }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
   <h2>Weather / Outage Correlation (FPUC) &mdash; last {{ window_days }} days</h2>
   <p class="section-note">
-    Always empty by design - FPUC's placeholder territory label can't match a real NWS alert area. See note above.
+    Built from the real per-incident data above, not the combined total - so this can now show real matches
+    (confirmed 2026-07-13), but inherits the same possible undercount.
   </p>
   <div class="wrap">
   {% if fpuc_correlation %}
     <table>
-      <tr><th>Territory</th><th>Correlated Outages</th><th>Peak % Out</th><th>Alert Types</th><th>Confidence</th></tr>
+      <tr><th>County</th><th>Correlated Incidents</th><th>Max Customers</th><th>Alert Types</th><th>Confidence</th></tr>
       {% for county, stats in fpuc_correlation.items() %}
       <tr>
         <td>{{ county }}</td>
-        <td>{{ stats.outage_count }}</td>
-        <td>{{ "%.2f"|format(stats.max_percentage_out) }}%</td>
+        <td>{{ stats.incident_count }}</td>
+        <td>{{ stats.max_customer_count }}</td>
         <td>{{ stats.alert_types_display }}</td>
         <td>
           {% if stats.confidence_bar %}
@@ -968,7 +1018,7 @@
       {% endfor %}
     </table>
   {% else %}
-    <div class="empty">No correlated FPUC outage/weather events right now.</div>
+    <div class="empty">No correlated FPUC incident/weather events right now.</div>
   {% endif %}
   </div>
 </body>

@@ -14,7 +14,7 @@ from correlate import (
     find_teco_correlations, teco_correlation_summary,
     find_duke_correlations, duke_correlation_summary,
     find_jea_correlations, find_tallahassee_correlations,
-    find_talquin_correlations, find_fpuc_correlations, _alert_identity,
+    find_talquin_correlations, find_fpuc_incident_correlations, _alert_identity,
 )
 from fetch_fpl_outages import UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_jea_outages import UTILITY_NAME as JEA_UTILITY_NAME
@@ -62,7 +62,7 @@ def _get_cached_correlations(db_path, days):
         find_jea_correlations(db_path, days=days),
         find_tallahassee_correlations(db_path, days=days),
         find_talquin_correlations(db_path, days=days),
-        find_fpuc_correlations(db_path, days=days),
+        find_fpuc_incident_correlations(db_path, days=days),
     )
     _correlation_cache[days] = {"data": data, "computed_at": now}
     return data
@@ -348,6 +348,8 @@ def index():
     talquin_closed_events = db.get_talquin_recent_closed_events(limit=10)
     fpuc_open_events = db.get_fpuc_open_events()
     fpuc_closed_events = db.get_fpuc_recent_closed_events(limit=10)
+    fpuc_open_incidents = db.get_fpuc_open_incidents()
+    fpuc_closed_incidents = db.get_fpuc_recent_closed_incidents(limit=10)
 
     pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "correlation"])
     heat_summary = db.get_heat_advisory_summary()
@@ -381,6 +383,10 @@ def index():
     for event in fpuc_open_events:
         event["duration"] = _duration_since(event["start_time"])
     for event in fpuc_closed_events:
+        event["duration"] = _duration_since(event["start_time"], event["end_time"])
+    for event in fpuc_open_incidents:
+        event["duration"] = _duration_since(event["start_time"])
+    for event in fpuc_closed_incidents:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
     matches, teco_matches, duke_matches, jea_matches, tallahassee_matches, talquin_matches, fpuc_matches = _get_cached_correlations(db_path, window_days)
@@ -421,7 +427,7 @@ def index():
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
         stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
-    fpuc_correlation = correlation_summary(fpuc_matches)
+    fpuc_correlation = duke_correlation_summary(fpuc_matches)
     for stats in fpuc_correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
@@ -504,6 +510,8 @@ def index():
         fpuc_open_events=fpuc_open_events,
         fpuc_closed_events=fpuc_closed_events,
         fpuc_correlation=fpuc_correlation,
+        fpuc_open_incidents=fpuc_open_incidents,
+        fpuc_closed_incidents=fpuc_closed_incidents,
         unified_open=unified_open,
         total_customers_affected=total_customers_affected,
         worst_row=worst_row,
@@ -693,13 +701,14 @@ def incident():
     db = OutageDatabase()
 
     detail = None
-    if source in ("teco", "duke", "tallahassee"):
+    if source in ("teco", "duke", "tallahassee", "fpuc_incident"):
         incident_id = request.args.get("incident_id", "").strip()
         if incident_id:
             detail_fns = {
                 "teco": db.get_teco_incident_detail,
                 "duke": db.get_duke_incident_detail,
                 "tallahassee": db.get_tallahassee_incident_detail,
+                "fpuc_incident": db.get_fpuc_incident_detail,
             }
             raw_detail = detail_fns[source](incident_id)
             if raw_detail["events"] or raw_detail["history"]:
@@ -720,7 +729,7 @@ def incident():
     db.close()
 
     if detail:
-        if source in ("teco", "duke", "tallahassee"):
+        if source in ("teco", "duke", "tallahassee", "fpuc_incident"):
             for ev in detail["events"]:
                 ev["duration"] = _duration_since(ev["start_time"], ev["end_time"])
         else:

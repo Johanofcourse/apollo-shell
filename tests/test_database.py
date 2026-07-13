@@ -173,6 +173,15 @@ def _tallahassee_incident(incident_id, county="Leon", customer_count=30, cause="
     }
 
 
+def _fpuc_incident(incident_id, county="Liberty", customer_count=56, substation="5", feeder="9882"):
+    return {
+        "incident_id": incident_id, "utility": "Florida Public Utilities Corporation",
+        "customer_count": customer_count, "lat": 30.43, "lon": -84.95, "county": county,
+        "substation": substation, "feeder": feeder,
+        "reported_start_time": "2026-01-01T00:00:00", "estimated_restoration": None,
+    }
+
+
 class TestIncidentDetailLookup:
     """
     Tests for the incident-detail DB methods added 2026-07-12 for the
@@ -329,6 +338,30 @@ class TestIncidentDetailLookup:
 
         assert detail is None
 
+    def test_fpuc_incident_detail_has_one_episode_and_raw_history(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpuc_incidents([_fpuc_incident("D1")])
+        db.sync_fpuc_incident_events([_fpuc_incident("D1")], timestamp="2026-01-01T00:00:00")
+        db.sync_fpuc_incident_events([], timestamp="2026-01-01T03:00:00")
+
+        detail = db.get_fpuc_incident_detail("D1")
+        db.close()
+
+        assert len(detail["events"]) == 1
+        assert detail["events"][0]["end_time"] == "2026-01-01T03:00:00"
+        assert detail["events"][0]["county"] == "Liberty"
+        assert detail["events"][0]["substation"] == "5"
+        assert len(detail["history"]) == 1
+        assert detail["history"][0]["feeder"] == "9882"
+
+    def test_fpuc_incident_detail_empty_for_unknown_id(self, db_path):
+        db = OutageDatabase(db_path)
+        detail = db.get_fpuc_incident_detail("NOT-A-REAL-ID")
+        db.close()
+
+        assert detail["events"] == []
+        assert detail["history"] == []
+
 
 class TestOpenEventsCurrentVsPeak:
     """
@@ -465,3 +498,19 @@ class TestOpenEventsCurrentVsPeak:
         assert len(open_events) == 1
         assert open_events[0]["peak_customers_out"] == 500
         assert open_events[0]["current_customers_out"] == 10
+
+    def test_fpuc_incident_open_event_reports_current_alongside_peak(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpuc_incidents([_fpuc_incident("D1", customer_count=20)])
+        db.sync_fpuc_incident_events([_fpuc_incident("D1", customer_count=20)], timestamp="2026-01-01T00:00:00")
+        db.log_fpuc_incidents([_fpuc_incident("D1", customer_count=400)])
+        db.sync_fpuc_incident_events([_fpuc_incident("D1", customer_count=400)], timestamp="2026-01-01T00:15:00")
+        db.log_fpuc_incidents([_fpuc_incident("D1", customer_count=60)])
+        db.sync_fpuc_incident_events([_fpuc_incident("D1", customer_count=60)], timestamp="2026-01-01T00:30:00")
+
+        open_events = db.get_fpuc_open_incidents()
+        db.close()
+
+        assert len(open_events) == 1
+        assert open_events[0]["peak_customer_count"] == 400
+        assert open_events[0]["current_customer_count"] == 60

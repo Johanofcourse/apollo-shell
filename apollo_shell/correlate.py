@@ -613,26 +613,31 @@ def find_talquin_correlations(db_path="outages.db", days=None):
     return matches
 
 
-def find_fpuc_correlations(db_path="outages.db", days=None):
+def find_fpuc_incident_correlations(db_path="outages.db", days=None):
     """
-    Match FPUC's raw combined-territory snapshots to weather alerts.
-    Same logic/shape as find_talquin_correlations() - reads fpuc_outages
-    rather than talquin_outages.
+    Match FPUC's real per-incident markers to weather alerts active in
+    the same county at the same time. Same logic as
+    find_duke_correlations() - FPUC's raw incidents have no per-record
+    update time either, so fetched_at (our own poll timestamp) is used
+    as the incident time, same reasoning as Duke.
 
-    In practice this will always return an empty list: FPUC's "county"
-    is a fixed placeholder string (see
-    fetch_fpuc_outages.COMBINED_TERRITORY_LABEL) that can't match any
-    real NWS alert area, since this source has no real per-county
-    breakdown to correlate against (confirmed 2026-07-13). That's an
-    honest, self-documenting result, not a bug - kept as a real function
-    (rather than skipped entirely) so this source fits the same pipeline
-    everyone else does, and so it starts correlating for real the day a
-    genuine per-county breakdown is ever found for it.
+    Replaces an earlier version of this function that read the
+    combined-territory table (fpuc_outages) and always returned an
+    empty list by design, since that table's "county" is a fixed
+    placeholder that can't match a real alert area. This one reads the
+    real per-incident table (fpuc_incidents) instead - confirmed
+    possible 2026-07-13 once a live outage finally populated FPUC's
+    marker data (with real lat/lon, reverse-geocoded to a real county)
+    for the first time. Per fetch_fpuc_outages.markers_to_incidents()'s
+    own caveat, this may not include every real FPUC outage (some are
+    withheld from markers for privacy), so this can undercount, but it
+    is real correlation now, not a permanently-empty placeholder.
 
-    days: same windowing as find_correlations().
+    days: same windowing as find_correlations()/find_duke_correlations().
 
-    Returns a list of {"outage": {...}, "alert": {...}} dicts - reuse
-    correlation_summary() below directly, since the shape matches FPL's.
+    Returns a list of {"incident": {...}, "alert": {...}} dicts - reuse
+    duke_correlation_summary() below directly, since the shape matches
+    Duke's/TECO's.
     """
     db = OutageDatabase(db_path)
     conn = db.connect()
@@ -640,10 +645,10 @@ def find_fpuc_correlations(db_path="outages.db", days=None):
 
     cutoff = _window_cutoff(days)
     if cutoff is not None:
-        cursor.execute('SELECT * FROM fpuc_outages WHERE customers_out > 0 AND timestamp >= ?', (cutoff,))
+        cursor.execute('SELECT * FROM fpuc_incidents WHERE fetched_at >= ?', (cutoff,))
     else:
-        cursor.execute('SELECT * FROM fpuc_outages WHERE customers_out > 0')
-    outages = [dict(row) for row in cursor.fetchall()]
+        cursor.execute('SELECT * FROM fpuc_incidents')
+    incidents = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute('SELECT * FROM weather_alerts')
     alerts = [dict(row) for row in cursor.fetchall()]
@@ -651,24 +656,24 @@ def find_fpuc_correlations(db_path="outages.db", days=None):
     db.close()
 
     matches = []
-    for outage in outages:
-        if not outage.get('county'):
+    for incident in incidents:
+        if not incident.get('county'):
             continue
 
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
+        incident_time = _parse_timestamp(incident.get('fetched_at'))
+        if incident_time is None:
             continue
 
         for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
+            if not _county_in_alert(incident['county'], alert['areas']):
                 continue
 
             effective = _parse_timestamp(alert.get('effective'))
             expires = _parse_timestamp(alert.get('expires'))
 
-            if _alert_covers_time(effective, expires, outage_time):
+            if _alert_covers_time(effective, expires, incident_time):
                 confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
+                matches.append({"incident": incident, "alert": alert, "confidence": confidence})
 
     return matches
 

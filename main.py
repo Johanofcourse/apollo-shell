@@ -17,7 +17,7 @@ from fetch_duke_outages import (
 from fetch_jea_outages import get_jea_summary
 from fetch_tallahassee_outages import get_incidents_summary as get_tallahassee_incidents_summary
 from fetch_talquin_outages import get_talquin_records
-from fetch_fpuc_outages import get_fpuc_records
+from fetch_fpuc_outages import fetch_fpuc_outage_summary, outages_to_records as fpuc_outages_to_records, markers_to_incidents
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -25,7 +25,7 @@ from correlate import (
     find_jea_correlations,
     find_tallahassee_correlations,
     find_talquin_correlations,
-    find_fpuc_correlations,
+    find_fpuc_incident_correlations,
 )
 
 
@@ -151,19 +151,29 @@ def run_talquin_cycle(db):
 
 def run_fpuc_cycle(db):
     """
-    Fetch FPUC's live combined-territory outage data, save the raw
-    snapshot, and update fpuc_outage_events lifecycle tracking. Always
-    exactly one "county" row (see fetch_fpuc_outages.COMBINED_TERRITORY_LABEL) -
-    this source has no real per-county breakdown available.
+    Fetch FPUC's live outage data once, then update both trackers from
+    that same response: the combined-territory total (always exactly
+    one "county" row - see fetch_fpuc_outages.COMBINED_TERRITORY_LABEL)
+    AND the real per-incident markers (reverse-geocoded to a real
+    county, confirmed possible 2026-07-13). One fetch, two derived
+    views, rather than two separate network calls that could observe
+    slightly different live state.
     """
-    records = get_fpuc_records()
-    if not records:
+    data = fetch_fpuc_outage_summary()
+    if not data:
         print("Skipping FPUC save - no data fetched")
         return
 
     timestamp = datetime.now().isoformat()
-    db.log_fpuc_outages(records, timestamp=timestamp)
-    db.sync_fpuc_outage_events(records, timestamp=timestamp)
+
+    records = fpuc_outages_to_records(data)
+    if records:
+        db.log_fpuc_outages(records, timestamp=timestamp)
+        db.sync_fpuc_outage_events(records, timestamp=timestamp)
+
+    incidents = markers_to_incidents(data)
+    db.log_fpuc_incidents(incidents)
+    db.sync_fpuc_incident_events(incidents, timestamp=timestamp)
 
 
 def run_correlation_cycle():
@@ -249,16 +259,16 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
-    fpuc_matches = find_fpuc_correlations()
+    fpuc_matches = find_fpuc_incident_correlations()
     if not fpuc_matches:
-        print("FPUC correlation: no matches this cycle (expected - no real per-county breakdown for this source)")
+        print("FPUC correlation: no matches this cycle")
     else:
-        fpuc_summary = correlation_summary(fpuc_matches)
+        fpuc_summary = duke_correlation_summary(fpuc_matches)
         print(f"FPUC correlation: {len(fpuc_matches)} matches across {len(fpuc_summary)} counties")
         for county, stats in fpuc_summary.items():
             print(
-                f"  {county}: {stats['outage_count']} outage(s), "
-                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"  {county}: {stats['incident_count']} incident(s), "
+                f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}, "
                 f"confidence={stats['confidence_breakdown']}"
             )
 
