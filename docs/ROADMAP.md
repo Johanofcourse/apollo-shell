@@ -524,32 +524,39 @@ thin sample per county, not something to treat as a reliable average yet.
       FPL/JEA (own `talquin_outages`/`talquin_outage_events` tables).
       Confirmed real coverage: Gadsden, Leon, Liberty, Wakulla - closed
       2 of the 3 remaining Panhandle gaps (Gadsden, Liberty).
-- [ ] **Florida Public Utilities Corporation (FPUC) integrated as a
-      seventh live utility - real, but with a real, unresolved
-      limitation worth tracking as a priority.** Found via a fourth
-      distinct vendor platform (DataVoice's "Apprise" system,
-      outageentry.com). The live feed only ever reports ONE combined
-      total across FPUC's whole non-adjacent Florida territory
-      (historically Calhoun, Jackson, Liberty, Nassau, Wakulla per PSC
-      storm reports) - no per-county/substation breakdown could be
-      found despite a real search (the app's own config confirms a
-      "Substation" view exists, but no live outage existed to trigger
-      capturing its actual request; blind-guessing further endpoint
-      names stopped being productive and was deliberately not pursued
-      further). Modeled honestly: a fixed placeholder "county" label
-      that can't match any real NWS alert area, so
-      `find_fpuc_correlations()` always returns empty by design, not a
-      special-cased skip.
+- [x] **Florida Public Utilities Corporation (FPUC) integrated as a
+      seventh live utility, with real per-incident/per-county detail
+      added on a follow-up pass.** Found via a fourth distinct vendor
+      platform (DataVoice's "Apprise" system, outageentry.com). Built
+      first as a single combined-territory tracker (one authoritative
+      total across FPUC's whole non-adjacent Florida territory -
+      historically Calhoun, Jackson, Liberty, Nassau, Wakulla per PSC
+      storm reports), since no per-county breakdown could be found at
+      the time despite a real search.
 
-      **Why this stays flagged**: this technically "closes" Calhoun (the
-      last Florida county with zero coverage across the other 6
-      sources), but only as part of one blended number covering five
-      counties together - there is still no verified, standalone reading
-      for Calhoun specifically. Revisit during a real active FPUC outage
-      (check whether `markers`/`polygons` populate with per-device
-      lat/lon we could reverse-geocode to county, same approach Duke's
-      fetch module already uses) or if the real "Substation" endpoint is
-      ever found by accident while browsing the live map.
+      **Resolved on a follow-up check**: a live outage finally populated
+      the response's `markers` array for the first time - it had only
+      ever been observed empty before, indistinguishable from "no per-
+      county data exists at all." Each marker carries a real lat/lon,
+      reverse-geocoded to a real county (confirmed: Liberty) using the
+      same lookup Duke's fetch module already uses. Added a real
+      incident-level layer (`fpuc_incidents`/`fpuc_incident_events`,
+      `find_fpuc_incident_correlations()`) alongside the combined
+      tracker, not instead of it - the app's own config says some
+      outages are deliberately withheld from markers for privacy, so
+      this view is real and useful but can undercount relative to the
+      combined total. Verified by replaying the exact real captured
+      marker data through the real pipeline (the live outage resolved
+      before the code was finished), then properly closed out that real
+      incident afterward rather than deleting it.
+
+      **What's still open**: this real per-incident view can undercount
+      (privacy-withheld outages), and the "Substation" summary endpoint
+      seen in the app's config was still never found. Calhoun's real
+      coverage still ultimately rests on the combined total, not a
+      guaranteed standalone incident-level reading - worth re-checking
+      during a real multi-outage event to see how much of the true
+      total the incident-level view actually captures.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida
