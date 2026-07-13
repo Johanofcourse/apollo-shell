@@ -18,6 +18,7 @@ from fetch_jea_outages import get_jea_summary
 from fetch_tallahassee_outages import get_incidents_summary as get_tallahassee_incidents_summary
 from fetch_talquin_outages import get_talquin_records
 from fetch_fpuc_outages import fetch_fpuc_outage_summary, outages_to_records as fpuc_outages_to_records, markers_to_incidents
+from fetch_preco_outages import get_preco_records
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -26,6 +27,7 @@ from correlate import (
     find_tallahassee_correlations,
     find_talquin_correlations,
     find_fpuc_incident_correlations,
+    find_preco_correlations,
 )
 
 
@@ -149,6 +151,23 @@ def run_talquin_cycle(db):
     db.sync_talquin_outage_events(records, timestamp=timestamp)
 
 
+def run_preco_cycle(db):
+    """
+    Fetch Peace River Electric Cooperative's live county-level outage
+    data, save the raw snapshot, and update preco_outage_events
+    lifecycle tracking (start/end per county) - a county-rollup source
+    like Talquin, not an incident list.
+    """
+    records = get_preco_records()
+    if not records:
+        print("Skipping PRECO save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_preco_outages(records, timestamp=timestamp)
+    db.sync_preco_outage_events(records, timestamp=timestamp)
+
+
 def run_fpuc_cycle(db):
     """
     Fetch FPUC's live outage data once, then update both trackers from
@@ -179,7 +198,7 @@ def run_fpuc_cycle(db):
 def run_correlation_cycle():
     """
     Compute current outage/weather correlations (FPL, TECO, Duke, JEA,
-    City of Tallahassee, Talquin, and FPUC) and log a summary.
+    City of Tallahassee, Talquin, FPUC, and PRECO) and log a summary.
     """
     matches = find_correlations()
     if not matches:
@@ -272,6 +291,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    preco_matches = find_preco_correlations()
+    if not preco_matches:
+        print("PRECO correlation: no matches this cycle")
+    else:
+        preco_summary = correlation_summary(preco_matches)
+        print(f"PRECO correlation: {len(preco_matches)} matches across {len(preco_summary)} counties")
+        for county, stats in preco_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def main():
     """
@@ -335,6 +367,12 @@ def main():
             except Exception as e:
                 print(f"FPUC fetch cycle failed: {e}")
                 db.log_pipeline_error("fpuc", str(e))
+
+            try:
+                run_preco_cycle(db)
+            except Exception as e:
+                print(f"PRECO fetch cycle failed: {e}")
+                db.log_pipeline_error("preco", str(e))
 
             try:
                 run_correlation_cycle()

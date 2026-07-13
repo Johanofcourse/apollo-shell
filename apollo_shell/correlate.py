@@ -613,6 +613,62 @@ def find_talquin_correlations(db_path="outages.db", days=None):
     return matches
 
 
+def find_preco_correlations(db_path="outages.db", days=None):
+    """
+    Match Peace River Electric Cooperative's raw county-level snapshots
+    to weather alerts active in the same county at the same time. Same
+    logic/shape as find_talquin_correlations() - a county-rollup source,
+    reads preco_outages rather than outages, kept as its own dedicated
+    table per the same one-utility-per-table convention used everywhere
+    else in this project.
+
+    Only rows with a real outage (customers_out > 0) are considered -
+    same reasoning as find_talquin_correlations().
+
+    days: same windowing as find_correlations().
+
+    Returns a list of {"outage": {...}, "alert": {...}} dicts - reuse
+    correlation_summary() below directly, since the shape matches FPL's.
+    """
+    db = OutageDatabase(db_path)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    cutoff = _window_cutoff(days)
+    if cutoff is not None:
+        cursor.execute('SELECT * FROM preco_outages WHERE customers_out > 0 AND timestamp >= ?', (cutoff,))
+    else:
+        cursor.execute('SELECT * FROM preco_outages WHERE customers_out > 0')
+    outages = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute('SELECT * FROM weather_alerts')
+    alerts = [dict(row) for row in cursor.fetchall()]
+
+    db.close()
+
+    matches = []
+    for outage in outages:
+        if not outage.get('county'):
+            continue
+
+        outage_time = _parse_timestamp(outage['timestamp'])
+        if outage_time is None:
+            continue
+
+        for alert in alerts:
+            if not _county_in_alert(outage['county'], alert['areas']):
+                continue
+
+            effective = _parse_timestamp(alert.get('effective'))
+            expires = _parse_timestamp(alert.get('expires'))
+
+            if _alert_covers_time(effective, expires, outage_time):
+                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
+                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
+
+    return matches
+
+
 def find_fpuc_incident_correlations(db_path="outages.db", days=None):
     """
     Match FPUC's real per-incident markers to weather alerts active in

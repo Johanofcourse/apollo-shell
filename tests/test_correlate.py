@@ -17,6 +17,7 @@ from correlate import (
     weather_match_confidence, find_correlations, find_jea_correlations,
     find_tallahassee_correlations, find_talquin_correlations,
     find_fpuc_incident_correlations, duke_correlation_summary, correlation_summary,
+    find_preco_correlations,
 )
 from database import OutageDatabase
 
@@ -385,3 +386,39 @@ class TestFindFpucIncidentCorrelations:
         db.close()
 
         assert find_fpuc_incident_correlations(db_path, days=None) == []
+
+
+class TestFindPrecoCorrelations:
+    """
+    find_preco_correlations() reuses the exact same matching helpers
+    already proven via find_correlations()/find_talquin_correlations()
+    above (it shares correlation_summary() too, since the shape is
+    identical to Talquin's) - this is a wiring smoke test, not a
+    re-proof of shared logic.
+    """
+
+    def test_matches_a_preco_outage_to_an_overlapping_alert(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Manatee"))
+        db.log_preco_outages(
+            [{"county": "Manatee", "customers_out": 3, "customers_served": 54383}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        matches = find_preco_correlations(db_path, days=None)
+        assert len(matches) == 1
+
+        summary = correlation_summary(matches)
+        assert summary["Manatee"]["outage_count"] == 1
+
+    def test_zero_customer_snapshots_are_not_matched(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Manatee"))
+        db.log_preco_outages(
+            [{"county": "Manatee", "customers_out": 0, "customers_served": 54383}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_preco_correlations(db_path, days=None) == []

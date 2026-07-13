@@ -557,6 +557,24 @@ thin sample per county, not something to treat as a reliable average yet.
       guaranteed standalone incident-level reading - worth re-checking
       during a real multi-outage event to see how much of the true
       total the incident-level view actually captures.
+- [x] **Peace River Electric Cooperative (PRECO) integrated as an eighth
+      live utility** - same Siena Technologies platform as Talquin
+      (`cache.sienatech.com`), found by reverse-engineering the site's
+      own JS-embedded polygonID-to-county lookup table via Safari's
+      Sources tab, then cross-checked with a real-time correlation (a
+      live-changing `affected` count in the map-polygon endpoint matched
+      Manatee's own real-time growth in the DOM before the JS mapping
+      was even found). County-rollup shape like Talquin (own
+      `preco_outages`/`preco_outage_events` tables) - closes real
+      coverage for Hardee County (previously only a tiny 11-customer FPL
+      sliver) plus Brevard, DeSoto, Highlands, Hillsborough, Indian
+      River, Manatee, Osceola, Polk, Sarasota (9,885 Hardee customers
+      served vs. FPL's 11 - confirms PRECO, not FPL, is the real primary
+      utility there). Uses the richer `data/PRECO/OUTAGE` endpoint
+      (same shape as Talquin's, returns name/accounts/affected in one
+      response) rather than the map's lighter-weight `outagePolygons`
+      endpoint, so no static polygonID mapping needs to be hardcoded at
+      all.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida
