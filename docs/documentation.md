@@ -234,12 +234,10 @@ Second, and bigger: JEA joined FPL, TECO, and Duke as a fourth live
 utility, found and built start to finish in one sitting. JEA's outage
 map turned out to run on a completely different vendor platform than
 TECO or Duke - not something either of their integrations could be
-copy-pasted from. Finding it meant downloading the outage map's own JS
-bundles and reading through the minified source for the real API routes -
-corrected two wrong guesses along the way (a plural/singular typo in one
-route, a wrong deployment-id field in another) before the real chain
-resolved cleanly: a "current state" call, a "configuration" call, then
-the actual live report.
+copy-pasted from. Corrected two wrong guesses along the way (a
+plural/singular typo in one route, a wrong deployment-id field in
+another) before the real chain resolved cleanly: a "current state"
+call, a "configuration" call, then the actual live report.
 
 That report turned out to be genuinely richer in one respect than
 anything already in this project - a labeled confidence
@@ -483,13 +481,10 @@ directly. The real, final count: ten counties missing, every one of
 them Panhandle, no outliers left once both mistakes were caught.
 
 The wall held for a night, then came down the next time it got looked
-at. Same page, same Incapsula protection - the difference was finding
-the one real request that mattered among everything else the page
-loads: a 3MB jQuery file sitting right next to the actual answer, a
-tiny 7KB JSON response easy to overlook until someone knew what they
-were looking for. `fplmaps.com/northwest/feeds/CountyOutages.json` -
-same shape as the feed this project already knows how to read, just a
-different address and a different page to claim as the referer.
+at. Same page, same Incapsula protection - the real endpoint turned
+out to be `fplmaps.com/northwest/feeds/CountyOutages.json`, same shape
+as the feed this project already knows how to read, just a different
+address and a different page to claim as the referer.
 
 Turns out this isn't really a fifth utility at all, just a second door
 into the same one - Gulf Power became FPL on paper back in 2021, and
@@ -561,15 +556,11 @@ Florida Public Utilities Corporation closed the night, on a fourth
 distinct vendor platform (DataVoice's "Apprise" system) - and it came
 with a real, unresolved limitation instead of a clean win. Its live
 feed reports exactly one combined total across five non-adjacent
-counties, no per-county split, despite a real search: tested whether a
-`serviceIndex` parameter changed anything (it didn't), searched the
-app's own 22,900-line JS bundle for real endpoint names (only one,
-`cfa_device_markers`, ever came back real), and confirmed via its own
-config that a "Substation" view exists in the app without ever finding
-a live way to trigger capturing its actual request. Built honestly
-instead of guessed around: a fixed placeholder county label that can't
-match a real weather alert, so its correlation function returns empty
-by design, not silently broken. This technically closes Calhoun - the
+counties, no per-county split, despite a real search for a richer
+per-county view that never turned one up. Built honestly instead of
+guessed around: a fixed placeholder county label that can't match a
+real weather alert, so its correlation function returns empty by
+design, not silently broken. This technically closes Calhoun - the
 last Florida county with zero live coverage - but only as part of one
 blended five-county number, not a verified reading for Calhoun on its
 own. Flagged as a standing priority to revisit, not treated as done.

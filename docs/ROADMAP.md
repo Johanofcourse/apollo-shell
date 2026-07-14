@@ -49,8 +49,7 @@
 - [x] Fourth live Florida utility integrated end-to-end — JEA
       (Jacksonville Electric Authority). A genuinely different vendor
       than TECO/Duke (Kubra's "Storm Center" product, not an Azure/Apigee-
-      hosted API), found by reading the outage-map page's own JS bundle
-      rather than direct live request capture. JEA's feed is a county-rollup
+      hosted API). JEA's feed is a county-rollup
       shape like FPL's (not incident-level like TECO/Duke), but reports
       by ZIP code, not county - resolved via the same FCC reverse-geocode
       TECO's incidents already use (each ZIP's own bounding-box center,
@@ -557,23 +556,14 @@ thin sample per county, not something to treat as a reliable average yet.
       during a real multi-outage event to see how much of the true
       total the incident-level view actually captures.
 - [x] **Peace River Electric Cooperative (PRECO) integrated as an eighth
-      live utility** - same Siena Technologies platform as Talquin
-      (`cache.sienatech.com`), found by reverse-engineering the site's
-      own JS-embedded polygonID-to-county lookup table, then
-      cross-checked with a real-time correlation (a
-      live-changing `affected` count in the map-polygon endpoint matched
-      Manatee's own real-time growth in the DOM before the JS mapping
-      was even found). County-rollup shape like Talquin (own
+      live utility** - same Siena Technologies platform as Talquin.
+      County-rollup shape like Talquin (own
       `preco_outages`/`preco_outage_events` tables) - closes real
       coverage for Hardee County (previously only a tiny 11-customer FPL
       sliver) plus Brevard, DeSoto, Highlands, Hillsborough, Indian
       River, Manatee, Osceola, Polk, Sarasota (9,885 Hardee customers
       served vs. FPL's 11 - confirms PRECO, not FPL, is the real primary
-      utility there). Uses the richer `data/PRECO/OUTAGE` endpoint
-      (same shape as Talquin's, returns name/accounts/affected in one
-      response) rather than the map's lighter-weight `outagePolygons`
-      endpoint, so no static polygonID mapping needs to be hardcoded at
-      all.
+      utility there).
 - [x] **Florida Keys Electric Cooperative (FKEC) integrated as a ninth
       live utility** - a fifth distinct vendor platform (NISC's
       "cloud.coop" product, plain static JSON files on S3/CloudFront, no
@@ -586,13 +576,7 @@ thin sample per county, not something to treat as a reliable average yet.
       the map's own ZIP-boundary geometry file (Web Mercator
       projection) to lat/lon and reverse-geocoding it through the same
       FCC Census API `lookup_county()` already used for TECO/Duke/JEA -
-      not just assumed from general Keys geography. `summary.json`
-      (the real outage-count endpoint) was found by guessing the
-      filename directly from `config.json`'s own documented field names
-      (`region`/`nbrOut`/`served`) rather than capturing more requests
-      directly, once the site's own `region.zipCode.json` (ZIP boundary
-      map geometry - a dead end, same class as PRECO's grid-geometry
-      endpoint) and `config.json` were captured. Real data quirk found
+      not just assumed from general Keys geography. Real data quirk found
       and handled: summing the six ZIPs' own `numberServed` figures
       doesn't quite match the response's own authoritative `totalServed`
       field (a ~0.6% gap) - `customers_served` uses `totalServed`
@@ -606,9 +590,9 @@ thin sample per county, not something to treat as a reliable average yet.
       shapefile (`Counties.zip`, a real Esri `.shp`/`.dbf` archive) turned
       out to be the map's background county-line reference layer, not
       real service territory - it listed 10 names including two real
-      Georgia counties (Brooks, Thomas), a dead end for real coverage
-      the same way PRECO's grid-geometry endpoint was. Built as a
-      combined-territory tracker (own `tcec_outages`/`tcec_outage_events`
+      Georgia counties (Brooks, Thomas), a dead end for real coverage.
+      Built as a combined-territory tracker (own
+      `tcec_outages`/`tcec_outage_events`
       tables, always exactly one row) using the real, honestly-labeled
       county list rather than a fake placeholder - same pattern FPUC's
       original tracker used before its incident-level layer existed.
