@@ -859,6 +859,74 @@ def find_erec_correlations(db_path="outages.db", days=None):
     return matches
 
 
+def find_chelco_correlations(db_path="outages.db", days=None):
+    """
+    Match Choctawhatchee Electric Cooperative's raw combined-territory
+    snapshots to weather alerts. Same shape/limitation as
+    find_erec_correlations()/find_tcec_correlations() (identical vendor
+    platform) - reads chelco_outages, kept as its own dedicated table
+    per the same one-utility-per-table convention used everywhere else
+    here.
+
+    In practice this will always return an empty list: CHELCO's
+    "county" is a multi-county combined label (see
+    fetch_chelco_outages.COMBINED_TERRITORY_LABEL), which can never
+    match a real NWS alert's single-county areaDesc string via
+    _county_in_alert()'s substring check. Kept for the same reason
+    FPUC's original combined-territory tracker and TCEC's/EREC's
+    correlation functions had one despite the same limitation - an
+    honest, self-documenting empty result rather than a special-cased
+    skip, and ready to work correctly the moment a real per-region
+    breakdown (CHELCO's outagePolygons.json, currently seen only empty)
+    reveals real per-county detail.
+
+    Only rows with a real outage (customers_out > 0) are considered -
+    same reasoning as find_correlations().
+
+    days: same windowing as find_correlations().
+
+    Returns a list of {"outage": {...}, "alert": {...}} dicts - reuse
+    correlation_summary() below directly, since the shape matches FPL's.
+    """
+    db = OutageDatabase(db_path)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    cutoff = _window_cutoff(days)
+    if cutoff is not None:
+        cursor.execute('SELECT * FROM chelco_outages WHERE customers_out > 0 AND timestamp >= ?', (cutoff,))
+    else:
+        cursor.execute('SELECT * FROM chelco_outages WHERE customers_out > 0')
+    outages = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute('SELECT * FROM weather_alerts')
+    alerts = [dict(row) for row in cursor.fetchall()]
+
+    db.close()
+
+    matches = []
+    for outage in outages:
+        if not outage.get('county'):
+            continue
+
+        outage_time = _parse_timestamp(outage['timestamp'])
+        if outage_time is None:
+            continue
+
+        for alert in alerts:
+            if not _county_in_alert(outage['county'], alert['areas']):
+                continue
+
+            effective = _parse_timestamp(alert.get('effective'))
+            expires = _parse_timestamp(alert.get('expires'))
+
+            if _alert_covers_time(effective, expires, outage_time):
+                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
+                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
+
+    return matches
+
+
 def find_fpuc_incident_correlations(db_path="outages.db", days=None):
     """
     Match FPUC's real per-incident markers to weather alerts active in

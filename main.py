@@ -22,6 +22,7 @@ from fetch_preco_outages import get_preco_records, PRECO_API_URL
 from fetch_fkec_outages import get_fkec_records, FKEC_API_URL
 from fetch_tcec_outages import get_tcec_records, TCEC_API_URL
 from fetch_erec_outages import get_erec_records, EREC_API_URL
+from fetch_chelco_outages import get_chelco_records, CHELCO_API_URL
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -34,6 +35,7 @@ from correlate import (
     find_fkec_correlations,
     find_tcec_correlations,
     find_erec_correlations,
+    find_chelco_correlations,
 )
 
 
@@ -282,6 +284,30 @@ def run_erec_cycle(db):
     db.sync_erec_outage_events(records, timestamp=timestamp)
 
 
+def run_chelco_cycle(db):
+    """
+    Fetch Choctawhatchee Electric Cooperative's live combined-territory
+    outage data, save the raw snapshot, and update chelco_outage_events
+    lifecycle tracking (start/end) - same platform/shape as TCEC/EREC
+    (always exactly one row, see
+    fetch_chelco_outages.COMBINED_TERRITORY_LABEL).
+
+    Raises only when CHELCO_API_URL is actually configured but the
+    fetch still came back empty - same reasoning/config-check pattern
+    as run_erec_cycle() above.
+    """
+    records = get_chelco_records()
+    if not records:
+        if CHELCO_API_URL:
+            raise RuntimeError("CHELCO fetch returned no data - see the poller's own log for the underlying request error")
+        print("Skipping CHELCO save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_chelco_outages(records, timestamp=timestamp)
+    db.sync_chelco_outage_events(records, timestamp=timestamp)
+
+
 def run_fpuc_cycle(db):
     """
     Fetch FPUC's live outage data once, then update both trackers from
@@ -318,8 +344,8 @@ def run_fpuc_cycle(db):
 def run_correlation_cycle():
     """
     Compute current outage/weather correlations (FPL, TECO, Duke, JEA,
-    City of Tallahassee, Talquin, FPUC, PRECO, FKEC, TCEC, and EREC) and
-    log a summary.
+    City of Tallahassee, Talquin, FPUC, PRECO, FKEC, TCEC, EREC, and
+    CHELCO) and log a summary.
     """
     matches = find_correlations()
     if not matches:
@@ -464,6 +490,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    chelco_matches = find_chelco_correlations()
+    if not chelco_matches:
+        print("CHELCO correlation: no matches this cycle")
+    else:
+        chelco_summary = correlation_summary(chelco_matches)
+        print(f"CHELCO correlation: {len(chelco_matches)} matches across {len(chelco_summary)} counties")
+        for county, stats in chelco_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def main():
     """
@@ -551,6 +590,12 @@ def main():
             except Exception as e:
                 print(f"EREC fetch cycle failed: {e}")
                 db.log_pipeline_error("erec", str(e))
+
+            try:
+                run_chelco_cycle(db)
+            except Exception as e:
+                print(f"CHELCO fetch cycle failed: {e}")
+                db.log_pipeline_error("chelco", str(e))
 
             try:
                 run_correlation_cycle()

@@ -186,6 +186,26 @@ class TestRunErecCycleFailureVisibility:
         main.run_erec_cycle(db)  # should not raise
 
 
+class TestRunChelcoCycleFailureVisibility:
+    def test_raises_when_configured_but_empty(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_chelco_records", lambda: [])
+        monkeypatch.setattr(main, "CHELCO_API_URL", "https://example.com/real-endpoint")
+        with pytest.raises(RuntimeError):
+            main.run_chelco_cycle(db)
+
+    def test_does_not_raise_when_not_configured(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_chelco_records", lambda: [])
+        monkeypatch.setattr(main, "CHELCO_API_URL", None)
+        main.run_chelco_cycle(db)  # should not raise
+
+    def test_does_not_raise_when_records_present(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_chelco_records", lambda: [
+            {"county": "Santa Rosa/Okaloosa/Walton/Holmes", "customers_out": 7, "customers_served": 74996}
+        ])
+        monkeypatch.setattr(main, "CHELCO_API_URL", "https://example.com/real-endpoint")
+        main.run_chelco_cycle(db)  # should not raise
+
+
 class TestRunFpucCycleFailureVisibility:
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
         monkeypatch.setattr(main, "fetch_fpuc_outage_summary", lambda: None)

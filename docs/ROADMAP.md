@@ -643,7 +643,8 @@ thin sample per county, not something to treat as a reliable average yet.
       alerts active right now that name the county (heat-type ones
       visually flagged), and - shown in a clearly separate group, never
       blended in - combined-territory sources (FPUC's original combined
-      view, TCEC, EREC) whose multi-county label happens to mention it.
+      view, TCEC, EREC, CHELCO) whose multi-county label happens to
+      mention it.
       Deliberately live/current-status only; `/history` remains the
       place for real multi-year storm data per county. Matching logic
       reuses `correlate.py`'s existing `_county_in_alert()` substring
@@ -651,6 +652,20 @@ thin sample per county, not something to treat as a reliable average yet.
       labels - verified first that no two of Florida's 67 real county
       names are substrings of each other, so one matching function is
       safe for both cases.
+- [x] **Choctawhatchee Electric Cooperative (CHELCO) integrated as a
+      twelfth live utility** - identical vendor platform to TCEC/EREC
+      (same `outageSummary.json`/`outagePolygons.json` shape, same
+      Microsoft IIS server), hosted off a raw IP:port over plain HTTPS.
+      Real territory confirmed directly by the user via their own
+      browser dev tools: Santa Rosa, Okaloosa, Walton, and Holmes
+      counties - closes the Holmes County gap noted in prior sessions.
+      Built the same way as TCEC/EREC - combined-territory tracker
+      (own `chelco_outages`/`chelco_outage_events` tables, always
+      exactly one row), same known correlation limitation, same "wait
+      for a real event" gap on `outagePolygons.json` (confirmed to
+      exist, seen empty every time so far). Found and built entirely
+      under the same "take it easy on the requests" constraint - only
+      fetched URLs the user had already captured via their own browser.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida
