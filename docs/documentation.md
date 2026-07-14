@@ -4,28 +4,32 @@ Started as a "shell." Somewhere along the way it became an outage
 detective instead. No regrets.
 
 ## Done
-- FPL outages and NWS weather alerts both get fetched *and saved* now
-  (alerts used to be parsed and thrown straight in the trash)
-- Correlation logic: outage and weather alert sharing a county and a
-  time window get matched up
-- A 15-minute poller ("Apollo Sentinel") running live in the
-  background, unattended, overnight, screen dark
-- Outage lifecycle tracking: real start/end times, not a single
-  frozen snapshot
+- Live outage data flows in continuously from twelve independent
+  Florida utilities, alongside National Weather Service alerts, closing
+  out real coverage across nearly the entire state
+- Correlation logic: outages and weather alerts sharing a county and a
+  time window get matched up, each match carrying its own confidence
+  label
+- A 15-minute poller ("Apollo Sentinel") running unattended, day and
+  night, since April
+- Outage lifecycle tracking: real start/end times per incident, not
+  just frozen snapshots
 - A local live-status dashboard — open outages, resolved durations,
-  weather, correlation matches, at a glance
-- **Real historical storm data**, not just live-forward collection —
-  two hurricanes imported end to end, across every utility in the
-  affected counties, real multi-day durations. Kept off GitHub.
-- A second, independent public source layered on top — reported wind
-  severity per county, matched against our own outage numbers.
-  Confirms the obvious in FPL's core territory, and taught us where it
-  *doesn't* hold: storm-wide weather vs. one utility's numbers is
-  misleading in counties where that utility barely operates.
-- A real idempotency bug, found and fixed: re-running a historical
-  import used to silently duplicate every event — including inflating
-  a real 7-day blackout into two fake ones. Guarded at the database
-  level now, not just "remember not to do that."
+  weather, correlation matches, and the health of every data source, at
+  a glance
+- A live per-county lookup tool, pulling together outages, weather, and
+  heat advisories for any of Florida's 67 counties
+- **Real historical storm data**, not just live-forward collection — 17
+  storms, 2018-2025, across every utility per storm, queryable by
+  county. Kept off GitHub.
+- A second, independent public source layered on top of the historical
+  data — reported wind severity per county, cross-checked against our
+  own outage numbers.
+- A year-round heat-advisory tracker, plus a drill-down into which
+  zones are currently under one
+- A real idempotency bug, found early on and fixed for good: re-running
+  a historical import used to silently duplicate every event. Guarded
+  at the database level now, not just "remember not to do that."
 
 ## The plot twist
 Same night, different rabbit hole: went looking at whether other
