@@ -729,6 +729,35 @@
   {% endif %}
   </div>
 
+  <h3>TCEC — Currently Open Outages ({{ tcec_open_events|length }})</h3>
+  <p class="section-note">
+    Tri-County Electric Cooperative's live feed reports one combined, authoritative total across its whole real
+    territory &mdash; confirmed 2026-07-13 to cover Jefferson, Madison, and Taylor counties plus small parts of
+    Dixie, Lafayette, and Leon. "Territory" below isn't a real single county name; a real per-region breakdown
+    endpoint exists (outagePolygons.json) but has only ever been seen empty so far - its real shape will be
+    added once a genuine outage populates it, same as FPUC's incident-level layer was.
+  </p>
+  <div class="wrap">
+  {% if tcec_open_events %}
+    <table>
+      <tr><th>Territory</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in tcec_open_events %}
+      <tr>
+        <td><a href="/incident?source=tcec&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
+        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open TCEC outages right now.</div>
+  {% endif %}
+  </div>
+
     </div>
   </details>
 
@@ -931,6 +960,26 @@
       {% for e in fkec_closed_events %}
       <tr>
         <td><a href="/incident?source=fkec&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>TCEC — Recently Resolved</h3>
+  <div class="wrap">
+  {% if tcec_closed_events %}
+    <table>
+      <tr><th>Territory</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in tcec_closed_events %}
+      <tr>
+        <td><a href="/incident?source=tcec&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.end_time | humanize }}</td>
@@ -1211,6 +1260,40 @@
     </table>
   {% else %}
     <div class="empty">No correlated FKEC outage/weather events right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>Weather / Outage Correlation (TCEC) &mdash; last {{ window_days }} days</h3>
+  <p class="section-note">
+    Always empty by design for now &mdash; TCEC's combined-territory label spans multiple counties, so it can
+    never match a single-county weather alert. Will start producing real matches once outagePolygons.json's
+    real per-region shape is known and a per-county tracker is built, same as FPUC's incident layer.
+  </p>
+  <div class="wrap">
+  {% if tcec_correlation %}
+    <table>
+      <tr><th>County</th><th>Correlated Outages</th><th>Peak % Out</th><th>Alert Types</th><th>Confidence</th></tr>
+      {% for county, stats in tcec_correlation.items() %}
+      <tr>
+        <td>{{ county }}</td>
+        <td>{{ stats.outage_count }}</td>
+        <td>{{ "%.2f"|format(stats.max_percentage_out) }}%</td>
+        <td>{{ stats.alert_types_display }}</td>
+        <td>
+          {% if stats.confidence_bar %}
+          <div class="conf-bar">
+            {% for seg in stats.confidence_bar %}
+            <div class="conf-seg-{{ seg.tier }}" style="width: {{ seg.pct }}%;" title="{{ seg.tier }} ×{{ seg.count }}"></div>
+            {% endfor %}
+          </div>
+          <div class="conf-caption">{{ stats.confidence_display }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No correlated TCEC outage/weather events right now.</div>
   {% endif %}
   </div>
     </div>

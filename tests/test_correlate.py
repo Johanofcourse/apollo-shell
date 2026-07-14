@@ -17,7 +17,7 @@ from correlate import (
     weather_match_confidence, find_correlations, find_jea_correlations,
     find_tallahassee_correlations, find_talquin_correlations,
     find_fpuc_incident_correlations, duke_correlation_summary, correlation_summary,
-    find_preco_correlations, find_fkec_correlations,
+    find_preco_correlations, find_fkec_correlations, find_tcec_correlations,
 )
 from database import OutageDatabase
 
@@ -458,3 +458,40 @@ class TestFindFkecCorrelations:
         db.close()
 
         assert find_fkec_correlations(db_path, days=None) == []
+
+
+class TestFindTcecCorrelations:
+    """
+    find_tcec_correlations() shares the exact matching helpers already
+    proven above, but TCEC's own combined-territory county label
+    ("Jefferson/Madison/Taylor (+ partial Dixie/Lafayette/Leon)") can
+    never match a real NWS alert's single-county areaDesc string via
+    _county_in_alert()'s substring check - this is the main documented
+    behavior of this function (same known limitation FPUC's original
+    combined-territory tracker had), so these tests confirm that
+    always-empty result rather than a real match.
+    """
+
+    def test_combined_territory_label_never_matches_a_single_county_alert(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Jefferson"))
+        db.log_tcec_outages(
+            [{"county": "Jefferson/Madison/Taylor (+ partial Dixie/Lafayette/Leon)",
+              "customers_out": 42, "customers_served": 20103}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_tcec_correlations(db_path, days=None) == []
+
+    def test_zero_customer_snapshots_are_not_matched(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Jefferson"))
+        db.log_tcec_outages(
+            [{"county": "Jefferson/Madison/Taylor (+ partial Dixie/Lafayette/Leon)",
+              "customers_out": 0, "customers_served": 20103}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_tcec_correlations(db_path, days=None) == []

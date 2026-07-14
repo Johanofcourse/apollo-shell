@@ -598,6 +598,28 @@ thin sample per county, not something to treat as a reliable average yet.
       doesn't quite match the response's own authoritative `totalServed`
       field (a ~0.6% gap) - `customers_served` uses `totalServed`
       directly rather than a locally re-derived sum.
+- [x] **Tri-County Electric Cooperative (TCEC) integrated as a tenth
+      live utility** - a sixth distinct vendor platform (a custom
+      Microsoft IIS-hosted build, `outage.tcec.com`, no trackingCode or
+      auth needed). Confirmed real territory via the user's own visual
+      read of the live map (Jefferson, Madison, Taylor, plus small parts
+      of Dixie, Lafayette, and Leon) after a candidate boundary
+      shapefile (`Counties.zip`, a real Esri `.shp`/`.dbf` archive) turned
+      out to be the map's background county-line reference layer, not
+      real service territory - it listed 10 names including two real
+      Georgia counties (Brooks, Thomas), a dead end for real coverage
+      the same way PRECO's grid-geometry endpoint was. Built as a
+      combined-territory tracker (own `tcec_outages`/`tcec_outage_events`
+      tables, always exactly one row) using the real, honestly-labeled
+      county list rather than a fake placeholder - same pattern FPUC's
+      original tracker used before its incident-level layer existed.
+      Real per-region detail lives in a confirmed sibling endpoint,
+      `outagePolygons.json`, but it's only ever been seen empty (zero
+      active outages during discovery) - its real field shape, and the
+      per-county correlation layer that would follow from it, is a
+      known, deliberate gap until a genuine outage populates it, same
+      "wait for a real event" situation FPUC's `markers` array was in
+      before one finally did.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida

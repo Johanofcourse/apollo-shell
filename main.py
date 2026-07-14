@@ -20,6 +20,7 @@ from fetch_talquin_outages import get_talquin_records, TALQUIN_API_URL
 from fetch_fpuc_outages import fetch_fpuc_outage_summary, outages_to_records as fpuc_outages_to_records, markers_to_incidents, FPUC_API_URL
 from fetch_preco_outages import get_preco_records, PRECO_API_URL
 from fetch_fkec_outages import get_fkec_records, FKEC_API_URL
+from fetch_tcec_outages import get_tcec_records, TCEC_API_URL
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -30,6 +31,7 @@ from correlate import (
     find_fpuc_incident_correlations,
     find_preco_correlations,
     find_fkec_correlations,
+    find_tcec_correlations,
 )
 
 
@@ -231,6 +233,30 @@ def run_fkec_cycle(db):
     db.sync_fkec_outage_events(records, timestamp=timestamp)
 
 
+def run_tcec_cycle(db):
+    """
+    Fetch Tri-County Electric Cooperative's live combined-territory
+    outage data, save the raw snapshot, and update tcec_outage_events
+    lifecycle tracking (start/end) - a combined-territory source (always
+    exactly one row, see fetch_tcec_outages.COMBINED_TERRITORY_LABEL),
+    same shape as FPUC's original tracker, not a per-county rollup.
+
+    Raises only when TCEC_API_URL is actually configured but the fetch
+    still came back empty - same reasoning/config-check pattern as
+    run_fkec_cycle() above.
+    """
+    records = get_tcec_records()
+    if not records:
+        if TCEC_API_URL:
+            raise RuntimeError("TCEC fetch returned no data - see the poller's own log for the underlying request error")
+        print("Skipping TCEC save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_tcec_outages(records, timestamp=timestamp)
+    db.sync_tcec_outage_events(records, timestamp=timestamp)
+
+
 def run_fpuc_cycle(db):
     """
     Fetch FPUC's live outage data once, then update both trackers from
@@ -267,7 +293,7 @@ def run_fpuc_cycle(db):
 def run_correlation_cycle():
     """
     Compute current outage/weather correlations (FPL, TECO, Duke, JEA,
-    City of Tallahassee, Talquin, FPUC, PRECO, and FKEC) and log a
+    City of Tallahassee, Talquin, FPUC, PRECO, FKEC, and TCEC) and log a
     summary.
     """
     matches = find_correlations()
@@ -387,6 +413,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    tcec_matches = find_tcec_correlations()
+    if not tcec_matches:
+        print("TCEC correlation: no matches this cycle")
+    else:
+        tcec_summary = correlation_summary(tcec_matches)
+        print(f"TCEC correlation: {len(tcec_matches)} matches across {len(tcec_summary)} counties")
+        for county, stats in tcec_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def main():
     """
@@ -462,6 +501,12 @@ def main():
             except Exception as e:
                 print(f"FKEC fetch cycle failed: {e}")
                 db.log_pipeline_error("fkec", str(e))
+
+            try:
+                run_tcec_cycle(db)
+            except Exception as e:
+                print(f"TCEC fetch cycle failed: {e}")
+                db.log_pipeline_error("tcec", str(e))
 
             try:
                 run_correlation_cycle()
