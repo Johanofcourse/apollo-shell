@@ -222,6 +222,27 @@ and don't substitute for everyday-outage volume.
       folded in. The remaining Panhandle counties were closed one at a
       time as additional Panhandle-area utilities got integrated below,
       down to full coverage.
+- [ ] **Crowd-sourced status pins - a real idea, not yet designed in
+      detail.** Raised after noticing that even well-received outage/
+      weather apps tend to feel community-less. A full comment/forum
+      section was considered and deliberately set aside - moderation
+      needs are highest at exactly the moment (a real storm) when
+      there's the least bandwidth to provide it, and a paywalled
+      version of that (rate-limited free posting, unlimited on a paid
+      tier) reads badly for a tool people rely on during emergencies.
+      Landed instead on a narrower, Waze-style idea: simple pins (e.g.
+      "downed line here"), not freeform text, so there's much less to
+      moderate. Two real design constraints already agreed on before
+      any of this is built: (1) rate-limiting per device/account to
+      resist spam and grief-pinning; (2) a pin shouldn't show as
+      trustworthy on a single report alone - needs roughly 3-4 similar
+      nearby reports before it's treated as confirmed, closer to how
+      real crowd-sourced traffic apps handle unverified reports. Also
+      worth doing once real: cross-referencing a confirmed pin against
+      this project's own live utility-outage data for the same area,
+      since that correlation is close to free given what's already
+      collected. Squarely a Phase 4+ idea - needs real public traffic
+      and the test/prod split above first, not something to start now.
 
 ## Utility coverage
 Grew from one utility (FPL) to thirteen live sources across this
