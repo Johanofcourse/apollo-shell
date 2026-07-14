@@ -117,6 +117,26 @@
     .severity-badge-info { background: rgba(63, 185, 80, 0.16); color: var(--ok); }
     .severity-badge-warn { background: rgba(210, 153, 34, 0.16); color: var(--warn); }
     .severity-badge-crit { background: rgba(248, 81, 73, 0.16); color: var(--crit); }
+    .ongoing-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      border-radius: 999px;
+      padding: 0.2rem 0.7rem 0.2rem 0.55rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      background: rgba(248, 81, 73, 0.16);
+      color: var(--crit);
+      white-space: nowrap;
+    }
+    .ongoing-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--crit);
+    }
     .error-when {
       margin-left: auto;
       color: var(--muted);
@@ -196,12 +216,24 @@
       <div class="error-card-head">
         <span class="source-chip">{{ e.display_name }}</span>
         <span class="severity-badge severity-badge-{{ e.explanation_severity }}">{{ e.explanation_label | replace("-", " ") }}</span>
+        {% if e.is_ongoing %}
+        <span class="ongoing-badge"><span class="ongoing-dot"></span>Currently ongoing</span>
+        {% endif %}
         <span class="error-when">
-          {{ e.first_timestamp | humanize }} &middot;
-          {% if e.count > 1 %}
-            occurred over {{ e.duration }} ({{ e.count }}&times;)
+          {% if e.is_ongoing %}
+            Started {{ e.first_timestamp | humanize }} &middot;
+            {% if e.count > 1 %}
+              ongoing {{ e.duration }} so far ({{ e.count }}&times; and counting)
+            {% else %}
+              first occurrence
+            {% endif %}
           {% else %}
-            single occurrence
+            {{ e.first_timestamp | humanize }} &middot;
+            {% if e.count > 1 %}
+              occurred over {{ e.duration }} ({{ e.count }}&times;)
+            {% else %}
+              single occurrence
+            {% endif %}
           {% endif %}
         </span>
       </div>

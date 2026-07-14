@@ -5,10 +5,14 @@ fix added 2026-07-12, same spirit as the humanize timestamp filter.
 
 import os
 import sys
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dashboard import _incident_label, _explain_pipeline_error, _group_pipeline_errors
+from dashboard import (
+    _incident_label, _explain_pipeline_error, _group_pipeline_errors,
+    _is_pipeline_error_ongoing,
+)
 
 
 class TestIncidentLabel:
@@ -183,3 +187,33 @@ class TestGroupPipelineErrors:
 
     def test_empty_input_returns_empty(self):
         assert _group_pipeline_errors([]) == []
+
+
+class TestIsPipelineErrorOngoing:
+    """
+    _is_pipeline_error_ongoing() - added 2026-07-14 after Talquin/PRECO's
+    real, still-active Siena outage exposed that /pipeline-errors showed
+    no distinction between "this happened once, long ago" and "this is
+    happening right now" - both read in identical past tense
+    ("occurred over 6h24m").
+    """
+
+    def test_recent_failure_is_ongoing(self):
+        now = datetime(2026, 1, 1, 12, 0, 0)
+        last_timestamp = (now - timedelta(minutes=5)).isoformat()
+        assert _is_pipeline_error_ongoing(last_timestamp, now=now) is True
+
+    def test_failure_right_at_the_gap_threshold_is_ongoing(self):
+        now = datetime(2026, 1, 1, 12, 0, 0)
+        last_timestamp = (now - timedelta(minutes=20)).isoformat()
+        assert _is_pipeline_error_ongoing(last_timestamp, now=now) is True
+
+    def test_failure_past_the_gap_threshold_is_not_ongoing(self):
+        now = datetime(2026, 1, 1, 12, 0, 0)
+        last_timestamp = (now - timedelta(minutes=21)).isoformat()
+        assert _is_pipeline_error_ongoing(last_timestamp, now=now) is False
+
+    def test_long_past_failure_is_not_ongoing(self):
+        now = datetime(2026, 1, 1, 12, 0, 0)
+        last_timestamp = (now - timedelta(hours=6, minutes=24)).isoformat()
+        assert _is_pipeline_error_ongoing(last_timestamp, now=now) is False

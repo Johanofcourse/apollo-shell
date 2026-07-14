@@ -943,6 +943,26 @@ def _group_pipeline_errors(errors):
     return groups
 
 
+def _is_pipeline_error_ongoing(last_timestamp, now=None):
+    """
+    True if a pipeline-error streak (see _group_pipeline_errors) is
+    still actively happening, as opposed to a resolved, historical one -
+    i.e. its most recent failure is recent enough that another real
+    failure right now would still extend this same streak rather than
+    start a new one. Same PIPELINE_ERROR_GROUP_GAP_MINUTES threshold
+    _group_pipeline_errors() itself uses to decide that, just measured
+    against "now" instead of another row in the same table.
+
+    Without this distinction, a streak that's still actively failing
+    (e.g. Talquin/PRECO mid-outage) reads exactly like a long-past,
+    fully-resolved one ("occurred over 6h24m") - same past-tense wording
+    either way, no way to tell which one you're looking at.
+    """
+    now = now or datetime.now()
+    cutoff = now - timedelta(minutes=PIPELINE_ERROR_GROUP_GAP_MINUTES)
+    return datetime.fromisoformat(last_timestamp) >= cutoff
+
+
 @app.route("/pipeline-errors")
 def pipeline_errors():
     """
@@ -974,6 +994,7 @@ def pipeline_errors():
         e["display_name"] = PIPELINE_SOURCE_DISPLAY_NAMES.get(e["source"], e["source"].title())
         e["duration"] = _duration_since(e["first_timestamp"], e["last_timestamp"])
         e["explanation_label"], e["explanation_text"], e["explanation_severity"] = _explain_pipeline_error(e["latest_message"])
+        e["is_ongoing"] = _is_pipeline_error_ongoing(e["last_timestamp"])
 
     return render_template(
         "pipeline_errors.html",
