@@ -515,6 +515,39 @@ class OutageDatabase:
             )
         ''')
 
+        # Florida Keys Electric Cooperative (FKEC) raw snapshots - a
+        # county-rollup source like Talquin/PRECO, always exactly one
+        # row (real county: Monroe - FKEC's whole territory is confirmed
+        # single-county, see fetch_fkec_outages.SERVICE_COUNTY), kept in
+        # its own table per the same one-utility-per-table convention.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fkec_outages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
+                customers_out INTEGER NOT NULL,
+                customers_served INTEGER NOT NULL,
+                percentage_out REAL NOT NULL
+            )
+        ''')
+
+        # FKEC county-level lifecycle tracking - identical algorithm to
+        # preco_outage_events/talquin_outage_events (open on
+        # customers_out > 0, track peak, close on return to 0).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fkec_outage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customers_out INTEGER NOT NULL,
+                peak_percentage_out REAL NOT NULL,
+                customers_served INTEGER NOT NULL
+            )
+        ''')
+
         # Create indexes
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_timestamp
@@ -554,6 +587,11 @@ class OutageDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_preco_outage_events_open
             ON preco_outage_events(utility, county, end_time)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_fkec_outage_events_open
+            ON fkec_outage_events(utility, county, end_time)
         ''')
 
         cursor.execute('''
@@ -694,6 +732,16 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_preco_outage_events_unique
             ON preco_outage_events(utility, county, start_time)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_fkec_outages_unique
+            ON fkec_outages(timestamp, utility, county)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_fkec_outage_events_unique
+            ON fkec_outage_events(utility, county, start_time)
         ''')
 
         cursor.execute('''
@@ -1325,6 +1373,100 @@ class OutageDatabase:
         print(f"PRECO outage events: {opened} opened, {closed} closed this cycle")
 
 
+    def log_fkec_outages(self, outage_list, timestamp=None):
+        """
+        Insert Florida Keys Electric Cooperative's raw snapshot (from
+        fetch_fkec_outages.py) - always exactly one record (real county:
+        Monroe - see fetch_fkec_outages.SERVICE_COUNTY). Same
+        shape/principle as log_preco_outages(), kept in its own table.
+
+        Args:
+            outage_list: list of dicts with keys: county, customers_out, customers_served
+            timestamp: ISO timestamp to record for this batch; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+
+        records = []
+        for outage in outage_list:
+            customers_out = outage['customers_out']
+            customers_served = outage['customers_served']
+            percentage_out = (customers_out / customers_served * 100) if customers_served > 0 else 0
+            records.append((timestamp, "Florida Keys Electric Cooperative, Inc.", outage['county'], customers_out, customers_served, percentage_out))
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO fkec_outages (timestamp, utility, county, customers_out, customers_served, percentage_out)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', records)
+
+        conn.commit()
+        print(f"Logged {len(records)} FKEC outage records")
+
+
+    def sync_fkec_outage_events(self, outage_list, timestamp=None):
+        """
+        Update fkec_outage_events from a fresh batch of snapshots.
+        Identical algorithm to sync_preco_outage_events() - kept as
+        FKEC's own dedicated table/method, same one-utility-per-table
+        convention.
+
+        NOT SAFE TO REPLAY - same characteristic as sync_outage_events()
+        (see its docstring): only safe for calls arriving in real
+        chronological order, one live poll at a time.
+
+        Args:
+            outage_list: list of dicts with keys: county, customers_out, customers_served
+            timestamp: ISO timestamp for opened/closed events; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        utility = "Florida Keys Electric Cooperative, Inc."
+
+        opened = 0
+        closed = 0
+
+        for outage in outage_list:
+            county = outage['county']
+            customers_out = outage['customers_out']
+            customers_served = outage['customers_served']
+            percentage_out = (customers_out / customers_served * 100) if customers_served > 0 else 0
+
+            cursor.execute('''
+                SELECT id, peak_customers_out FROM fkec_outage_events
+                WHERE utility = ? AND county = ? AND end_time IS NULL
+            ''', (utility, county))
+            open_event = cursor.fetchone()
+
+            if customers_out > 0:
+                if open_event is None:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO fkec_outage_events
+                            (utility, county, start_time, end_time, peak_customers_out, peak_percentage_out, customers_served)
+                        VALUES (?, ?, ?, NULL, ?, ?, ?)
+                    ''', (utility, county, timestamp, customers_out, percentage_out, customers_served))
+                    if cursor.rowcount > 0:
+                        opened += 1
+                elif customers_out > open_event['peak_customers_out']:
+                    cursor.execute('''
+                        UPDATE fkec_outage_events
+                        SET peak_customers_out = ?, peak_percentage_out = ?, customers_served = ?
+                        WHERE id = ?
+                    ''', (customers_out, percentage_out, customers_served, open_event['id']))
+            else:
+                if open_event is not None:
+                    cursor.execute('''
+                        UPDATE fkec_outage_events SET end_time = ? WHERE id = ?
+                    ''', (timestamp, open_event['id']))
+                    closed += 1
+
+        conn.commit()
+        print(f"FKEC outage events: {opened} opened, {closed} closed this cycle")
+
+
     def log_fpuc_outages(self, outage_list, timestamp=None):
         """
         Insert FPUC's raw combined-territory snapshot (from
@@ -1768,6 +1910,50 @@ class OutageDatabase:
         return [dict(row) for row in cursor.fetchall()]
 
 
+    def get_fkec_open_events(self):
+        """
+        Return currently open fkec_outage_events (end_time IS NULL),
+        worst (by peak percentage out) first. Includes
+        current_customers_out/current_percentage_out from the latest
+        fkec_outages snapshot for that county, alongside the lifecycle
+        peak - same "peak vs. right now" reasoning as get_preco_open_events().
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT oe.*,
+                   cur.customers_out AS current_customers_out,
+                   cur.percentage_out AS current_percentage_out
+            FROM fkec_outage_events oe
+            LEFT JOIN fkec_outages cur
+                ON cur.utility = oe.utility AND cur.county = oe.county
+                AND cur.timestamp = (
+                    SELECT MAX(timestamp) FROM fkec_outages o2
+                    WHERE o2.utility = oe.utility AND o2.county = oe.county
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_percentage_out DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_fkec_recent_closed_events(self, limit=10):
+        """
+        Return the most recently closed fkec_outage_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM fkec_outage_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
     def get_fpuc_open_events(self):
         """
         Return currently open fpuc_outage_events (end_time IS NULL) -
@@ -2071,6 +2257,33 @@ class OutageDatabase:
         end_bound = event["end_time"] or datetime.now().isoformat()
         cursor.execute('''
             SELECT timestamp, customers_out, customers_served, percentage_out FROM preco_outages
+            WHERE utility = ? AND county = ? AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp
+        ''', (utility, county, start_time, end_bound))
+        history = [dict(row) for row in cursor.fetchall()]
+
+        return {"event": event, "history": history}
+
+    def get_fkec_outage_detail(self, utility, county, start_time):
+        """
+        Same idea as get_preco_outage_detail(), for one FKEC outage
+        occurrence - fkec_outages is logged directly (always exactly
+        one row, Monroe), no aggregation needed here.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM fkec_outage_events WHERE utility = ? AND county = ? AND start_time = ?
+        ''', (utility, county, start_time))
+        event = cursor.fetchone()
+        if event is None:
+            return None
+        event = dict(event)
+
+        end_bound = event["end_time"] or datetime.now().isoformat()
+        cursor.execute('''
+            SELECT timestamp, customers_out, customers_served, percentage_out FROM fkec_outages
             WHERE utility = ? AND county = ? AND timestamp >= ? AND timestamp <= ?
             ORDER BY timestamp
         ''', (utility, county, start_time, end_bound))

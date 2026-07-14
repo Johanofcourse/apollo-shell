@@ -125,6 +125,26 @@ class TestRunPrecoCycleFailureVisibility:
         main.run_preco_cycle(db)  # should not raise
 
 
+class TestRunFkecCycleFailureVisibility:
+    def test_raises_when_configured_but_empty(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_fkec_records", lambda: [])
+        monkeypatch.setattr(main, "FKEC_API_URL", "https://example.com/real-endpoint")
+        with pytest.raises(RuntimeError):
+            main.run_fkec_cycle(db)
+
+    def test_does_not_raise_when_not_configured(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_fkec_records", lambda: [])
+        monkeypatch.setattr(main, "FKEC_API_URL", None)
+        main.run_fkec_cycle(db)  # should not raise
+
+    def test_does_not_raise_when_records_present(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_fkec_records", lambda: [
+            {"county": "Monroe", "customers_out": 12, "customers_served": 34475}
+        ])
+        monkeypatch.setattr(main, "FKEC_API_URL", "https://example.com/real-endpoint")
+        main.run_fkec_cycle(db)  # should not raise
+
+
 class TestRunFpucCycleFailureVisibility:
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
         monkeypatch.setattr(main, "fetch_fpuc_outage_summary", lambda: None)

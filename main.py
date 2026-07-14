@@ -19,6 +19,7 @@ from fetch_tallahassee_outages import get_incidents_summary as get_tallahassee_i
 from fetch_talquin_outages import get_talquin_records, TALQUIN_API_URL
 from fetch_fpuc_outages import fetch_fpuc_outage_summary, outages_to_records as fpuc_outages_to_records, markers_to_incidents, FPUC_API_URL
 from fetch_preco_outages import get_preco_records, PRECO_API_URL
+from fetch_fkec_outages import get_fkec_records, FKEC_API_URL
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -28,6 +29,7 @@ from correlate import (
     find_talquin_correlations,
     find_fpuc_incident_correlations,
     find_preco_correlations,
+    find_fkec_correlations,
 )
 
 
@@ -203,6 +205,32 @@ def run_preco_cycle(db):
     db.sync_preco_outage_events(records, timestamp=timestamp)
 
 
+def run_fkec_cycle(db):
+    """
+    Fetch Florida Keys Electric Cooperative's live outage data, save the
+    raw snapshot, and update fkec_outage_events lifecycle tracking
+    (start/end) - a county-rollup source (always exactly one row,
+    Monroe), same shape as PRECO/Talquin, not an incident list.
+
+    Raises only when FKEC_API_URL is actually configured but the fetch
+    still came back empty - same reasoning/config-check pattern as
+    run_preco_cycle() above (see the 2026-07-13 pipeline-visibility fix:
+    fetch_fkec_outages() catches its own RequestException and returns
+    None, so this is what actually gets that failure logged/surfaced on
+    the dashboard instead of silently vanishing).
+    """
+    records = get_fkec_records()
+    if not records:
+        if FKEC_API_URL:
+            raise RuntimeError("FKEC fetch returned no records - see the poller's own log for the underlying request error")
+        print("Skipping FKEC save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_fkec_outages(records, timestamp=timestamp)
+    db.sync_fkec_outage_events(records, timestamp=timestamp)
+
+
 def run_fpuc_cycle(db):
     """
     Fetch FPUC's live outage data once, then update both trackers from
@@ -239,7 +267,8 @@ def run_fpuc_cycle(db):
 def run_correlation_cycle():
     """
     Compute current outage/weather correlations (FPL, TECO, Duke, JEA,
-    City of Tallahassee, Talquin, FPUC, and PRECO) and log a summary.
+    City of Tallahassee, Talquin, FPUC, PRECO, and FKEC) and log a
+    summary.
     """
     matches = find_correlations()
     if not matches:
@@ -345,6 +374,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    fkec_matches = find_fkec_correlations()
+    if not fkec_matches:
+        print("FKEC correlation: no matches this cycle")
+    else:
+        fkec_summary = correlation_summary(fkec_matches)
+        print(f"FKEC correlation: {len(fkec_matches)} matches across {len(fkec_summary)} counties")
+        for county, stats in fkec_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def main():
     """
@@ -414,6 +456,12 @@ def main():
             except Exception as e:
                 print(f"PRECO fetch cycle failed: {e}")
                 db.log_pipeline_error("preco", str(e))
+
+            try:
+                run_fkec_cycle(db)
+            except Exception as e:
+                print(f"FKEC fetch cycle failed: {e}")
+                db.log_pipeline_error("fkec", str(e))
 
             try:
                 run_correlation_cycle()

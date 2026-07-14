@@ -337,6 +337,29 @@ class TestIncidentDetailLookup:
 
         assert detail is None
 
+    def test_fkec_outage_detail_returns_event_and_bounded_history(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fkec_outages([_fpl_row("Monroe", 50)], timestamp="2026-01-01T00:00:00")
+        db.sync_fkec_outage_events([_fpl_row("Monroe", 50)], timestamp="2026-01-01T00:00:00")
+        db.log_fkec_outages([_fpl_row("Monroe", 0)], timestamp="2026-01-01T00:15:00")
+        db.sync_fkec_outage_events([_fpl_row("Monroe", 0)], timestamp="2026-01-01T00:15:00")
+
+        detail = db.get_fkec_outage_detail("Florida Keys Electric Cooperative, Inc.", "Monroe", "2026-01-01T00:00:00")
+        db.close()
+
+        assert detail is not None
+        assert detail["event"]["end_time"] == "2026-01-01T00:15:00"
+        assert len(detail["history"]) == 2
+        assert detail["history"][0]["customers_out"] == 50
+        assert detail["history"][-1]["customers_out"] == 0
+
+    def test_fkec_outage_detail_none_for_unknown_occurrence(self, db_path):
+        db = OutageDatabase(db_path)
+        detail = db.get_fkec_outage_detail("Florida Keys Electric Cooperative, Inc.", "Monroe", "2026-01-01T00:00:00")
+        db.close()
+
+        assert detail is None
+
     def test_fpuc_outage_detail_returns_event_and_bounded_history(self, db_path):
         db = OutageDatabase(db_path)
         territory = "Multiple Counties (NW FL & Nassau)"
@@ -515,6 +538,22 @@ class TestOpenEventsCurrentVsPeak:
         db.sync_preco_outage_events([_fpl_row("Manatee", 10)], timestamp="2026-01-01T00:30:00")
 
         open_events = db.get_preco_open_events()
+        db.close()
+
+        assert len(open_events) == 1
+        assert open_events[0]["peak_customers_out"] == 500
+        assert open_events[0]["current_customers_out"] == 10
+
+    def test_fkec_open_event_reports_current_alongside_peak(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fkec_outages([_fpl_row("Monroe", 50)], timestamp="2026-01-01T00:00:00")
+        db.sync_fkec_outage_events([_fpl_row("Monroe", 50)], timestamp="2026-01-01T00:00:00")
+        db.log_fkec_outages([_fpl_row("Monroe", 500)], timestamp="2026-01-01T00:15:00")
+        db.sync_fkec_outage_events([_fpl_row("Monroe", 500)], timestamp="2026-01-01T00:15:00")
+        db.log_fkec_outages([_fpl_row("Monroe", 10)], timestamp="2026-01-01T00:30:00")
+        db.sync_fkec_outage_events([_fpl_row("Monroe", 10)], timestamp="2026-01-01T00:30:00")
+
+        open_events = db.get_fkec_open_events()
         db.close()
 
         assert len(open_events) == 1
