@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dashboard import (
     _incident_label, _explain_pipeline_error, _group_pipeline_errors,
     _is_pipeline_error_ongoing, _normalize_open_events, _rows_for_county,
-    COUNTY_PICKER_CHOICES,
+    _paginate, COUNTY_PICKER_CHOICES,
 )
 
 
@@ -218,6 +218,64 @@ class TestIsPipelineErrorOngoing:
         now = datetime(2026, 1, 1, 12, 0, 0)
         last_timestamp = (now - timedelta(hours=6, minutes=24)).isoformat()
         assert _is_pipeline_error_ongoing(last_timestamp, now=now) is False
+
+
+class TestPaginate:
+    """
+    _paginate() - added 2026-07-14 so /pipeline-errors's streak list
+    doesn't render as one unbounded page as real history accumulates
+    (Talquin/PRECO's ongoing failures were the concrete trigger).
+    """
+
+    def test_first_page_returns_first_slice(self):
+        items = list(range(25))
+        result = _paginate(items, page=1, per_page=10)
+        assert result["items"] == list(range(10))
+        assert result["page"] == 1
+        assert result["total_pages"] == 3
+        assert result["total"] == 25
+        assert result["has_prev"] is False
+        assert result["has_next"] is True
+
+    def test_middle_page_returns_middle_slice(self):
+        items = list(range(25))
+        result = _paginate(items, page=2, per_page=10)
+        assert result["items"] == list(range(10, 20))
+        assert result["has_prev"] is True
+        assert result["has_next"] is True
+
+    def test_last_page_returns_partial_slice(self):
+        items = list(range(25))
+        result = _paginate(items, page=3, per_page=10)
+        assert result["items"] == list(range(20, 25))
+        assert result["has_prev"] is True
+        assert result["has_next"] is False
+
+    def test_exact_multiple_has_no_trailing_empty_page(self):
+        items = list(range(20))
+        result = _paginate(items, page=2, per_page=10)
+        assert result["total_pages"] == 2
+        assert result["has_next"] is False
+
+    def test_page_number_above_range_clamps_to_last_page(self):
+        items = list(range(25))
+        result = _paginate(items, page=999, per_page=10)
+        assert result["page"] == 3
+        assert result["items"] == list(range(20, 25))
+
+    def test_page_number_below_one_clamps_to_first_page(self):
+        items = list(range(25))
+        result = _paginate(items, page=0, per_page=10)
+        assert result["page"] == 1
+        assert result["items"] == list(range(10))
+
+    def test_empty_list_returns_one_empty_page_not_zero_pages(self):
+        result = _paginate([], page=1, per_page=10)
+        assert result["items"] == []
+        assert result["total_pages"] == 1
+        assert result["page"] == 1
+        assert result["has_prev"] is False
+        assert result["has_next"] is False
 
 
 class TestCountyPickerChoices:

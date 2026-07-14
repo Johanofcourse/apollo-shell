@@ -1161,6 +1161,36 @@ def _is_pipeline_error_ongoing(last_timestamp, now=None):
     return datetime.fromisoformat(last_timestamp) >= cutoff
 
 
+PIPELINE_ERRORS_PER_PAGE = 20
+
+
+def _paginate(items, page, per_page):
+    """
+    Slice an already-sorted list into one page's worth of items, plus
+    enough context to render prev/next controls - used to keep
+    /pipeline-errors from rendering every streak on one unbounded page
+    as the error-history table keeps growing over the project's
+    lifetime.
+
+    page is 1-indexed and clamped into range rather than erroring or
+    silently returning nothing - a stale bookmarked link to a page
+    number that no longer exists (e.g. the list got shorter) lands on
+    the nearest real page instead of an empty/broken result.
+    """
+    total = len(items)
+    total_pages = max(1, -(-total // per_page))  # ceiling division
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * per_page
+    return {
+        "items": items[start:start + per_page],
+        "page": page,
+        "total_pages": total_pages,
+        "total": total,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+    }
+
+
 @app.route("/pipeline-errors")
 def pipeline_errors():
     """
@@ -1179,12 +1209,24 @@ def pipeline_errors():
     source=<name> filters to just that source (matches the same keys
     used in main.py's log_pipeline_error() calls, e.g. "fpl"/"preco");
     omitted shows every source combined, most recent first.
+
+    page=<n> paginates the resulting streak list (see _paginate) -
+    added once a real sustained failure (Talquin/PRECO) made the
+    all-on-one-page view keep growing without bound.
     """
     selected_source = request.args.get("source", "").strip().lower()
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        page = 1
 
     db = OutageDatabase()
     all_sources = sorted(PIPELINE_SOURCE_DISPLAY_NAMES.keys())
-    raw_errors = db.get_pipeline_error_history(source=selected_source or None, limit=500)
+    # Fetched well above any realistic history size so streaks are
+    # grouped from the complete raw record, not a truncated recent
+    # window - pagination for display happens afterward, on the
+    # grouped streaks themselves, not by cutting off raw rows early.
+    raw_errors = db.get_pipeline_error_history(source=selected_source or None, limit=10000)
     db.close()
 
     errors = _group_pipeline_errors(raw_errors)
@@ -1194,9 +1236,16 @@ def pipeline_errors():
         e["explanation_label"], e["explanation_text"], e["explanation_severity"] = _explain_pipeline_error(e["latest_message"])
         e["is_ongoing"] = _is_pipeline_error_ongoing(e["last_timestamp"])
 
+    pagination = _paginate(errors, page, PIPELINE_ERRORS_PER_PAGE)
+
     return render_template(
         "pipeline_errors.html",
-        errors=errors,
+        errors=pagination["items"],
+        page=pagination["page"],
+        total_pages=pagination["total_pages"],
+        total_errors=pagination["total"],
+        has_prev=pagination["has_prev"],
+        has_next=pagination["has_next"],
         selected_source=selected_source,
         all_sources=all_sources,
         source_display_names=PIPELINE_SOURCE_DISPLAY_NAMES,

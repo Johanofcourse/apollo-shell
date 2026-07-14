@@ -137,6 +137,44 @@
       border-radius: 50%;
       background: var(--crit);
     }
+    .resolved-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      border-radius: 999px;
+      padding: 0.2rem 0.7rem 0.2rem 0.55rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      background: rgba(63, 185, 80, 0.16);
+      color: var(--ok);
+      white-space: nowrap;
+    }
+    .resolved-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+    }
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 1.5rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .pagination a {
+      color: var(--pink);
+      text-decoration: none;
+    }
+    .pagination a:hover { text-decoration: underline; }
+    .pagination-disabled {
+      color: var(--border);
+      pointer-events: none;
+    }
     .error-when {
       margin-left: auto;
       color: var(--muted);
@@ -218,6 +256,8 @@
         <span class="severity-badge severity-badge-{{ e.explanation_severity }}">{{ e.explanation_label | replace("-", " ") }}</span>
         {% if e.is_ongoing %}
         <span class="ongoing-badge"><span class="ongoing-dot"></span>Currently ongoing</span>
+        {% else %}
+        <span class="resolved-badge"><span class="resolved-dot"></span>Issue resolved</span>
         {% endif %}
         <span class="error-when">
           {% if e.is_ongoing %}
@@ -243,6 +283,21 @@
       </div>
     </div>
     {% endfor %}
+    {% if total_pages > 1 %}
+    <div class="pagination">
+      {% if has_prev %}
+        <a href="/pipeline-errors?{{ 'source=' ~ selected_source ~ '&' if selected_source }}page={{ page - 1 }}">&larr; Newer</a>
+      {% else %}
+        <span class="pagination-disabled">&larr; Newer</span>
+      {% endif %}
+      <span>Page {{ page }} of {{ total_pages }} &middot; {{ total_errors }} streak{{ "s" if total_errors != 1 }} total</span>
+      {% if has_next %}
+        <a href="/pipeline-errors?{{ 'source=' ~ selected_source ~ '&' if selected_source }}page={{ page + 1 }}">Older &rarr;</a>
+      {% else %}
+        <span class="pagination-disabled">Older &rarr;</span>
+      {% endif %}
+    </div>
+    {% endif %}
   {% else %}
     <div class="empty">
       No caught failures on file{{ ' for ' ~ source_display_names.get(selected_source, selected_source.title()) if selected_source else '' }}. Clean record.
