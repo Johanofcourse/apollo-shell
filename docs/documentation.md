@@ -20,6 +20,9 @@ detective instead. No regrets.
   a glance
 - A live per-county lookup tool, pulling together outages, weather, and
   heat advisories for any of Florida's 67 counties
+- A genuinely separate public-facing page - its own app, its own real
+  Florida county map colored by current status, running locally,
+  wired to the same live data as everything else
 - **Real historical storm data**, not just live-forward collection — 17
   storms, 2018-2025, across every utility per storm, queryable by
   county. Kept off GitHub.
@@ -558,3 +561,54 @@ of Florida's 67 counties now has a real, verified live source behind
 it - not a milestone chased for its own sake, just the natural end of
 a thread that started with one simple question: who else out there is
 a real, live Florida utility this project isn't tracking yet.
+
+## A second app, not a second coat of paint
+The public-facing design concept had been sitting as a frozen mockup
+for a while - real numbers, but hardcoded, no live wiring, no backend.
+The plan for turning it into something real settled on two things at
+once: keep the internal dashboard exactly what it already is (dense,
+operator-facing, for whoever's actually running this), and build the
+public concept as a genuinely separate thing, not a mode of the same
+app. Two different audiences, two different jobs - no reason to force
+them into one codebase just because they read the same data.
+
+"Separate" meant something concrete: its own Flask app, its own port,
+its own template folder, and - the part worth being strict about -
+zero imports from the internal dashboard's own code, in either
+direction. The two only ever share the same read-only data layer
+underneath, the same way the poller and the internal dashboard already
+do. Getting there honestly meant a real refactor first: three pieces
+of logic that had only ever lived inside the internal dashboard's own
+file (how a county's current status gets assembled, how historical
+storm data gets queried, how a raw timestamp becomes a sentence) moved
+out into their own small shared modules. Not just duplicated - moved,
+so there's exactly one version of each doing the reasoning, and the
+existing test suite kept passing, unchanged, the whole way through.
+
+The map turned out to need real work of its own. The original real
+county boundary data behind the earlier design concept had only ever
+lived inside that one disconnected mockup - never actually saved
+anywhere in this project. So it got pulled fresh from the same kind of
+public source as before, projected and simplified the same way (real
+surveyed coordinates, not hand-traced), and this time saved as a real,
+regeneratable file instead of a one-off. Rendered it standalone first,
+before wiring anything else to it, just to look at it - recognizably
+Florida, panhandle and all, real islands and barrier islands showing up
+correctly because the underlying data is real.
+
+Coloring each county by current status turned out to need a real
+design decision, not just a lookup. Some sources report a real
+percentage of customers affected; others (the ones that hand over a
+real incident instead of a county rollup) never have a clean
+denominator to compute one against. Rather than pretend they're the
+same kind of number, a county's severity now comes from whichever
+signal it actually has - a real percentage where one exists, a coarser
+customer-count tier where it doesn't - collapsed into one honest label
+per county, worst source wins. The statewide headline numbers (how many
+counties are clear, how many customers are affected right now) come
+from that same single pass over live data, not a separate query
+pretending to agree with the map.
+
+Runs locally for now, same as the internal dashboard always has -
+putting it on the actual internet is still its own later decision, not
+something that happens by default just because the code exists.

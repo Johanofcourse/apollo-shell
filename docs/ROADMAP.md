@@ -180,6 +180,30 @@ and don't substitute for everyday-outage volume.
       that's language for us, not a real visitor. Ends with an honest
       footer stating plainly what the page does and doesn't show. Still
       just a design concept - nothing here is a live route yet.
+- [x] **The concept above is now real, live code - a genuinely separate
+      app from the internal dashboard, not a redesign of it.** Built as
+      its own Flask app (own port, own template folder), sharing only
+      the read-only data layer with the internal tool - it imports
+      nothing from the internal dashboard's own code, and the internal
+      dashboard imports nothing from it, so the two can change
+      independently. A real Florida county map (same real public
+      boundary data approach as the earlier design exploration,
+      regenerated fresh via a small one-time build script since the
+      original was never committed to this repo) colors every county
+      by its current live status, clickable through to that county's
+      real current outages, active weather alerts, and full storm
+      history. Statewide hero numbers (counties clear vs. with an
+      active issue, total customers currently affected) come from one
+      pass over the same live data used for the map coloring, not a
+      separate query. Three small shared modules were extracted out of
+      the internal dashboard's own code along the way
+      (county-status/storm-history/timestamp-formatting helpers) so
+      both apps read live and historical data the same way without
+      duplicating that logic or coupling to each other - a real
+      refactor, not just new code, and the full existing test suite
+      still passes unchanged after it. Currently runs locally only, not
+      exposed to the internet - that's still its own later decision,
+      gated on the same test/prod environment split below.
 - [ ] **Public-facing heat advisory view.** A different risk profile
       than the rest of this gate - heat advisories are already-public
       National Weather Service alerts, not anything we've had to dig up

@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Florida Outage &amp; Weather Watch</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #131a22;
+      --panel-raised: #182129;
+      --border: #232f3d;
+      --text: #e8edf2;
+      --muted: #8b98a5;
+      --accent: #e0a458;
+      --clear: #1b2a3a;
+      --low: #2c6e49;
+      --medium: #c9a227;
+      --high: #d97b29;
+      --critical: #c0392b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+    }
+    h1, h2, h3 { font-family: Georgia, "Times New Roman", ui-serif, serif; font-weight: 400; }
+    .hero { margin-bottom: 2.5rem; }
+    .hero h1 {
+      font-size: 2.1rem;
+      margin: 0 0 0.5rem;
+      text-wrap: balance;
+    }
+    .hero p {
+      color: var(--muted);
+      font-size: 1.05rem;
+      max-width: 55ch;
+      margin: 0 0 1.5rem;
+    }
+    .kpi-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.5rem;
+      min-width: 180px;
+    }
+    .kpi .num {
+      font-size: 1.8rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+      display: block;
+    }
+    .kpi .label {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+      gap: 2rem;
+      align-items: start;
+    }
+    @media (max-width: 820px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .map-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+    .map-panel svg { width: 100%; height: auto; display: block; }
+    .county-path {
+      stroke: var(--bg);
+      stroke-width: 0.008;
+      cursor: pointer;
+      transition: opacity 0.1s ease;
+    }
+    .county-path:hover { opacity: 0.75; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.9rem;
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .legend-swatch {
+      display: inline-block;
+      width: 0.7rem;
+      height: 0.7rem;
+      border-radius: 2px;
+      margin-right: 0.35rem;
+      vertical-align: -1px;
+    }
+
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+    }
+    .card h2 {
+      font-size: 1.15rem;
+      margin: 0 0 0.75rem;
+    }
+    .search-form {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .search-form input {
+      flex: 1;
+      background: var(--panel-raised);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.55rem 0.75rem;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    .search-form button {
+      background: var(--accent);
+      border: none;
+      border-radius: 6px;
+      padding: 0.55rem 1.1rem;
+      color: #241505;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .heat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.4rem;
+      font-size: 0.95rem;
+    }
+    .heat-row .num { font-variant-numeric: tabular-nums; color: var(--accent); }
+    .heat-active {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(201, 162, 39, 0.15);
+      color: var(--medium);
+      border-radius: 999px;
+      padding: 0.25rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-top: 0.5rem;
+    }
+    .heat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--medium); }
+
+    .detail-section {
+      margin-top: 2.5rem;
+      border-top: 1px solid var(--border);
+      padding-top: 2rem;
+    }
+    .detail-section h2 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+    .verdict-badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 0.25rem 0.8rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 1rem;
+    }
+    .verdict-clear { background: rgba(43, 108, 176, 0.15); color: #6ea8d8; }
+    .verdict-low { background: rgba(44, 110, 73, 0.2); color: var(--low); }
+    .verdict-medium { background: rgba(201, 162, 39, 0.2); color: var(--medium); }
+    .verdict-high { background: rgba(217, 123, 41, 0.2); color: var(--high); }
+    .verdict-critical { background: rgba(192, 57, 43, 0.2); color: var(--critical); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-bottom: 1.5rem; }
+    th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .empty-note { color: var(--muted); font-style: italic; padding: 0.75rem 0; }
+
+    .storm-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+    .storm-row:last-child { border-bottom: none; }
+    .storm-name { color: var(--text); }
+    .storm-meta { color: var(--muted); }
+    .storm-no-data { color: var(--muted); font-style: italic; }
+
+    footer {
+      margin-top: 3.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    footer strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <div class="hero">
+      <h1>What's happening across Florida right now</h1>
+      <p>
+        A live, county-by-county read on power outages and active weather alerts, built from real utility and
+        National Weather Service data. This shows patterns we've derived from that data - not a replay of any
+        one utility's live map.
+      </p>
+      <div class="kpi-row">
+        <div class="kpi">
+          <span class="num">{{ snapshot.counties_clear }} / {{ snapshot.total_counties }}</span>
+          <span class="label">counties currently clear</span>
+        </div>
+        <div class="kpi">
+          <span class="num">{{ snapshot.counties_with_issue }}</span>
+          <span class="label">counties with an active issue</span>
+        </div>
+        <div class="kpi">
+          <span class="num">{{ "{:,}".format(snapshot.total_customers_affected) }}</span>
+          <span class="label">customers currently affected statewide</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="map-panel">
+        <svg viewBox="{{ map_bounds.min_x - 0.02 }} {{ map_bounds.min_y - 0.02 }} {{ (map_bounds.max_x - map_bounds.min_x) + 0.04 }} {{ (map_bounds.max_y - map_bounds.min_y) + 0.04 }}" xmlns="http://www.w3.org/2000/svg">
+          {% for county, d in county_paths.items() %}
+            {% set verdict = snapshot.verdicts.get(county, "clear") %}
+            <a href="/?county={{ county | urlencode }}#detail">
+              <path class="county-path" d="{{ d }}" fill="{{ verdict_colors.get(verdict, verdict_colors['clear']) }}">
+                <title>{{ county }} - {{ verdict }}</title>
+              </path>
+            </a>
+          {% endfor %}
+        </svg>
+        <div class="legend">
+          <span><span class="legend-swatch" style="background: {{ verdict_colors.clear }};"></span>Clear</span>
+          <span><span class="legend-swatch" style="background: {{ verdict_colors.low }};"></span>Low</span>
+          <span><span class="legend-swatch" style="background: {{ verdict_colors.medium }};"></span>Medium</span>
+          <span><span class="legend-swatch" style="background: {{ verdict_colors.high }};"></span>High</span>
+          <span><span class="legend-swatch" style="background: {{ verdict_colors.critical }};"></span>Critical</span>
+        </div>
+      </div>
+
+      <div class="side-panel">
+        <div class="card">
+          <h2>Look up a county</h2>
+          <form class="search-form" action="/" method="get">
+            <input type="text" name="county" list="county-list" placeholder="e.g. Palm Beach" value="{{ selected_county }}" autocomplete="off">
+            <button type="submit">Go</button>
+          </form>
+          <datalist id="county-list">
+            {% for c in available_counties %}
+              <option value="{{ c }}">
+            {% endfor %}
+          </datalist>
+        </div>
+
+        <div class="card">
+          <h2>Heat this month</h2>
+          <div class="heat-row">
+            <span>Days with an advisory</span>
+            <span class="num">{{ heat_summary.days_with_advisory }} / {{ heat_summary.days_elapsed_this_month }}</span>
+          </div>
+          <div class="heat-row">
+            <span>Heat Advisory</span>
+            <span class="num">{{ heat_summary.heat_advisory_count }}</span>
+          </div>
+          <div class="heat-row">
+            <span>Excessive Heat Warning</span>
+            <span class="num">{{ heat_summary.excessive_heat_warning_count }}</span>
+          </div>
+          {% if heat_summary.currently_active %}
+            <div class="heat-active"><span class="heat-dot"></span>Active now in {{ heat_summary.active_area_count }} zone{{ "s" if heat_summary.active_area_count != 1 }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if selected_county %}
+    <div class="detail-section" id="detail">
+      <h2>{{ selected_county }} County</h2>
+      {% if county_detail %}
+        <span class="verdict-badge verdict-{{ county_detail.verdict }}">{{ county_detail.verdict }}</span>
+
+        <h3>Right now</h3>
+        {% if county_detail.real_events or county_detail.combined_events %}
+          {% if county_detail.real_events %}
+          <table>
+            <tr><th>Utility</th><th>Customers affected</th><th>Started</th><th>Duration</th></tr>
+            {% for e in county_detail.real_events %}
+            <tr>
+              <td>{{ e.utility }}</td>
+              <td>{{ "{:,}".format(e.customers or 0) }}</td>
+              <td>{{ e.start_time | humanize }}</td>
+              <td>{{ e.duration }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+          {% endif %}
+          {% if county_detail.combined_events %}
+            <p class="empty-note">
+              Also shown separately below: sources that report one combined total across a wider multi-county
+              area including this county, not a number specific to {{ selected_county }} alone.
+            </p>
+            <table>
+              <tr><th>Utility (combined area)</th><th>Customers affected</th><th>Started</th><th>Duration</th></tr>
+              {% for e in county_detail.combined_events %}
+              <tr>
+                <td>{{ e.utility }}</td>
+                <td>{{ "{:,}".format(e.customers or 0) }}</td>
+                <td>{{ e.start_time | humanize }}</td>
+                <td>{{ e.duration }}</td>
+              </tr>
+              {% endfor %}
+            </table>
+          {% endif %}
+        {% else %}
+          <p class="empty-note">No active outages reported for {{ selected_county }} right now.</p>
+        {% endif %}
+
+        {% if county_detail.active_alerts %}
+        <h3>Active weather alerts</h3>
+        <table>
+          <tr><th>Alert</th><th>Zone</th><th>Expires</th></tr>
+          {% for a in county_detail.active_alerts %}
+          <tr>
+            <td>{{ a.event_type }}{{ " (heat)" if a.is_heat }}</td>
+            <td>{{ a.areas | join(", ") }}</td>
+            <td>{{ a.expires | humanize }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+        {% endif %}
+
+        <h3>Real storm history</h3>
+        {% if county_detail.storms %}
+          <p class="empty-note">
+            {{ county_detail.storms_with_data_count }} of {{ county_detail.storms | length }} storms on file have a
+            real report for {{ selected_county }}.
+          </p>
+          {% for s in county_detail.storms %}
+          <div class="storm-row">
+            <span class="storm-name">{{ s.storm_name }} ({{ s.storm_year }})</span>
+            {% if s.has_data %}
+              <span class="storm-meta">
+                {% for u in s.utilities %}
+                  {{ "%.1f"|format(u.peak_percentage_out) }}% peak ({{ u.utility }}){{ ", " if not loop.last }}
+                {% endfor %}
+              </span>
+            {% else %}
+              <span class="storm-no-data">no report on file for this storm</span>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="empty-note">No historical storm data on file for {{ selected_county }}.</p>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <footer>
+      <p>
+        <strong>What this page shows:</strong> derived patterns built from real utility outage feeds and National
+        Weather Service alerts - never a live replay of any single utility's own outage map. Current-status numbers
+        can lag a few minutes behind reality; historical storm data covers 17 independently-verified storms,
+        2018-2025, and not every county has a report for every storm on file. This isn't a substitute for checking
+        your own utility's outage map or emergency alerts during a real event.
+      </p>
+    </footer>
+  </div>
+</body>
+</html>

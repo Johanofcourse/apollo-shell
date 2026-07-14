@@ -19,7 +19,18 @@ from correlate import (
     find_preco_correlations, find_fkec_correlations, find_tcec_correlations,
     find_erec_correlations, find_chelco_correlations, find_gcec_correlations, _county_in_alert,
 )
-from historical_import import FLORIDA_COUNTIES
+from county_status import (
+    COUNTY_PICKER_CHOICES, _duration_since, _percentage_tier,
+    _normalize_open_events, _real_per_county_open_events,
+    _combined_territory_open_events, _rows_for_county,
+    humanize_timestamp as _humanize_timestamp,
+)
+from storm_history import (
+    HISTORICAL_DB_PATH,
+    available_history_counties as _available_history_counties,
+    all_storms as _all_storms,
+    load_history_for_county as _load_history_for_county,
+)
 from fetch_fpl_outages import UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_jea_outages import UTILITY_NAME as JEA_UTILITY_NAME
 from fetch_talquin_outages import UTILITY_NAME as TALQUIN_UTILITY_NAME
@@ -79,17 +90,7 @@ PIPELINE_SOURCE_DISPLAY_NAMES = {
     "correlation": "Correlation",
 }
 
-# The 67 real Florida county names, properly cased for display in the
-# /county picker. FLORIDA_COUNTIES itself is all-caps (a PSC-parser
-# artifact from historical_import.py) - .title() handles every real
-# multi-word/hyphenated name correctly (e.g. "MIAMI-DADE" -> "Miami-
-# Dade", "ST. JOHNS" -> "St. Johns") except "DESOTO", the one county
-# with an internal capital letter .title() can't produce on its own
-# ("Desoto", not "DeSoto") - the same casing bug already caught once in
-# fetch_preco_outages.py, fixed here the same way.
-COUNTY_PICKER_CHOICES = sorted(
-    "DeSoto" if c == "DESOTO" else c.title() for c in FLORIDA_COUNTIES
-)
+# COUNTY_PICKER_CHOICES now lives in county_status.py (imported above).
 
 # Plain-English translations for the raw exception text landing in
 # pipeline_errors.error_message (str(e) from main.py's try/except
@@ -190,44 +191,11 @@ def _get_cached_correlations(db_path, days):
     return data
 
 
-def _duration_since(start_iso, end_iso=None):
-    """
-    Human-readable duration between two ISO timestamps (or start_iso and
-    now, if end_iso is omitted).
-    """
-    start = datetime.fromisoformat(start_iso)
-    end = datetime.fromisoformat(end_iso) if end_iso else datetime.now()
-    total_minutes = int((end - start).total_seconds() // 60)
-
-    days, remainder = divmod(total_minutes, 24 * 60)
-    hours, minutes = divmod(remainder, 60)
-
-    parts = []
-    if days:
-        parts.append(f"{days}d")
-    if hours:
-        parts.append(f"{hours}h")
-    parts.append(f"{minutes}m")
-    return " ".join(parts)
+# _duration_since now lives in county_status.py (imported above).
 
 
-def _humanize_timestamp(ts):
-    """
-    Turn a raw ISO timestamp ("2026-07-02T01:19:57.483375" or, for
-    weather alerts, "2026-07-04T02:01:00-04:00") into plain prose
-    ("July 2, 2026, 1:19 AM") for display. The duration/"ago" columns
-    elsewhere (_duration_since) are unaffected - this is only for the
-    absolute-time columns that used to show the raw ISO string as-is.
-    """
-    if not ts:
-        return "—"
-    try:
-        dt = datetime.fromisoformat(ts)
-    except ValueError:
-        return ts
-    return dt.strftime("%B %-d, %Y, %-I:%M %p")
-
-
+# _humanize_timestamp now lives in county_status.py as
+# humanize_timestamp (imported above under the old private name).
 app.jinja_env.filters['humanize'] = _humanize_timestamp
 
 
@@ -329,23 +297,7 @@ def _combine_confidence_breakdowns(*match_lists):
     return combined
 
 
-def _percentage_tier(percentage_out):
-    """
-    Bucket a peak-percentage-out value into a severity tier for a
-    colored badge. Real Florida outage percentages are rarely above
-    20-30% outside of a major hurricane, so a plain 0-100 linear bar
-    would look nearly empty for almost every real row - a discrete tier
-    badge reads much better than a proportional bar at these scales.
-    """
-    if percentage_out is None:
-        return "unknown"
-    if percentage_out >= 30:
-        return "critical"
-    if percentage_out >= 10:
-        return "high"
-    if percentage_out >= 2:
-        return "medium"
-    return "low"
+# _percentage_tier now lives in county_status.py (imported above).
 
 
 def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events):
@@ -502,79 +454,11 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
     return unified
 
 
-def _normalize_open_events(open_events, customers_field, peak_field):
-    """
-    Same per-source field normalization _build_unified_view() does
-    inline for each source - factored out here since /county needs the
-    identical shape but filtered down to one specific county rather
-    than shown in full. Computes "duration" fresh (these are always
-    open events, no end_time to bound it), rather than assuming some
-    other route already added it as a side effect.
-    """
-    return [{
-        "utility": e["utility"],
-        "county": e["county"],
-        "customers": e[customers_field],
-        "peak_customers": e[peak_field],
-        "start_time": e["start_time"],
-        "duration": _duration_since(e["start_time"]),
-    } for e in open_events]
-
-
-def _real_per_county_open_events(db):
-    """
-    Every currently-open event from a source whose "county" field is a
-    real, single Florida county - safe to match exactly against a
-    /county page search. Includes FPUC's real per-incident markers
-    (reverse-geocoded, can be a real county) alongside the always-real
-    per-county rollup sources - deliberately NOT the combined-territory
-    sources (FPUC's original combined view, TCEC, EREC, CHELCO, GCEC),
-    whose "county" is a multi-name label rather than one real county -
-    see _combined_territory_open_events() below.
-    """
-    return (
-        _normalize_open_events(db.get_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_teco_open_events(), "current_customer_count", "peak_customer_count")
-        + _normalize_open_events(db.get_duke_open_events(), "current_customer_count", "peak_customer_count")
-        + _normalize_open_events(db.get_jea_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_tallahassee_open_events(), "current_customer_count", "peak_customer_count")
-        + _normalize_open_events(db.get_talquin_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_preco_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_fkec_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_fpuc_open_incidents(), "current_customer_count", "peak_customer_count")
-    )
-
-
-def _combined_territory_open_events(db):
-    """
-    Every currently-open event from a combined-territory source - real
-    counties, just not splittable from a single response (see each
-    fetch_X_outages.py module's own COMBINED_TERRITORY_LABEL). Shown on
-    /county as its own distinct group, never mixed in with the real
-    per-county rows, so a reader can't mistake "the whole territory's
-    number" for "just this county's number."
-    """
-    return (
-        _normalize_open_events(db.get_fpuc_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_tcec_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_erec_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_chelco_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_gcec_open_events(), "current_customers_out", "peak_customers_out")
-    )
-
-
-def _rows_for_county(rows, search_county):
-    """
-    Filter normalized event rows down to ones whose county field
-    matches search_county. Reuses correlate.py's _county_in_alert()
-    (a plain normalized substring check) for both real single-county
-    rows (an exact real name is trivially its own substring) and
-    combined-territory labels (a real county name appearing inside a
-    multi-name label) - verified 2026-07-14 that no two of Florida's 67
-    real county names are substrings of each other, so this one check
-    is safe for both cases without a separate exact-match code path.
-    """
-    return [r for r in rows if r.get("county") and _county_in_alert(search_county, r["county"])]
+# _normalize_open_events, _real_per_county_open_events,
+# _combined_territory_open_events, and _rows_for_county now live in
+# county_status.py (imported above) - shared with public_site.py so
+# both apps read live per-county status the same way without either
+# one importing from the other.
 
 
 @app.route("/")
@@ -887,113 +771,10 @@ def index():
     )
 
 
-HISTORICAL_DB_PATH = "historical_consolidated.db"
-
-
-def _available_history_counties():
-    if not os.path.exists(HISTORICAL_DB_PATH):
-        return []
-    conn = sqlite3.connect(HISTORICAL_DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT county FROM historical_outage_events ORDER BY county")
-    counties = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return counties
-
-
-def _all_storms():
-    """
-    Every storm this project has real data for, across all 67 counties -
-    used so a single county's history lists every storm explicitly, even
-    the ones where that county has nothing, rather than silently
-    omitting them (see _load_history_for_county).
-    """
-    conn = sqlite3.connect(HISTORICAL_DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT DISTINCT storm_name, storm_year FROM historical_outage_events
-        ORDER BY storm_year, storm_name
-    ''')
-    storms = [{"storm_name": row[0], "storm_year": row[1]} for row in cursor.fetchall()]
-    conn.close()
-    return storms
-
-
-def _load_history_for_county(county):
-    """
-    Real historical storm data for one Florida county, from the
-    consolidated historical database (see
-    apollo_shell/consolidate_historical.py) - built from the 17
-    independently-verified per-storm databases, never the raw per-storm
-    files directly. County names in this table are stored upper-case (an
-    artifact of the PSC report parser), so the lookup is case-insensitive -
-    a user typing "Miami-Dade" still matches the stored "MIAMI-DADE".
-
-    Returns every storm this project has data for (see _all_storms()),
-    not just the ones with a report for this specific county - a storm
-    with nothing for this county gets an explicit has_data=False entry
-    instead of being silently left out. "No report for this storm" and
-    "confirmed unaffected by this storm" are different claims, and only
-    listing storms with data blurred that distinction (this is the same
-    lesson the Miami-Dade bug hunt turned up - see docs/documentation.md).
-    """
-    conn = sqlite3.connect(HISTORICAL_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT storm_name, storm_year, utility, start_time, end_time,
-               peak_customers_out, peak_percentage_out, customers_served
-        FROM historical_outage_events
-        WHERE UPPER(county) = UPPER(?)
-        ORDER BY storm_year, peak_percentage_out DESC
-    ''', (county,))
-    outage_rows = [dict(row) for row in cursor.fetchall()]
-
-    cursor.execute('''
-        SELECT storm_name, storm_year, event_type, reported_wind_mph,
-               snow_inches, ice_inches, wind_chill_f
-        FROM historical_storm_severity
-        WHERE UPPER(county) = UPPER(?)
-        ORDER BY storm_year
-    ''', (county,))
-    severity_rows = [dict(row) for row in cursor.fetchall()]
-
-    conn.close()
-
-    # Group both tables by storm so the page can show, per storm: which
-    # utilities reported an outage here and how bad it got, plus whatever
-    # independent NOAA severity readings exist for the same county/storm -
-    # two different sources, shown side by side, never merged into one
-    # number.
-    storms_by_key = {}
-
-    def _storm_bucket(storm_name, storm_year):
-        key = (storm_name, storm_year)
-        return storms_by_key.setdefault(key, {
-            "storm_name": storm_name,
-            "storm_year": storm_year,
-            "utilities": [],
-            "severity": [],
-            "has_data": False,
-        })
-
-    for row in outage_rows:
-        bucket = _storm_bucket(row["storm_name"], row["storm_year"])
-        bucket["utilities"].append(row)
-        bucket["has_data"] = True
-    for row in severity_rows:
-        bucket = _storm_bucket(row["storm_name"], row["storm_year"])
-        bucket["severity"].append(row)
-        bucket["has_data"] = True
-
-    # Every storm gets a row - _storm_bucket() is a no-op for storms
-    # already populated above, and creates an honest has_data=False
-    # entry for the rest.
-    for storm in _all_storms():
-        _storm_bucket(storm["storm_name"], storm["storm_year"])
-
-    return sorted(storms_by_key.values(), key=lambda s: s["storm_year"])
+# HISTORICAL_DB_PATH, _available_history_counties, _all_storms, and
+# _load_history_for_county now live in storm_history.py (imported
+# above) - shared with public_site.py so both apps read historical
+# storm data the same way without either one importing from the other.
 
 
 @app.route("/history")
