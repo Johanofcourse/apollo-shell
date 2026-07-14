@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Apollo Sentinel — County Lookup</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #161d27;
+      --border: #26313f;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --accent: #e8734a;
+      --pink: #ff1f8f;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --crit: #f85149;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 2rem;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+    .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.5rem; }
+    .meta a { color: var(--pink); }
+    h2 {
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-top: 2rem;
+    }
+    .section-note {
+      color: var(--muted);
+      font-size: 0.85rem;
+      max-width: 60rem;
+      margin: -0.5rem 0 0.75rem;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+    tr:hover td { background: var(--panel); }
+    .wrap { max-width: 100%; overflow-x: auto; margin-bottom: 1rem; }
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      padding: 0.75rem 0;
+    }
+    .all-clear {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--ok);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      font-size: 0.95rem;
+      margin-top: 1.5rem;
+    }
+    .all-clear strong { color: var(--ok); }
+    form.search {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    select, button {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
+    button {
+      background: var(--pink);
+      color: #1a1006;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+    .pct-bad { color: var(--crit); font-weight: 600; }
+    .alert-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--warn);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .alert-card-heat { border-left-color: var(--accent); }
+    .alert-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.2rem; }
+    .alert-heat-tag {
+      display: inline-block;
+      background: rgba(232, 115, 74, 0.16);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 0.1rem 0.55rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-left: 0.5rem;
+    }
+    .alert-window { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.5rem; }
+    .alert-areas { color: var(--muted); font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+  <h1>County Lookup</h1>
+  <div class="meta">
+    <a href="/">&larr; Back to live status</a> ·
+    Live, current-status only - real per-county outages, active weather alerts, and combined-territory sources that
+    happen to cover this area. For real multi-year storm history per county, see <a href="/history">County Storm
+    History</a> instead.
+  </div>
+
+  <form class="search" method="get" action="/county">
+    <select name="county">
+      <option value="">Select a county&hellip;</option>
+      {% for c in available_counties %}
+        <option value="{{ c }}" {% if selected_county == c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Look up</button>
+  </form>
+
+  {% if selected_county %}
+    {% if not real_events and not combined_events and not active_alerts %}
+      <div class="all-clear">
+        <strong>All clear.</strong> Nothing currently open or active for {{ selected_county }} across any tracked
+        utility or weather alert right now.
+      </div>
+    {% endif %}
+
+    <h2>Real Per-County Outages{{ ' (' ~ real_events|length ~ ')' if real_events else '' }}</h2>
+    <div class="wrap">
+      {% if real_events %}
+        <table>
+          <tr><th>Utility</th><th>Current Customers Out</th><th>Peak This Episode</th><th>Started</th><th>Ongoing</th></tr>
+          {% for e in real_events %}
+          <tr>
+            <td>{{ e.utility }}</td>
+            <td class="{{ 'pct-bad' if e.customers and e.customers > 0 else '' }}">{{ "{:,}".format(e.customers or 0) }}</td>
+            <td>{{ "{:,}".format(e.peak_customers or 0) }}</td>
+            <td>{{ e.start_time | humanize }}</td>
+            <td>{{ e.duration }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <div class="empty">No open outages reported directly for {{ selected_county }} right now.</div>
+      {% endif %}
+    </div>
+
+    <h2>Combined-Territory Sources Also Covering This Area{{ ' (' ~ combined_events|length ~ ')' if combined_events else '' }}</h2>
+    <p class="section-note">
+      These utilities report one combined total across several counties at once, not a number specific to
+      {{ selected_county }} alone - shown separately so it's never mistaken for an exact per-county figure.
+    </p>
+    <div class="wrap">
+      {% if combined_events %}
+        <table>
+          <tr><th>Utility</th><th>Territory</th><th>Current Customers Out</th><th>Peak This Episode</th><th>Started</th><th>Ongoing</th></tr>
+          {% for e in combined_events %}
+          <tr>
+            <td>{{ e.utility }}</td>
+            <td>{{ e.county }}</td>
+            <td class="{{ 'pct-bad' if e.customers and e.customers > 0 else '' }}">{{ "{:,}".format(e.customers or 0) }}</td>
+            <td>{{ "{:,}".format(e.peak_customers or 0) }}</td>
+            <td>{{ e.start_time | humanize }}</td>
+            <td>{{ e.duration }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <div class="empty">No combined-territory source covering {{ selected_county }} has an open outage right now.</div>
+      {% endif %}
+    </div>
+
+    <h2>Active Weather Alerts{{ ' (' ~ active_alerts|length ~ ')' if active_alerts else '' }}</h2>
+    {% if active_alerts %}
+      {% for a in active_alerts %}
+        <div class="alert-card {{ 'alert-card-heat' if a.is_heat else '' }}">
+          <div class="alert-title">
+            {{ a.event_type }}
+            {% if a.is_heat %}<span class="alert-heat-tag">Heat</span>{% endif %}
+            {% if a.severity %} &middot; {{ a.severity }}{% endif %}
+          </div>
+          <div class="alert-window">{{ a.effective | humanize }} &rarr; {{ a.expires | humanize }}</div>
+          <div class="alert-areas">{{ a.areas }}</div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">No weather alert currently active for {{ selected_county }}.</div>
+    {% endif %}
+  {% endif %}
+</body>
+</html>

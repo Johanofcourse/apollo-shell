@@ -9,6 +9,7 @@ silently defeat these tests).
 
 import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -731,3 +732,86 @@ class TestPipelineErrorHistory:
         db.close()
 
         assert history == []
+
+
+def _weather_alert_row(event_type, areas, effective, expires, alert_id=None):
+    return {
+        "id": alert_id or f"test-{effective}-{areas}",
+        "event": event_type,
+        "severity": "Severe",
+        "urgency": "Expected",
+        "areas": areas,
+        "effective": effective,
+        "expires": expires,
+        "headline": "test",
+        "description": "test",
+    }
+
+
+class TestGetActiveWeatherAlerts:
+    """
+    get_active_weather_alerts() - added 2026-07-14 for the /county page,
+    which needs "what's active right now for this county" across any
+    alert type, not just heat (get_heat_advisory_summary() already
+    covers that narrower heat-only, current-month case).
+    """
+
+    def test_currently_active_alert_is_returned(self, db_path):
+        now = datetime.now(timezone.utc)
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([_weather_alert_row(
+            "Flood Advisory", "Duval",
+            (now - timedelta(hours=1)).isoformat(),
+            (now + timedelta(hours=1)).isoformat(),
+        )])
+        active = db.get_active_weather_alerts()
+        db.close()
+
+        assert len(active) == 1
+        assert active[0]["event_type"] == "Flood Advisory"
+
+    def test_expired_alert_is_not_returned(self, db_path):
+        now = datetime.now(timezone.utc)
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([_weather_alert_row(
+            "Flood Advisory", "Duval",
+            (now - timedelta(hours=3)).isoformat(),
+            (now - timedelta(hours=1)).isoformat(),
+        )])
+        active = db.get_active_weather_alerts()
+        db.close()
+
+        assert active == []
+
+    def test_future_alert_is_not_returned(self, db_path):
+        now = datetime.now(timezone.utc)
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([_weather_alert_row(
+            "Flood Advisory", "Duval",
+            (now + timedelta(hours=1)).isoformat(),
+            (now + timedelta(hours=3)).isoformat(),
+        )])
+        active = db.get_active_weather_alerts()
+        db.close()
+
+        assert active == []
+
+    def test_missing_effective_or_expires_excluded(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([{
+            "id": "no-window", "event": "Special Weather Statement",
+            "severity": None, "urgency": None, "areas": "Duval",
+            "effective": None, "expires": None,
+            "headline": "test", "description": "test",
+        }])
+        active = db.get_active_weather_alerts()
+        db.close()
+
+        assert active == []
+
+    def test_no_alerts_logged_returns_empty(self, db_path):
+        db = OutageDatabase(db_path)
+        active = db.get_active_weather_alerts()
+        db.close()
+
+        assert active == []

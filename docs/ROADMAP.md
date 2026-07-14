@@ -635,6 +635,22 @@ thin sample per county, not something to treat as a reliable average yet.
       constraint following the Siena/Talquin/PRECO incident - only
       fetched URLs the user had already captured via their own browser,
       no candidate-filename guessing this time.
+- [x] **Live `/county` lookup page added** - an operator picks one of
+      Florida's 67 real counties and sees everything currently relevant
+      to it in one place: real per-county outages from every source
+      that actually reports per-county (including FPUC's real
+      incident-level markers, not just its combined total), weather
+      alerts active right now that name the county (heat-type ones
+      visually flagged), and - shown in a clearly separate group, never
+      blended in - combined-territory sources (FPUC's original combined
+      view, TCEC, EREC) whose multi-county label happens to mention it.
+      Deliberately live/current-status only; `/history` remains the
+      place for real multi-year storm data per county. Matching logic
+      reuses `correlate.py`'s existing `_county_in_alert()` substring
+      check for both real single-county rows and combined-territory
+      labels - verified first that no two of Florida's 67 real county
+      names are substrings of each other, so one matching function is
+      safe for both cases.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida

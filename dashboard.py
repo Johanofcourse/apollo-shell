@@ -17,8 +17,9 @@ from correlate import (
     find_jea_correlations, find_tallahassee_correlations,
     find_talquin_correlations, find_fpuc_incident_correlations, _alert_identity,
     find_preco_correlations, find_fkec_correlations, find_tcec_correlations,
-    find_erec_correlations,
+    find_erec_correlations, _county_in_alert,
 )
+from historical_import import FLORIDA_COUNTIES
 from fetch_fpl_outages import UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_jea_outages import UTILITY_NAME as JEA_UTILITY_NAME
 from fetch_talquin_outages import UTILITY_NAME as TALQUIN_UTILITY_NAME
@@ -73,6 +74,18 @@ PIPELINE_SOURCE_DISPLAY_NAMES = {
     "erec": "Escambia River Electric Cooperative",
     "correlation": "Correlation",
 }
+
+# The 67 real Florida county names, properly cased for display in the
+# /county picker. FLORIDA_COUNTIES itself is all-caps (a PSC-parser
+# artifact from historical_import.py) - .title() handles every real
+# multi-word/hyphenated name correctly (e.g. "MIAMI-DADE" -> "Miami-
+# Dade", "ST. JOHNS" -> "St. Johns") except "DESOTO", the one county
+# with an internal capital letter .title() can't produce on its own
+# ("Desoto", not "DeSoto") - the same casing bug already caught once in
+# fetch_preco_outages.py, fixed here the same way.
+COUNTY_PICKER_CHOICES = sorted(
+    "DeSoto" if c == "DESOTO" else c.title() for c in FLORIDA_COUNTIES
+)
 
 # Plain-English translations for the raw exception text landing in
 # pipeline_errors.error_message (str(e) from main.py's try/except
@@ -461,6 +474,79 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
 
     unified.sort(key=lambda row: row["customers"] or 0, reverse=True)
     return unified
+
+
+def _normalize_open_events(open_events, customers_field, peak_field):
+    """
+    Same per-source field normalization _build_unified_view() does
+    inline for each source - factored out here since /county needs the
+    identical shape but filtered down to one specific county rather
+    than shown in full. Computes "duration" fresh (these are always
+    open events, no end_time to bound it), rather than assuming some
+    other route already added it as a side effect.
+    """
+    return [{
+        "utility": e["utility"],
+        "county": e["county"],
+        "customers": e[customers_field],
+        "peak_customers": e[peak_field],
+        "start_time": e["start_time"],
+        "duration": _duration_since(e["start_time"]),
+    } for e in open_events]
+
+
+def _real_per_county_open_events(db):
+    """
+    Every currently-open event from a source whose "county" field is a
+    real, single Florida county - safe to match exactly against a
+    /county page search. Includes FPUC's real per-incident markers
+    (reverse-geocoded, can be a real county) alongside the always-real
+    per-county rollup sources - deliberately NOT the combined-territory
+    sources (FPUC's original combined view, TCEC, EREC), whose "county"
+    is a multi-name label rather than one real county - see
+    _combined_territory_open_events() below.
+    """
+    return (
+        _normalize_open_events(db.get_open_events(), "current_customers_out", "peak_customers_out")
+        + _normalize_open_events(db.get_teco_open_events(), "current_customer_count", "peak_customer_count")
+        + _normalize_open_events(db.get_duke_open_events(), "current_customer_count", "peak_customer_count")
+        + _normalize_open_events(db.get_jea_open_events(), "current_customers_out", "peak_customers_out")
+        + _normalize_open_events(db.get_tallahassee_open_events(), "current_customer_count", "peak_customer_count")
+        + _normalize_open_events(db.get_talquin_open_events(), "current_customers_out", "peak_customers_out")
+        + _normalize_open_events(db.get_preco_open_events(), "current_customers_out", "peak_customers_out")
+        + _normalize_open_events(db.get_fkec_open_events(), "current_customers_out", "peak_customers_out")
+        + _normalize_open_events(db.get_fpuc_open_incidents(), "current_customer_count", "peak_customer_count")
+    )
+
+
+def _combined_territory_open_events(db):
+    """
+    Every currently-open event from a combined-territory source - real
+    counties, just not splittable from a single response (see each
+    fetch_X_outages.py module's own COMBINED_TERRITORY_LABEL). Shown on
+    /county as its own distinct group, never mixed in with the real
+    per-county rows, so a reader can't mistake "the whole territory's
+    number" for "just this county's number."
+    """
+    return (
+        _normalize_open_events(db.get_fpuc_open_events(), "current_customers_out", "peak_customers_out")
+        + _normalize_open_events(db.get_tcec_open_events(), "current_customers_out", "peak_customers_out")
+        + _normalize_open_events(db.get_erec_open_events(), "current_customers_out", "peak_customers_out")
+    )
+
+
+def _rows_for_county(rows, search_county):
+    """
+    Filter normalized event rows down to ones whose county field
+    matches search_county. Reuses correlate.py's _county_in_alert()
+    (a plain normalized substring check) for both real single-county
+    rows (an exact real name is trivially its own substring) and
+    combined-territory labels (a real county name appearing inside a
+    multi-name label) - verified 2026-07-14 that no two of Florida's 67
+    real county names are substrings of each other, so this one check
+    is safe for both cases without a separate exact-match code path.
+    """
+    return [r for r in rows if r.get("county") and _county_in_alert(search_county, r["county"])]
 
 
 @app.route("/")
@@ -871,6 +957,52 @@ def history():
         storms=storms,
         storms_with_data_count=storms_with_data_count,
         db_missing=not available_counties,
+    )
+
+
+@app.route("/county")
+def county_detail():
+    """
+    Live, per-county drill-down - pick one of Florida's 67 real counties
+    and see everything currently relevant to it in one place: real
+    per-county outages from every source that actually reports
+    per-county (including FPUC's real incident-level markers, not just
+    its combined total), weather alerts active right now that name this
+    county, and - shown separately, since their number covers more
+    territory than just this one county - combined-territory sources
+    (FPUC's original combined view, TCEC, EREC) whose label happens to
+    mention it.
+
+    Deliberately live/current-status only, not historical - see
+    /history for real multi-year storm data per county.
+    """
+    selected_county = request.args.get("county", "").strip()
+
+    real_events = []
+    combined_events = []
+    active_alerts = []
+
+    if selected_county:
+        db = OutageDatabase()
+        real_events = _rows_for_county(_real_per_county_open_events(db), selected_county)
+        combined_events = _rows_for_county(_combined_territory_open_events(db), selected_county)
+        all_active_alerts = db.get_active_weather_alerts()
+        db.close()
+
+        active_alerts = [a for a in all_active_alerts if _county_in_alert(selected_county, a["areas"])]
+        for a in active_alerts:
+            a["is_heat"] = a["event_type"] in ("Heat Advisory", "Excessive Heat Warning")
+
+        real_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
+        combined_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
+
+    return render_template(
+        "county.html",
+        available_counties=COUNTY_PICKER_CHOICES,
+        selected_county=selected_county,
+        real_events=real_events,
+        combined_events=combined_events,
+        active_alerts=active_alerts,
     )
 
 

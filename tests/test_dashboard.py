@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dashboard import (
     _incident_label, _explain_pipeline_error, _group_pipeline_errors,
-    _is_pipeline_error_ongoing,
+    _is_pipeline_error_ongoing, _normalize_open_events, _rows_for_county,
+    COUNTY_PICKER_CHOICES,
 )
 
 
@@ -217,3 +218,95 @@ class TestIsPipelineErrorOngoing:
         now = datetime(2026, 1, 1, 12, 0, 0)
         last_timestamp = (now - timedelta(hours=6, minutes=24)).isoformat()
         assert _is_pipeline_error_ongoing(last_timestamp, now=now) is False
+
+
+class TestCountyPickerChoices:
+    """
+    COUNTY_PICKER_CHOICES - the /county page's dropdown list, added
+    2026-07-14. Built from historical_import.FLORIDA_COUNTIES (all-caps)
+    title-cased for display, with the one known exception .title() gets
+    wrong on its own.
+    """
+
+    def test_has_all_67_real_counties(self):
+        assert len(COUNTY_PICKER_CHOICES) == 67
+
+    def test_desoto_keeps_internal_capital_not_titlecased_naively(self):
+        # .title() alone would produce "Desoto", not "DeSoto" - same
+        # casing bug already caught once in fetch_preco_outages.py.
+        assert "DeSoto" in COUNTY_PICKER_CHOICES
+        assert "Desoto" not in COUNTY_PICKER_CHOICES
+
+    def test_hyphenated_and_multiword_names_handled_by_title(self):
+        assert "Miami-Dade" in COUNTY_PICKER_CHOICES
+        assert "St. Johns" in COUNTY_PICKER_CHOICES
+        assert "Palm Beach" in COUNTY_PICKER_CHOICES
+
+    def test_sorted_alphabetically(self):
+        assert COUNTY_PICKER_CHOICES == sorted(COUNTY_PICKER_CHOICES)
+
+
+class TestNormalizeOpenEvents:
+    """
+    _normalize_open_events() - factors out the same per-source field
+    mapping _build_unified_view() does inline, so /county's per-source
+    aggregation doesn't duplicate each source's field names a second
+    time. Added 2026-07-14 alongside the /county page.
+    """
+
+    def test_maps_custom_field_names_to_common_shape(self):
+        events = [{
+            "utility": "Tampa Electric Company", "county": "Hillsborough",
+            "current_customer_count": 10, "peak_customer_count": 25,
+            "start_time": "2026-01-01T00:00:00",
+        }]
+        rows = _normalize_open_events(events, "current_customer_count", "peak_customer_count")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["utility"] == "Tampa Electric Company"
+        assert row["county"] == "Hillsborough"
+        assert row["customers"] == 10
+        assert row["peak_customers"] == 25
+        assert row["start_time"] == "2026-01-01T00:00:00"
+        assert row["duration"]  # computed fresh from start_time, just check it's present
+
+    def test_empty_input_returns_empty(self):
+        assert _normalize_open_events([], "customers_out", "peak_customers_out") == []
+
+
+class TestRowsForCounty:
+    """
+    _rows_for_county() - the /county page's matching logic, added
+    2026-07-14. Reuses correlate.py's _county_in_alert() (a normalized
+    substring check) for both real single-county rows and combined-
+    territory labels, verified safe since no two of Florida's 67 real
+    county names are substrings of each other.
+    """
+
+    def _row(self, county, utility="Test Utility"):
+        return {"utility": utility, "county": county, "customers": 1,
+                "peak_customers": 1, "start_time": "2026-01-01T00:00:00", "duration": "1h"}
+
+    def test_exact_real_county_matches(self):
+        rows = [self._row("Duval")]
+        assert _rows_for_county(rows, "Duval") == rows
+
+    def test_real_county_does_not_match_a_different_county(self):
+        rows = [self._row("Duval")]
+        assert _rows_for_county(rows, "Leon") == []
+
+    def test_combined_territory_label_matches_a_named_county_within_it(self):
+        rows = [self._row("Jefferson/Madison/Taylor (+ partial Dixie/Lafayette/Leon)", "TCEC")]
+        assert _rows_for_county(rows, "Jefferson") == rows
+        assert _rows_for_county(rows, "Leon") == rows
+
+    def test_combined_territory_label_does_not_match_an_unrelated_county(self):
+        rows = [self._row("Escambia/Santa Rosa", "EREC")]
+        assert _rows_for_county(rows, "Duval") == []
+
+    def test_row_with_no_county_never_matches(self):
+        rows = [self._row(None)]
+        assert _rows_for_county(rows, "Duval") == []
+
+    def test_empty_rows_returns_empty(self):
+        assert _rows_for_county([], "Duval") == []

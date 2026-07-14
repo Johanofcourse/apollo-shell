@@ -1048,6 +1048,30 @@ class OutageDatabase:
             "active_alerts": active_alerts,
         }
 
+    def get_active_weather_alerts(self):
+        """
+        Every weather_alerts row that's active right now (effective <=
+        now <= expires) - same "active now" definition already used by
+        get_heat_advisory_summary(), just not restricted to heat event
+        types or the current month. Used by the /county page to show
+        what's currently active for one specific county, of any kind
+        (not just heat).
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM weather_alerts')
+        rows = [dict(row) for row in cursor.fetchall()]
+
+        now_utc = datetime.now(timezone.utc)
+        active = []
+        for row in rows:
+            if row.get("effective") and row.get("expires"):
+                effective_dt = datetime.fromisoformat(row["effective"])
+                expires_dt = datetime.fromisoformat(row["expires"])
+                if effective_dt <= now_utc <= expires_dt:
+                    active.append(row)
+        return active
+
     def log_outage(self, utility, county, customers_out, customers_served):
         """
         Insert a single outage record into the database
