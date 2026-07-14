@@ -582,6 +582,40 @@ class OutageDatabase:
             )
         ''')
 
+        # Escambia River Electric Cooperative (EREC) raw snapshots -
+        # same vendor platform/shape as TCEC, a combined-territory
+        # source, always exactly one row (see
+        # fetch_erec_outages.COMBINED_TERRITORY_LABEL - real counties:
+        # Escambia, Santa Rosa), kept in its own table per the same
+        # one-utility-per-table convention.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS erec_outages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
+                customers_out INTEGER NOT NULL,
+                customers_served INTEGER NOT NULL,
+                percentage_out REAL NOT NULL
+            )
+        ''')
+
+        # EREC lifecycle tracking - identical algorithm to
+        # tcec_outage_events/fkec_outage_events (open on
+        # customers_out > 0, track peak, close on return to 0).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS erec_outage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customers_out INTEGER NOT NULL,
+                peak_percentage_out REAL NOT NULL,
+                customers_served INTEGER NOT NULL
+            )
+        ''')
+
         # Create indexes
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_timestamp
@@ -631,6 +665,11 @@ class OutageDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_tcec_outage_events_open
             ON tcec_outage_events(utility, county, end_time)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_erec_outage_events_open
+            ON erec_outage_events(utility, county, end_time)
         ''')
 
         cursor.execute('''
@@ -791,6 +830,16 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_tcec_outage_events_unique
             ON tcec_outage_events(utility, county, start_time)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_erec_outages_unique
+            ON erec_outages(timestamp, utility, county)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_erec_outage_events_unique
+            ON erec_outage_events(utility, county, start_time)
         ''')
 
         cursor.execute('''
@@ -1610,6 +1659,101 @@ class OutageDatabase:
         print(f"TCEC outage events: {opened} opened, {closed} closed this cycle")
 
 
+    def log_erec_outages(self, outage_list, timestamp=None):
+        """
+        Insert Escambia River Electric Cooperative's raw combined-
+        territory snapshot (from fetch_erec_outages.py) - always
+        exactly one record (see
+        fetch_erec_outages.COMBINED_TERRITORY_LABEL). Same
+        shape/principle as log_tcec_outages(), kept in its own table.
+
+        Args:
+            outage_list: list of dicts with keys: county, customers_out, customers_served
+            timestamp: ISO timestamp to record for this batch; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+
+        records = []
+        for outage in outage_list:
+            customers_out = outage['customers_out']
+            customers_served = outage['customers_served']
+            percentage_out = (customers_out / customers_served * 100) if customers_served > 0 else 0
+            records.append((timestamp, "Escambia River Electric Cooperative, Inc.", outage['county'], customers_out, customers_served, percentage_out))
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO erec_outages (timestamp, utility, county, customers_out, customers_served, percentage_out)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', records)
+
+        conn.commit()
+        print(f"Logged {len(records)} EREC outage records")
+
+
+    def sync_erec_outage_events(self, outage_list, timestamp=None):
+        """
+        Update erec_outage_events from a fresh batch of snapshots.
+        Identical algorithm to sync_tcec_outage_events() - kept as
+        EREC's own dedicated table/method, same one-utility-per-table
+        convention.
+
+        NOT SAFE TO REPLAY - same characteristic as sync_outage_events()
+        (see its docstring): only safe for calls arriving in real
+        chronological order, one live poll at a time.
+
+        Args:
+            outage_list: list of dicts with keys: county, customers_out, customers_served
+            timestamp: ISO timestamp for opened/closed events; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        utility = "Escambia River Electric Cooperative, Inc."
+
+        opened = 0
+        closed = 0
+
+        for outage in outage_list:
+            county = outage['county']
+            customers_out = outage['customers_out']
+            customers_served = outage['customers_served']
+            percentage_out = (customers_out / customers_served * 100) if customers_served > 0 else 0
+
+            cursor.execute('''
+                SELECT id, peak_customers_out FROM erec_outage_events
+                WHERE utility = ? AND county = ? AND end_time IS NULL
+            ''', (utility, county))
+            open_event = cursor.fetchone()
+
+            if customers_out > 0:
+                if open_event is None:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO erec_outage_events
+                            (utility, county, start_time, end_time, peak_customers_out, peak_percentage_out, customers_served)
+                        VALUES (?, ?, ?, NULL, ?, ?, ?)
+                    ''', (utility, county, timestamp, customers_out, percentage_out, customers_served))
+                    if cursor.rowcount > 0:
+                        opened += 1
+                elif customers_out > open_event['peak_customers_out']:
+                    cursor.execute('''
+                        UPDATE erec_outage_events
+                        SET peak_customers_out = ?, peak_percentage_out = ?, customers_served = ?
+                        WHERE id = ?
+                    ''', (customers_out, percentage_out, customers_served, open_event['id']))
+            else:
+                if open_event is not None:
+                    cursor.execute('''
+                        UPDATE erec_outage_events SET end_time = ? WHERE id = ?
+                    ''', (timestamp, open_event['id']))
+                    closed += 1
+
+        conn.commit()
+        print(f"EREC outage events: {opened} opened, {closed} closed this cycle")
+
+
     def log_fpuc_outages(self, outage_list, timestamp=None):
         """
         Insert FPUC's raw combined-territory snapshot (from
@@ -2141,6 +2285,50 @@ class OutageDatabase:
         return [dict(row) for row in cursor.fetchall()]
 
 
+    def get_erec_open_events(self):
+        """
+        Return currently open erec_outage_events (end_time IS NULL),
+        worst (by peak percentage out) first. Includes
+        current_customers_out/current_percentage_out from the latest
+        erec_outages snapshot for that county, alongside the lifecycle
+        peak - same "peak vs. right now" reasoning as get_tcec_open_events().
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT oe.*,
+                   cur.customers_out AS current_customers_out,
+                   cur.percentage_out AS current_percentage_out
+            FROM erec_outage_events oe
+            LEFT JOIN erec_outages cur
+                ON cur.utility = oe.utility AND cur.county = oe.county
+                AND cur.timestamp = (
+                    SELECT MAX(timestamp) FROM erec_outages o2
+                    WHERE o2.utility = oe.utility AND o2.county = oe.county
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_percentage_out DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_erec_recent_closed_events(self, limit=10):
+        """
+        Return the most recently closed erec_outage_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM erec_outage_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
     def get_fpuc_open_events(self):
         """
         Return currently open fpuc_outage_events (end_time IS NULL) -
@@ -2497,6 +2685,32 @@ class OutageDatabase:
         end_bound = event["end_time"] or datetime.now().isoformat()
         cursor.execute('''
             SELECT timestamp, customers_out, customers_served, percentage_out FROM tcec_outages
+            WHERE utility = ? AND county = ? AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp
+        ''', (utility, county, start_time, end_bound))
+        history = [dict(row) for row in cursor.fetchall()]
+
+        return {"event": event, "history": history}
+
+    def get_erec_outage_detail(self, utility, county, start_time):
+        """
+        Same idea as get_tcec_outage_detail(), for one EREC combined-
+        territory outage occurrence.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM erec_outage_events WHERE utility = ? AND county = ? AND start_time = ?
+        ''', (utility, county, start_time))
+        event = cursor.fetchone()
+        if event is None:
+            return None
+        event = dict(event)
+
+        end_bound = event["end_time"] or datetime.now().isoformat()
+        cursor.execute('''
+            SELECT timestamp, customers_out, customers_served, percentage_out FROM erec_outages
             WHERE utility = ? AND county = ? AND timestamp >= ? AND timestamp <= ?
             ORDER BY timestamp
         ''', (utility, county, start_time, end_bound))

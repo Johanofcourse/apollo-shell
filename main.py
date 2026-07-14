@@ -21,6 +21,7 @@ from fetch_fpuc_outages import fetch_fpuc_outage_summary, outages_to_records as 
 from fetch_preco_outages import get_preco_records, PRECO_API_URL
 from fetch_fkec_outages import get_fkec_records, FKEC_API_URL
 from fetch_tcec_outages import get_tcec_records, TCEC_API_URL
+from fetch_erec_outages import get_erec_records, EREC_API_URL
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -32,6 +33,7 @@ from correlate import (
     find_preco_correlations,
     find_fkec_correlations,
     find_tcec_correlations,
+    find_erec_correlations,
 )
 
 
@@ -257,6 +259,29 @@ def run_tcec_cycle(db):
     db.sync_tcec_outage_events(records, timestamp=timestamp)
 
 
+def run_erec_cycle(db):
+    """
+    Fetch Escambia River Electric Cooperative's live combined-territory
+    outage data, save the raw snapshot, and update erec_outage_events
+    lifecycle tracking (start/end) - same platform/shape as TCEC (always
+    exactly one row, see fetch_erec_outages.COMBINED_TERRITORY_LABEL).
+
+    Raises only when EREC_API_URL is actually configured but the fetch
+    still came back empty - same reasoning/config-check pattern as
+    run_tcec_cycle() above.
+    """
+    records = get_erec_records()
+    if not records:
+        if EREC_API_URL:
+            raise RuntimeError("EREC fetch returned no data - see the poller's own log for the underlying request error")
+        print("Skipping EREC save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_erec_outages(records, timestamp=timestamp)
+    db.sync_erec_outage_events(records, timestamp=timestamp)
+
+
 def run_fpuc_cycle(db):
     """
     Fetch FPUC's live outage data once, then update both trackers from
@@ -293,8 +318,8 @@ def run_fpuc_cycle(db):
 def run_correlation_cycle():
     """
     Compute current outage/weather correlations (FPL, TECO, Duke, JEA,
-    City of Tallahassee, Talquin, FPUC, PRECO, FKEC, and TCEC) and log a
-    summary.
+    City of Tallahassee, Talquin, FPUC, PRECO, FKEC, TCEC, and EREC) and
+    log a summary.
     """
     matches = find_correlations()
     if not matches:
@@ -426,6 +451,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    erec_matches = find_erec_correlations()
+    if not erec_matches:
+        print("EREC correlation: no matches this cycle")
+    else:
+        erec_summary = correlation_summary(erec_matches)
+        print(f"EREC correlation: {len(erec_matches)} matches across {len(erec_summary)} counties")
+        for county, stats in erec_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def main():
     """
@@ -507,6 +545,12 @@ def main():
             except Exception as e:
                 print(f"TCEC fetch cycle failed: {e}")
                 db.log_pipeline_error("tcec", str(e))
+
+            try:
+                run_erec_cycle(db)
+            except Exception as e:
+                print(f"EREC fetch cycle failed: {e}")
+                db.log_pipeline_error("erec", str(e))
 
             try:
                 run_correlation_cycle()

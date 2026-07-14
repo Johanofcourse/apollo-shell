@@ -166,6 +166,26 @@ class TestRunTcecCycleFailureVisibility:
         main.run_tcec_cycle(db)  # should not raise
 
 
+class TestRunErecCycleFailureVisibility:
+    def test_raises_when_configured_but_empty(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_erec_records", lambda: [])
+        monkeypatch.setattr(main, "EREC_API_URL", "https://example.com/real-endpoint")
+        with pytest.raises(RuntimeError):
+            main.run_erec_cycle(db)
+
+    def test_does_not_raise_when_not_configured(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_erec_records", lambda: [])
+        monkeypatch.setattr(main, "EREC_API_URL", None)
+        main.run_erec_cycle(db)  # should not raise
+
+    def test_does_not_raise_when_records_present(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_erec_records", lambda: [
+            {"county": "Escambia/Santa Rosa", "customers_out": 7, "customers_served": 13663}
+        ])
+        monkeypatch.setattr(main, "EREC_API_URL", "https://example.com/real-endpoint")
+        main.run_erec_cycle(db)  # should not raise
+
+
 class TestRunFpucCycleFailureVisibility:
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
         monkeypatch.setattr(main, "fetch_fpuc_outage_summary", lambda: None)

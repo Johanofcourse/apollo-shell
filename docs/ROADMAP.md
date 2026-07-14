@@ -620,6 +620,21 @@ thin sample per county, not something to treat as a reliable average yet.
       known, deliberate gap until a genuine outage populates it, same
       "wait for a real event" situation FPUC's `markers` array was in
       before one finally did.
+- [x] **Escambia River Electric Cooperative (EREC) integrated as an
+      eleventh live utility** - identical vendor platform to TCEC (same
+      `outageSummary.json`/`outagePolygons.json` shape, same Microsoft
+      IIS server), just hosted off a raw IP:port over plain HTTP rather
+      than a domain/TLS. Real territory confirmed directly by the user:
+      Escambia and Santa Rosa counties (a clean two-county case, unlike
+      TCEC's partial-coverage counties). Built the same way as TCEC -
+      combined-territory tracker (own `erec_outages`/`erec_outage_events`
+      tables, always exactly one row), same known correlation
+      limitation, same "wait for a real event" gap on `outagePolygons.json`
+      (confirmed to exist, seen empty every time so far). Found and built
+      entirely under an explicit "take it easy on the requests"
+      constraint following the Siena/Talquin/PRECO incident - only
+      fetched URLs the user had already captured via their own browser,
+      no candidate-filename guessing this time.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida
