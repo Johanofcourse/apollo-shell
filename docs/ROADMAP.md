@@ -44,13 +44,13 @@
 - [x] Third live Florida utility integrated end-to-end — Duke Energy,
       same pattern as TECO (incident-level data, live county rollups,
       system alerts, correlation). Its live map blocks a plain
-      automated fetch, so this one needed a human driving a real
-      browser through devtools to find, same as how TECO's was found
+      automated fetch, so this one needed a human working through the
+      live site directly to find, same as how TECO's was found
 - [x] Fourth live Florida utility integrated end-to-end — JEA
       (Jacksonville Electric Authority). A genuinely different vendor
       than TECO/Duke (Kubra's "Storm Center" product, not an Azure/Apigee-
       hosted API), found by reading the outage-map page's own JS bundle
-      rather than live browser devtools. JEA's feed is a county-rollup
+      rather than direct live request capture. JEA's feed is a county-rollup
       shape like FPL's (not incident-level like TECO/Duke), but reports
       by ZIP code, not county - resolved via the same FCC reverse-geocode
       TECO's incidents already use (each ZIP's own bounding-box center,
@@ -357,11 +357,10 @@ thin sample per county, not something to treat as a reliable average yet.
       eventually restoration confidence) - never the raw live utility
       feeds themselves. The raw feeds are the least valuable and riskiest
       thing to expose (anyone motivated enough could find TECO's, Duke's,
-      or JEA's live map backend the same way we did, with nothing but a
-      browser's dev tools); the accumulated, cleaned, cross-checked
-      historical comparison is the actual hard-won asset, and it's safer
-      to show precisely because it can't just be re-scraped in an
-      afternoon.
+      or JEA's live map backend the same way we did); the accumulated,
+      cleaned, cross-checked historical comparison is the actual
+      hard-won asset, and it's safer to show precisely because it
+      can't just be re-scraped in an afternoon.
 - Gated on all three of:
   1. [x] Historical storm backfill reaching 2018 (Phase 2) - done
   2. [x] Weather-match confidence scoring actually built, not just
@@ -464,9 +463,9 @@ thin sample per county, not something to treat as a reliable average yet.
       (`/content/dam/fplmaps/power-tracker/northwest/...`), not the main
       site's. The actual data endpoint sat behind real Incapsula/Imperva
       bot protection - same class of wall TECO/Duke needed a human
-      driving a real browser through devtools to get past. Found the
-      same night, by the user, filtering the Network tab by transfer
-      size small-to-large instead of large-to-small (the real payload
+      working through the live site directly to get past. Found the
+      same night, by the user, by checking the smallest real responses
+      first instead of the largest (the real payload
       was tiny, ~7KB, easy to miss while looking at "big" requests):
       `fplmaps.com/northwest/feeds/CountyOutages.json`, needing a
       `Referer: https://www.fplmaps.com/northwest.html` header - same
@@ -560,8 +559,8 @@ thin sample per county, not something to treat as a reliable average yet.
 - [x] **Peace River Electric Cooperative (PRECO) integrated as an eighth
       live utility** - same Siena Technologies platform as Talquin
       (`cache.sienatech.com`), found by reverse-engineering the site's
-      own JS-embedded polygonID-to-county lookup table via Safari's
-      Sources tab, then cross-checked with a real-time correlation (a
+      own JS-embedded polygonID-to-county lookup table, then
+      cross-checked with a real-time correlation (a
       live-changing `affected` count in the map-polygon endpoint matched
       Manatee's own real-time growth in the DOM before the JS mapping
       was even found). County-rollup shape like Talquin (own
@@ -590,8 +589,8 @@ thin sample per county, not something to treat as a reliable average yet.
       not just assumed from general Keys geography. `summary.json`
       (the real outage-count endpoint) was found by guessing the
       filename directly from `config.json`'s own documented field names
-      (`region`/`nbrOut`/`served`) rather than more browser-captured
-      requests, once the site's own `region.zipCode.json` (ZIP boundary
+      (`region`/`nbrOut`/`served`) rather than capturing more requests
+      directly, once the site's own `region.zipCode.json` (ZIP boundary
       map geometry - a dead end, same class as PRECO's grid-geometry
       endpoint) and `config.json` were captured. Real data quirk found
       and handled: summing the six ZIPs' own `numberServed` figures
@@ -633,7 +632,7 @@ thin sample per county, not something to treat as a reliable average yet.
       (confirmed to exist, seen empty every time so far). Found and built
       entirely under an explicit "take it easy on the requests"
       constraint following the Siena/Talquin/PRECO incident - only
-      fetched URLs the user had already captured via their own browser,
+      fetched URLs the user had already directly confirmed,
       no candidate-filename guessing this time.
 - [x] **Live `/county` lookup page added** - an operator picks one of
       Florida's 67 real counties and sees everything currently relevant
@@ -656,16 +655,16 @@ thin sample per county, not something to treat as a reliable average yet.
       twelfth live utility** - identical vendor platform to TCEC/EREC
       (same `outageSummary.json`/`outagePolygons.json` shape, same
       Microsoft IIS server), hosted off a raw IP:port over plain HTTPS.
-      Real territory confirmed directly by the user via their own
-      browser dev tools: Santa Rosa, Okaloosa, Walton, and Holmes
-      counties - closes the Holmes County gap noted in prior sessions.
+      Real territory confirmed directly by the user: Santa Rosa,
+      Okaloosa, Walton, and Holmes counties - closes the Holmes County
+      gap noted in prior sessions.
       Built the same way as TCEC/EREC - combined-territory tracker
       (own `chelco_outages`/`chelco_outage_events` tables, always
       exactly one row), same known correlation limitation, same "wait
       for a real event" gap on `outagePolygons.json` (confirmed to
       exist, seen empty every time so far). Found and built entirely
       under the same "take it easy on the requests" constraint - only
-      fetched URLs the user had already captured via their own browser.
+      fetched URLs the user had already directly confirmed.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida

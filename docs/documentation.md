@@ -235,8 +235,7 @@ utility, found and built start to finish in one sitting. JEA's outage
 map turned out to run on a completely different vendor platform than
 TECO or Duke - not something either of their integrations could be
 copy-pasted from. Finding it meant downloading the outage map's own JS
-bundles and reading through the minified source for the real API routes,
-since there was no live browser/devtools tool available this session -
+bundles and reading through the minified source for the real API routes -
 corrected two wrong guesses along the way (a plural/singular typo in one
 route, a wrong deployment-id field in another) before the real chain
 resolved cleanly: a "current state" call, a "configuration" call, then
@@ -484,9 +483,9 @@ directly. The real, final count: ten counties missing, every one of
 them Panhandle, no outliers left once both mistakes were caught.
 
 The wall held for a night, then came down the next time it got looked
-at. Same page, same Incapsula protection - the difference was filtering
-the browser's network log by size the *right* direction. Sorting for
-the biggest transfers had buried the actual answer under a 3MB jQuery
+at. Same page, same Incapsula protection - the difference was checking
+the *right* direction for the real payload. Looking at the biggest
+transfers had buried the actual answer under a 3MB jQuery
 file; the real payload was a tiny 7KB JSON response, easy to miss
 looking the wrong way, easy to spot once someone thought to look for
 small instead of big. `fplmaps.com/northwest/feeds/CountyOutages.json` -
@@ -529,9 +528,9 @@ one aggregator's count applied to us.
 
 ## Three utilities, one dead end, and a night of real bugs caught early
 Kept pulling the same thread: what else is a real, live Florida utility
-we're not tracking yet. City of Tallahassee came first, found through
-Safari's Web Inspector the same way FPL Northwest was - filter to
-Fetch/XHR, sort by size ascending, don't trust the big files. It runs
+we're not tracking yet. City of Tallahassee came first, found the same
+way FPL Northwest was - kept tracing which requests actually carried
+the real outage data instead of trusting the obvious candidates. It runs
 on a plain Esri ArcGIS endpoint, no bot wall in front of it at all. One
 real catch before it ever shipped: the captured URL pointed at ArcGIS
 layer 1, which turned out to be a boundary polygon, not the actual
