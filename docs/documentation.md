@@ -483,12 +483,11 @@ directly. The real, final count: ten counties missing, every one of
 them Panhandle, no outliers left once both mistakes were caught.
 
 The wall held for a night, then came down the next time it got looked
-at. Same page, same Incapsula protection - the difference was checking
-the *right* direction for the real payload. Looking at the biggest
-transfers had buried the actual answer under a 3MB jQuery
-file; the real payload was a tiny 7KB JSON response, easy to miss
-looking the wrong way, easy to spot once someone thought to look for
-small instead of big. `fplmaps.com/northwest/feeds/CountyOutages.json` -
+at. Same page, same Incapsula protection - the difference was finding
+the one real request that mattered among everything else the page
+loads: a 3MB jQuery file sitting right next to the actual answer, a
+tiny 7KB JSON response easy to overlook until someone knew what they
+were looking for. `fplmaps.com/northwest/feeds/CountyOutages.json` -
 same shape as the feed this project already knows how to read, just a
 different address and a different page to claim as the referer.
 

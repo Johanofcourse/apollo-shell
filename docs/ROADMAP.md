@@ -464,9 +464,9 @@ thin sample per county, not something to treat as a reliable average yet.
       site's. The actual data endpoint sat behind real Incapsula/Imperva
       bot protection - same class of wall TECO/Duke needed a human
       working through the live site directly to get past. Found the
-      same night, by the user, by checking the smallest real responses
-      first instead of the largest (the real payload
-      was tiny, ~7KB, easy to miss while looking at "big" requests):
+      same night, by the user, spotting the one real request among
+      everything else the page loads (the real payload was tiny,
+      ~7KB, easy to overlook next to the page's much larger assets):
       `fplmaps.com/northwest/feeds/CountyOutages.json`, needing a
       `Referer: https://www.fplmaps.com/northwest.html` header - same
       JSON shape as the main feed, confirmed by fetching it directly.
