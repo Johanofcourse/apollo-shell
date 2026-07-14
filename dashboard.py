@@ -17,7 +17,7 @@ from correlate import (
     find_jea_correlations, find_tallahassee_correlations,
     find_talquin_correlations, find_fpuc_incident_correlations, _alert_identity,
     find_preco_correlations, find_fkec_correlations, find_tcec_correlations,
-    find_erec_correlations, find_chelco_correlations, _county_in_alert,
+    find_erec_correlations, find_chelco_correlations, find_gcec_correlations, _county_in_alert,
 )
 from historical_import import FLORIDA_COUNTIES
 from fetch_fpl_outages import UTILITY_NAME as FPL_UTILITY_NAME
@@ -29,6 +29,7 @@ from fetch_fkec_outages import UTILITY_NAME as FKEC_UTILITY_NAME
 from fetch_tcec_outages import UTILITY_NAME as TCEC_UTILITY_NAME
 from fetch_erec_outages import UTILITY_NAME as EREC_UTILITY_NAME
 from fetch_chelco_outages import UTILITY_NAME as CHELCO_UTILITY_NAME
+from fetch_gcec_outages import UTILITY_NAME as GCEC_UTILITY_NAME
 
 
 app = Flask(__name__)
@@ -74,6 +75,7 @@ PIPELINE_SOURCE_DISPLAY_NAMES = {
     "tcec": "Tri-County Electric Cooperative",
     "erec": "Escambia River Electric Cooperative",
     "chelco": "Choctawhatchee Electric Cooperative",
+    "gcec": "Gulf Coast Electric Cooperative",
     "correlation": "Correlation",
 }
 
@@ -182,6 +184,7 @@ def _get_cached_correlations(db_path, days):
         find_tcec_correlations(db_path, days=days),
         find_erec_correlations(db_path, days=days),
         find_chelco_correlations(db_path, days=days),
+        find_gcec_correlations(db_path, days=days),
     )
     _correlation_cache[days] = {"data": data, "computed_at": now}
     return data
@@ -345,7 +348,7 @@ def _percentage_tier(percentage_out):
     return "low"
 
 
-def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events):
+def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events):
     """
     Normalize FPL's/JEA's county-level outage_events-shaped tables and
     TECO's/Duke's incident-level *_incident_events into one common shape
@@ -485,6 +488,16 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
             "duration": e["duration"],
         })
 
+    for e in gcec_open_events:
+        unified.append({
+            "utility": e["utility"],
+            "county": e["county"],
+            "customers": e["current_customers_out"],
+            "peak_customers": e["peak_customers_out"],
+            "start_time": e["start_time"],
+            "duration": e["duration"],
+        })
+
     unified.sort(key=lambda row: row["customers"] or 0, reverse=True)
     return unified
 
@@ -515,9 +528,9 @@ def _real_per_county_open_events(db):
     /county page search. Includes FPUC's real per-incident markers
     (reverse-geocoded, can be a real county) alongside the always-real
     per-county rollup sources - deliberately NOT the combined-territory
-    sources (FPUC's original combined view, TCEC, EREC, CHELCO), whose
-    "county" is a multi-name label rather than one real county - see
-    _combined_territory_open_events() below.
+    sources (FPUC's original combined view, TCEC, EREC, CHELCO, GCEC),
+    whose "county" is a multi-name label rather than one real county -
+    see _combined_territory_open_events() below.
     """
     return (
         _normalize_open_events(db.get_open_events(), "current_customers_out", "peak_customers_out")
@@ -546,6 +559,7 @@ def _combined_territory_open_events(db):
         + _normalize_open_events(db.get_tcec_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_erec_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_chelco_open_events(), "current_customers_out", "peak_customers_out")
+        + _normalize_open_events(db.get_gcec_open_events(), "current_customers_out", "peak_customers_out")
     )
 
 
@@ -603,8 +617,10 @@ def index():
     erec_closed_events = db.get_erec_recent_closed_events(limit=10)
     chelco_open_events = db.get_chelco_open_events()
     chelco_closed_events = db.get_chelco_recent_closed_events(limit=10)
+    gcec_open_events = db.get_gcec_open_events()
+    gcec_closed_events = db.get_gcec_recent_closed_events(limit=10)
 
-    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "correlation"])
+    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "correlation"])
     heat_summary = db.get_heat_advisory_summary()
 
     db.close()
@@ -661,8 +677,12 @@ def index():
         event["duration"] = _duration_since(event["start_time"])
     for event in chelco_closed_events:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
+    for event in gcec_open_events:
+        event["duration"] = _duration_since(event["start_time"])
+    for event in gcec_closed_events:
+        event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
-    matches, teco_matches, duke_matches, jea_matches, tallahassee_matches, talquin_matches, fpuc_matches, preco_matches, fkec_matches, tcec_matches, erec_matches, chelco_matches = _get_cached_correlations(db_path, window_days)
+    matches, teco_matches, duke_matches, jea_matches, tallahassee_matches, talquin_matches, fpuc_matches, preco_matches, fkec_matches, tcec_matches, erec_matches, chelco_matches, gcec_matches = _get_cached_correlations(db_path, window_days)
 
     correlation = correlation_summary(matches)
     for stats in correlation.values():
@@ -736,7 +756,13 @@ def index():
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
         stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
-    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events)
+    gcec_correlation = correlation_summary(gcec_matches)
+    for stats in gcec_correlation.values():
+        stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
+        stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
+        stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
+
+    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events)
 
     for event in open_events:
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
@@ -774,6 +800,10 @@ def index():
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
     for event in chelco_closed_events:
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
+    for event in gcec_open_events:
+        event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
+    for event in gcec_closed_events:
+        event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
 
     # Pipeline health strip - surfaces caught fetch/correlation failures
     # (see OutageDatabase.log_pipeline_error/get_pipeline_health) that
@@ -794,7 +824,7 @@ def index():
     # read before scrolling into the detailed per-utility tables below.
     total_customers_affected = sum(row["customers"] or 0 for row in unified_open)
     worst_row = unified_open[0] if unified_open else None
-    combined_confidence = _combine_confidence_breakdowns(matches, teco_matches, duke_matches, jea_matches, tallahassee_matches, talquin_matches, fpuc_matches, preco_matches, fkec_matches, tcec_matches, erec_matches, chelco_matches)
+    combined_confidence = _combine_confidence_breakdowns(matches, teco_matches, duke_matches, jea_matches, tallahassee_matches, talquin_matches, fpuc_matches, preco_matches, fkec_matches, tcec_matches, erec_matches, chelco_matches, gcec_matches)
     combined_confidence_bar = _confidence_bar_segments(combined_confidence)
     combined_confidence_display = _format_confidence(combined_confidence)
 
@@ -840,6 +870,9 @@ def index():
         chelco_open_events=chelco_open_events,
         chelco_closed_events=chelco_closed_events,
         chelco_correlation=chelco_correlation,
+        gcec_open_events=gcec_open_events,
+        gcec_closed_events=gcec_closed_events,
+        gcec_correlation=gcec_correlation,
         unified_open=unified_open,
         total_customers_affected=total_customers_affected,
         worst_row=worst_row,
@@ -1003,8 +1036,8 @@ def county_detail():
     its combined total), weather alerts active right now that name this
     county, and - shown separately, since their number covers more
     territory than just this one county - combined-territory sources
-    (FPUC's original combined view, TCEC, EREC, CHELCO) whose label
-    happens to mention it.
+    (FPUC's original combined view, TCEC, EREC, CHELCO, GCEC) whose
+    label happens to mention it.
 
     Deliberately live/current-status only, not historical - see
     /history for real multi-year storm data per county.
@@ -1204,7 +1237,7 @@ def incident():
             raw_detail = detail_fns[source](incident_id)
             if raw_detail["events"] or raw_detail["history"]:
                 detail = raw_detail
-    elif source in ("fpl", "jea", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco"):
+    elif source in ("fpl", "jea", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec"):
         county = request.args.get("county", "").strip()
         start_time = request.args.get("start_time", "").strip()
         if county and start_time:
@@ -1218,6 +1251,7 @@ def incident():
                 "tcec": (TCEC_UTILITY_NAME, db.get_tcec_outage_detail),
                 "erec": (EREC_UTILITY_NAME, db.get_erec_outage_detail),
                 "chelco": (CHELCO_UTILITY_NAME, db.get_chelco_outage_detail),
+                "gcec": (GCEC_UTILITY_NAME, db.get_gcec_outage_detail),
             }
             utility, get_fn = utility_fns[source]
             detail = get_fn(utility, county, start_time)

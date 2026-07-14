@@ -1,7 +1,7 @@
 """
 Tests for fetch_fpuc_outages.py - the parsing logic for both shapes
-DataVoice's "Apprise" system returns in one response: the combined-
-territory total (outages_to_records()) and, since 2026-07-13, the real
+FPUC's outage feed returns in one response: the combined-territory
+total (outages_to_records()) and, since 2026-07-13, the real
 per-incident markers (markers_to_incidents()) - confirmed real only
 once a live outage finally populated that part of the response for the
 first time (it had only ever been observed empty before that).

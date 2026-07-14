@@ -8,11 +8,9 @@ from fetch_teco_outages import lookup_county
 
 load_dotenv()
 
-# Found via Safari Web Inspector, not officially documented - kept out
-# of the committed code (this repo is public), same as every other
-# utility here. Runs on a fourth distinct vendor platform (DataVoice's
-# "Apprise" outage system, outageentry.com - different from FPL/TECO's
-# custom builds, Tallahassee's ArcGIS, JEA's Kubra, and Talquin's Siena).
+# Not an officially documented public API - kept out of the committed
+# code (this repo is public), same as every other utility here. A
+# distinct backend from every other utility integrated so far.
 FPUC_API_URL = os.environ.get("FPUC_API_URL")
 
 # The canonical utility name, matching the exact string this same real
@@ -75,7 +73,7 @@ def fetch_fpuc_outage_summary():
 
 def outages_to_records(data):
     """
-    Convert FPUC's raw Apprise JSON into the same list-of-dicts shape
+    Convert FPUC's raw JSON into the same list-of-dicts shape
     OutageDatabase.log_multiple_outages()/sync_outage_events() expect -
     always exactly one record (see COMBINED_TERRITORY_LABEL), since this
     source has no real per-county breakdown.

@@ -5,12 +5,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Found via Safari Web Inspector, not officially documented - kept out
-# of the committed code (this repo is public), same as every other
-# utility here. Runs on the exact same vendor platform as TCEC/EREC
-# (identical outageSummary.json/outagePolygons.json shape, same
-# Microsoft IIS server) - hosted on a proper domain over HTTPS but on a
-# non-standard port (:8080). No trackingCode or auth needed, plain GET.
+# Not an officially documented public API - kept out of the committed
+# code (this repo is public), same as every other utility here. Runs on
+# the exact same platform as TCEC/EREC (identical feed shape) - hosted
+# on a proper domain over HTTPS but on a non-standard port. No tracking
+# code or auth needed, plain GET.
 CHELCO_API_URL = os.environ.get("CHELCO_API_URL")
 
 # The canonical utility name ("Choctawhatchee Electric Cooperative,
@@ -20,15 +19,14 @@ CHELCO_API_URL = os.environ.get("CHELCO_API_URL")
 # uses.
 UTILITY_NAME = "Choctawhatchee Electric Cooperative, Inc."
 
-# CHELCO's live feed (outageSummary.json) reports ONE combined total
-# across its whole real territory, with no per-county breakdown in that
-# response - identical limitation to TCEC/EREC (same vendor platform).
-# Real per-region detail lives in a sibling endpoint,
-# outagePolygons.json, confirmed to exist but seen empty every time so
-# far (zero active outages during discovery, 2026-07-14) - its real
+# CHELCO's live feed reports ONE combined total across its whole real
+# territory, with no per-county breakdown in that response - identical
+# limitation to TCEC/EREC (same underlying platform). Real per-region
+# detail lives in a sibling endpoint, confirmed to exist but seen empty
+# every time so far (zero active outages during discovery) - its real
 # field shape is unknown until a genuine outage populates it, same
 # "wait for a real event" situation FPUC's markers array and TCEC's/
-# EREC's own outagePolygons.json were in before/still are.
+# EREC's own sibling endpoints were in before/still are.
 #
 # Real territory confirmed by the user directly: Santa Rosa, Okaloosa,
 # Walton, and Holmes counties - a clean four-county case (no "partial
@@ -66,7 +64,7 @@ def fetch_chelco_outage_summary():
 
 def outages_to_records(data):
     """
-    Convert CHELCO's raw outageSummary.json into the same list-of-dicts
+    Convert CHELCO's raw outage-summary JSON into the same list-of-dicts
     shape OutageDatabase.log_multiple_outages()/sync_outage_events()
     expect - always exactly one record (see COMBINED_TERRITORY_LABEL),
     since this source has no real per-county breakdown yet.

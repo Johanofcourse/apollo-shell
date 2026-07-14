@@ -224,7 +224,7 @@ and don't substitute for everyday-outage volume.
       down to full coverage.
 
 ## Utility coverage
-Grew from one utility (FPL) to twelve live sources across this
+Grew from one utility (FPL) to thirteen live sources across this
 project's life, each one closing a real, verified county-coverage gap
 rather than being added for its own sake. In rough order: a second and
 third utility added genuinely richer per-incident detail (real cause,
@@ -239,12 +239,15 @@ detail once a live outage actually populated it - it still carries a
 known, disclosed limitation where some outages are withheld from the
 incident-level view for privacy, so the combined total remains the
 more complete number for that one. A ninth closed the real Monroe
-County (Keys) gap. A tenth and eleventh, on the same underlying data
-platform as each other, closed most of the remaining rural Panhandle
-gap as combined-territory trackers (one authoritative total across a
-multi-county territory, honestly labeled as such rather than guessed
-at a fake single-county number). A twelfth, on that same platform,
-closed the last standing Panhandle gap.
+County (Keys) gap. A tenth through thirteenth, all on the same
+underlying data platform, closed the entire remaining rural Panhandle
+gap one county group at a time as combined-territory trackers (one
+authoritative total across a multi-county territory, honestly labeled
+as such rather than guessed at a fake single-county number) - the last
+of the four found by cross-referencing this project's own historical
+storm data for a consistently-appearing real utility rather than
+guessing, and completing full real per-county live coverage across all
+67 Florida counties for the first time.
 
 Every combined-territory source (where one number covers multiple real
 counties rather than a true per-county breakdown) is disclosed as such

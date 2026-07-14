@@ -5,18 +5,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Found via Safari Web Inspector, not officially documented - kept out
-# of the committed code (this repo is public), loaded from .env instead
-# of hardcoded as a literal string, same as every other utility here.
-# Runs on a fifth distinct vendor platform (NISC's "cloud.coop" outage-
-# map product) - plain static JSON files hosted on S3/CloudFront, no
-# trackingCode or auth needed at all, wide-open CORS
-# (Access-Control-Allow-Origin: *). The same folder also serves
-# region.zipCode.json (ZIP boundary map geometry, not outage data - a
-# dead end, same class as PRECO's grid-geometry endpoint) and
-# config.json (map/branding settings, confirmed the real field names
-# via its outageSettings.summaryTableSettings.columns: region/nbrOut/
-# served).
+# Not an officially documented public API - kept out of the committed
+# code (this repo is public), loaded from .env instead of hardcoded as
+# a literal string, same as every other utility here. A plain static
+# JSON file, no tracking code or auth needed at all, wide-open CORS.
 FKEC_API_URL = os.environ.get("FKEC_API_URL")
 
 # The canonical utility name ("Florida Keys Electric Cooperative,
@@ -26,20 +18,19 @@ FKEC_API_URL = os.environ.get("FKEC_API_URL")
 UTILITY_NAME = "Florida Keys Electric Cooperative, Inc."
 
 # FKEC's entire real service territory is confirmed to be Monroe County
-# (the Florida Keys) - verified 2026-07-13 by converting a real
-# coordinate out of the map's own ZIP-boundary geometry (Web Mercator
-# projection) to lat/lon and reverse-geocoding it through the same FCC
-# Census API lookup_county() in fetch_teco_outages.py already uses.
-# Unlike JEA (which spans many counties and needs a real per-ZIP
-# reverse-geocode), FKEC's six ZIP codes never need that - they all
-# collapse to this one real county, so this is a hardcoded constant,
-# not a placeholder like FPUC's combined-territory label.
+# (the Florida Keys) - verified by reverse-geocoding a real coordinate
+# from the map's own ZIP-boundary geometry through the same FCC Census
+# API lookup_county() in fetch_teco_outages.py already uses. Unlike JEA
+# (which spans many counties and needs a real per-ZIP reverse-geocode),
+# FKEC's six ZIP codes never need that - they all collapse to this one
+# real county, so this is a hardcoded constant, not a placeholder like
+# FPUC's combined-territory label.
 SERVICE_COUNTY = "Monroe"
 
 
 def fetch_fkec_outages():
     """
-    Fetches live outage data from FKEC's cloud.coop-hosted summary.json.
+    Fetches live outage data from FKEC's outage-summary endpoint.
     Returns the parsed JSON data, or None on failure/missing config.
     """
     if not FKEC_API_URL:
@@ -58,7 +49,7 @@ def fetch_fkec_outages():
 
 def outages_to_records(data):
     """
-    Convert FKEC's raw summary.json into the same list-of-dicts shape
+    Convert FKEC's raw outage-summary JSON into the same list-of-dicts shape
     OutageDatabase.log_multiple_outages()/sync_outage_events() expect
     (county/customers_out/customers_served) - a county-rollup source
     like FPL/JEA/Talquin/PRECO, not an incident list. Always returns

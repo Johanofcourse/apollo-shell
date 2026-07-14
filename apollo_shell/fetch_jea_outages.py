@@ -7,15 +7,13 @@ from fetch_teco_outages import lookup_county
 
 load_dotenv()
 
-# JEA's live outage map runs on Kubra's "Storm Center" product - a
-# different vendor entirely from TECO's Azure-hosted API or Duke's
-# Apigee gateway, found by reading JEA's outage-map JS bundle rather
-# than watching live devtools traffic (no live-browser tool available
-# this session). kubra.io is the vendor's own shared domain (used by
-# many utilities, not JEA-specific), so it's fine to hardcode - the two
-# real "found via devtools" values are JEA's specific instance/view ids,
-# kept out of the committed code the same way TECO's/Duke's endpoints are.
-KUBRA_HOST = "https://kubra.io"
+# JEA's live outage map runs on a shared third-party vendor platform -
+# a genuinely different backend from the other utilities integrated
+# here. The host below is the vendor's own shared domain (used by many
+# utilities, not JEA-specific), so it's fine to hardcode - JEA's
+# specific instance/view ids are the only real secrets, kept out of the
+# committed code the same way TECO's/Duke's endpoints are.
+JEA_PLATFORM_HOST = "https://kubra.io"
 JEA_INSTANCE_ID = os.environ.get("JEA_STORMCENTER_INSTANCE_ID")
 JEA_VIEW_ID = os.environ.get("JEA_STORMCENTER_VIEW_ID")
 
@@ -35,12 +33,12 @@ _zip_county_cache = {}
 
 def _get_current_state():
     """
-    Step 1 of Kubra's chain: resolves which data-directory and config
+    Step 1 of the vendor platform's chain: resolves which data-directory and config
     deployment are currently live. Deliberately not cached/hardcoded -
     these ids rotate whenever JEA's ops team republishes, so the full
     chain has to be re-resolved every call, same as a real browser would.
     """
-    url = f"{KUBRA_HOST}/stormcenter/api/v1/stormcenters/{JEA_INSTANCE_ID}/views/{JEA_VIEW_ID}/currentState"
+    url = f"{JEA_PLATFORM_HOST}/stormcenter/api/v1/stormcenters/{JEA_INSTANCE_ID}/views/{JEA_VIEW_ID}/currentState"
     response = requests.get(url, params={"preview": "false"}, headers=_HEADERS, timeout=15)
     response.raise_for_status()
     return response.json()
@@ -51,7 +49,7 @@ def _get_configuration(deployment_id):
     Step 2: resolves the real data file paths (these also rotate per
     deployment, hence re-fetched every call rather than hardcoded).
     """
-    url = (f"{KUBRA_HOST}/stormcenter/api/v1/stormcenters/{JEA_INSTANCE_ID}"
+    url = (f"{JEA_PLATFORM_HOST}/stormcenter/api/v1/stormcenters/{JEA_INSTANCE_ID}"
            f"/views/{JEA_VIEW_ID}/configuration/{deployment_id}")
     response = requests.get(url, headers=_HEADERS, timeout=15)
     response.raise_for_status()
@@ -60,15 +58,14 @@ def _get_configuration(deployment_id):
 
 def fetch_jea_areas():
     """
-    Resolve Kubra's full chain (currentState -> configuration -> the
+    Resolve the vendor platform's full chain (currentState -> configuration -> the
     actual per-ZIP report file) and return the raw list of per-ZIP area
     dicts, or an empty list on failure.
     """
     if not JEA_INSTANCE_ID or not JEA_VIEW_ID:
         raise RuntimeError(
             "JEA_STORMCENTER_INSTANCE_ID / JEA_STORMCENTER_VIEW_ID are not set. "
-            "Copy .env.example to .env and fill in the real values (found via "
-            "reading JEA's outage-map JS bundle)."
+            "Copy .env.example to .env and fill in the real values."
         )
 
     try:
@@ -82,7 +79,7 @@ def fetch_jea_areas():
 
         # data_dir already includes its own "data/" prefix (e.g.
         # "data/1e1de736-...") - do not add a second one here.
-        report_url = f"{KUBRA_HOST}/{data_dir}/{report_source}"
+        report_url = f"{JEA_PLATFORM_HOST}/{data_dir}/{report_source}"
         response = requests.get(report_url, headers=_HEADERS, timeout=15)
         response.raise_for_status()
 
@@ -119,7 +116,7 @@ def _zip_to_county(zip_code, bbox):
 
 def parse_jea_areas(areas):
     """
-    Convert Kubra's raw per-ZIP area list into per-ZIP records (zip,
+    Convert the vendor platform's raw per-ZIP area list into per-ZIP records (zip,
     county, customers, ETR) ready for OutageDatabase.log_jea_outages(),
     and a separate per-county rollup ready for
     OutageDatabase.sync_jea_outage_events() - JEA's live feed is

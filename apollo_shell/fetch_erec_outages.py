@@ -5,14 +5,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Found via Safari Web Inspector, not officially documented - kept out
-# of the committed code (this repo is public), same as every other
-# utility here. Runs on the exact same vendor platform as TCEC
-# (identical outageSummary.json/outagePolygons.json shape, same
-# Microsoft IIS server) - just hosted directly off a raw IP:port over
-# plain HTTP rather than a proper domain/TLS, which is simply how this
-# particular deployment happens to be set up, not something to work
-# around. No trackingCode or auth needed, plain GET.
+# Not an officially documented public API - kept out of the committed
+# code (this repo is public), same as every other utility here. Runs on
+# the exact same platform as TCEC (identical feed shape) - just hosted
+# directly off a raw IP:port over plain HTTP rather than a proper
+# domain/TLS, which is simply how this particular deployment happens to
+# be set up, not something to work around. No tracking code or auth
+# needed, plain GET.
 EREC_API_URL = os.environ.get("EREC_API_URL")
 
 # The canonical utility name ("Escambia River Electric Cooperative,
@@ -21,15 +20,14 @@ EREC_API_URL = os.environ.get("EREC_API_URL")
 # consistent with the naming convention every other utility here uses.
 UTILITY_NAME = "Escambia River Electric Cooperative, Inc."
 
-# EREC's live feed (outageSummary.json) reports ONE combined total
-# across its whole real territory, with no per-county breakdown in that
-# response - identical limitation to TCEC (same vendor platform). Real
-# per-region detail lives in a sibling endpoint, outagePolygons.json,
-# confirmed to exist but seen empty every time so far (zero active
-# outages during discovery, 2026-07-13) - its real field shape is
-# unknown until a genuine outage populates it, same "wait for a real
-# event" situation FPUC's markers array and TCEC's own outagePolygons.json
-# were in before/still are.
+# EREC's live feed reports ONE combined total across its whole real
+# territory, with no per-county breakdown in that response - identical
+# limitation to TCEC (same underlying platform). Real per-region detail
+# lives in a sibling endpoint, confirmed to exist but seen empty every
+# time so far (zero active outages during discovery) - its real field
+# shape is unknown until a genuine outage populates it, same "wait for
+# a real event" situation FPUC's markers array and TCEC's own sibling
+# endpoint were in before/still are.
 #
 # Real territory confirmed by the user directly: Escambia and Santa
 # Rosa counties - a clean two-county case, no partial/uncertain
@@ -64,7 +62,7 @@ def fetch_erec_outage_summary():
 
 def outages_to_records(data):
     """
-    Convert EREC's raw outageSummary.json into the same list-of-dicts
+    Convert EREC's raw outage-summary JSON into the same list-of-dicts
     shape OutageDatabase.log_multiple_outages()/sync_outage_events()
     expect - always exactly one record (see COMBINED_TERRITORY_LABEL),
     since this source has no real per-county breakdown yet.

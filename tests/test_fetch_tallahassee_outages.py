@@ -1,14 +1,14 @@
 """
 Tests for fetch_tallahassee_outages.py - the parsing logic
-(parse_incidents, _esri_epoch_to_iso) and the ticket-based filtering in
+(parse_incidents, _epoch_to_iso) and the ticket-based filtering in
 get_incidents_summary(), added 2026-07-13 alongside the City of
 Tallahassee integration.
 
 REGION_NAMES is tested explicitly because of a real, caught mapping bug:
-the Tallahassee_Regions ArcGIS layer numbers its rows by internal
-OBJECTID, not by the digit baked into each region's own name (OBJECTID 2
-is named "4 West", OBJECTID 4 is "3 South") - joining on OBJECTID would
-have silently mislabeled every outage's region.
+the region-name layer numbers its rows by an internal row id, not by
+the digit baked into each region's own name (internal id 2 is named
+"4 West", internal id 4 is "3 South") - joining on that internal id
+would have silently mislabeled every outage's region.
 """
 
 from datetime import datetime, timezone
@@ -38,7 +38,7 @@ def _feature(ticket=101, customers=50, region=2, status="Investigating",
 
 class TestRegionNames:
     def test_region_names_keyed_by_the_digit_in_the_name_not_objectid(self):
-        # Confirmed against the real Tallahassee_Regions layer response:
+        # Confirmed against the real region-name layer's response:
         # OBJECTID 1="1 North", 2="4 West", 3="5 Outside", 4="3 South",
         # 5="2 East" - REGION_NAMES must be keyed 1->North, 2->East,
         # 3->South, 4->West, 5->Outside (the digit in the name), not by
@@ -62,7 +62,7 @@ class TestParseIncidents:
         assert r["cause_category"] == "vegetation"
 
     def test_ticket_is_stringified(self):
-        # ticket comes back as an esriFieldTypeInteger - incident_id
+        # ticket comes back as a plain integer from the source feed - incident_id
         # needs to be a string to match teco_incidents/duke_incidents'
         # TEXT incident_id column, same convention as every other source.
         records = tally.parse_incidents([_feature(ticket=999)])

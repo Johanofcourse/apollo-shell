@@ -18,7 +18,7 @@ from correlate import (
     find_tallahassee_correlations, find_talquin_correlations,
     find_fpuc_incident_correlations, duke_correlation_summary, correlation_summary,
     find_preco_correlations, find_fkec_correlations, find_tcec_correlations,
-    find_erec_correlations, find_chelco_correlations,
+    find_erec_correlations, find_chelco_correlations, find_gcec_correlations,
 )
 from database import OutageDatabase
 
@@ -535,8 +535,8 @@ class TestFindChelcoCorrelations:
     """
     find_chelco_correlations() shares the exact matching helpers already
     proven above, same shape/limitation as find_tcec_correlations()/
-    find_erec_correlations() (identical vendor platform) - CHELCO's own
-    combined-territory county label ("Santa Rosa/Okaloosa/Walton/Holmes")
+    find_erec_correlations() (identical underlying platform) - CHELCO's
+    own combined-territory county label ("Santa Rosa/Okaloosa/Walton/Holmes")
     can never match a real NWS alert's single-county areaDesc string via
     _county_in_alert()'s substring check.
     """
@@ -562,3 +562,37 @@ class TestFindChelcoCorrelations:
         db.close()
 
         assert find_chelco_correlations(db_path, days=None) == []
+
+
+class TestFindGcecCorrelations:
+    """
+    find_gcec_correlations() shares the exact matching helpers already
+    proven above, same shape/limitation as find_tcec_correlations()/
+    find_erec_correlations()/find_chelco_correlations() (identical
+    underlying platform) - GCEC's own combined-territory county label
+    ("Bay/Calhoun/Gulf/Jackson/Walton/Washington") can never match a
+    real NWS alert's single-county areaDesc string via
+    _county_in_alert()'s substring check.
+    """
+
+    def test_combined_territory_label_never_matches_a_single_county_alert(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Calhoun"))
+        db.log_gcec_outages(
+            [{"county": "Bay/Calhoun/Gulf/Jackson/Walton/Washington", "customers_out": 7, "customers_served": 23206}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_gcec_correlations(db_path, days=None) == []
+
+    def test_zero_customer_snapshots_are_not_matched(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Calhoun"))
+        db.log_gcec_outages(
+            [{"county": "Bay/Calhoun/Gulf/Jackson/Walton/Washington", "customers_out": 0, "customers_served": 23206}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_gcec_correlations(db_path, days=None) == []

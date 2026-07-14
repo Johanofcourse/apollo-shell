@@ -5,20 +5,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Found via Safari Web Inspector, not officially documented - kept out
-# of the committed code (this repo is public), loaded from .env instead
-# of hardcoded as a literal string, same as every other utility here.
-# Runs on a third distinct vendor platform (Siena Technologies,
-# cache.sienatech.com - different from FPL/TECO's custom builds,
-# Tallahassee's ArcGIS, and JEA's Kubra) - no bot protection, and no
-# special header needed either, just a required trackingCode query
-# param baked into this URL. Confirmed 2026-07-13 by testing which
-# parts of the captured request actually mattered: the "Client: talquin"
-# header and the version/session params all turned out to be optional,
-# trackingCode alone is required (without it: HTTP 420). It's a stable
-# 64-char string tied to this utility's specific embed, not a rotating
-# session token - it worked completely detached from the session object
-# in testing, same trust level as JEA's stable instance/view ids.
+# Not an officially documented public API - kept out of the committed
+# code (this repo is public), loaded from .env instead of hardcoded as
+# a literal string, same as every other utility here. A required
+# tracking-code query param is baked into this URL - it's a stable
+# string tied to this utility's specific embed, not a rotating session
+# token, so it's safe to treat as effectively static.
 TALQUIN_API_URL = os.environ.get("TALQUIN_API_URL")
 
 # The canonical utility name, matching the exact string this same real

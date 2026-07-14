@@ -206,6 +206,26 @@ class TestRunChelcoCycleFailureVisibility:
         main.run_chelco_cycle(db)  # should not raise
 
 
+class TestRunGcecCycleFailureVisibility:
+    def test_raises_when_configured_but_empty(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_gcec_records", lambda: [])
+        monkeypatch.setattr(main, "GCEC_API_URL", "https://example.com/real-endpoint")
+        with pytest.raises(RuntimeError):
+            main.run_gcec_cycle(db)
+
+    def test_does_not_raise_when_not_configured(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_gcec_records", lambda: [])
+        monkeypatch.setattr(main, "GCEC_API_URL", None)
+        main.run_gcec_cycle(db)  # should not raise
+
+    def test_does_not_raise_when_records_present(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_gcec_records", lambda: [
+            {"county": "Bay/Calhoun/Gulf/Jackson/Walton/Washington", "customers_out": 7, "customers_served": 23206}
+        ])
+        monkeypatch.setattr(main, "GCEC_API_URL", "https://example.com/real-endpoint")
+        main.run_gcec_cycle(db)  # should not raise
+
+
 class TestRunFpucCycleFailureVisibility:
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
         monkeypatch.setattr(main, "fetch_fpuc_outage_summary", lambda: None)

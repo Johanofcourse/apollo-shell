@@ -6,9 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Found via browser devtools, not officially documented - kept out of the
-# committed code (this repo is public) the same way Duke's auth token is,
-# loaded from .env instead of hardcoded as a literal string.
+# Not an officially documented public API - kept out of the committed
+# code (this repo is public) the same way Duke's auth token is, loaded
+# from .env instead of hardcoded as a literal string.
 TECO_OUTAGE_TILES_URL = os.environ.get("TECO_API_URL")
 TECO_API_ORIGIN = os.environ.get("TECO_API_ORIGIN")
 
@@ -93,15 +93,15 @@ FLORIDA_BOUNDING_BOX = {
 def fetch_teco_outages(bounding_box=None):
     """
     Query TECO's live outage-incidents feed (their public map's own
-    backend API, found via browser devtools - not officially documented).
+    backend API, not officially documented).
 
-    Returns the raw list of Elasticsearch "hits" (each one a single
-    outage incident), or an empty list on failure.
+    Returns the raw list of "hits" (each one a single outage incident),
+    or an empty list on failure.
     """
     if not TECO_OUTAGE_TILES_URL or not TECO_API_ORIGIN:
         raise RuntimeError(
             "TECO_API_URL / TECO_API_ORIGIN are not set. Copy .env.example "
-            "to .env and fill in the real values (found via browser devtools)."
+            "to .env and fill in the real values."
         )
 
     bounding_box = bounding_box or FLORIDA_BOUNDING_BOX
@@ -178,7 +178,7 @@ def lookup_county(lat, lon):
 
 def parse_incidents(hits):
     """
-    Convert raw Elasticsearch hits into a flat list of dicts ready for
+    Convert raw feed hits into a flat list of dicts ready for
     OutageDatabase.log_teco_incidents(), including a reverse-geocoded
     county and derived reason/status categories for each one.
     """

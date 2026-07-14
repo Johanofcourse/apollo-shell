@@ -8,17 +8,13 @@ from fetch_teco_outages import categorize_reason, categorize_status
 
 load_dotenv()
 
-# Found via Safari Web Inspector, not officially documented - kept out
-# of the committed code (this repo is public), loaded from .env instead
-# of hardcoded as a literal string, same as every other utility here.
-# Unlike FPL/TECO, this one has no bot protection in front of it at all
-# (a plain CORS-enabled Esri ArcGIS REST endpoint) - the outage map
-# itself runs on Esri's off-the-shelf product (esriemcs.com), not a
-# custom build.
+# Not an officially documented public API - kept out of the committed
+# code (this repo is public), loaded from .env instead of hardcoded as
+# a literal string, same as every other utility here.
 #
 # This must be layer index 0 ("Outages", point geometry), not 1
-# ("Tallahassee_Boundary_Final", a polygon) - confirmed 2026-07-13 by
-# querying the base MapServer's own layer list directly. The URL
+# (a boundary-polygon layer) - confirmed by querying the base service's
+# own layer list directly. The URL
 # originally captured used /1/query and happened to return the right
 # field schema (lat/lon/region/status/cause/customers/off/etr/ticket)
 # with zero matching features that day, which looked identical to a
@@ -37,16 +33,15 @@ TALLAHASSEE_API_URL = os.environ.get("TALLAHASSEE_API_URL")
 UTILITY_NAME = "City of Tallahassee"
 
 # Tallahassee's outage map has a real "region" field (an integer 1-5)
-# but the layer that names those regions (Tallahassee_Regions, ArcGIS
-# layer id 2) numbers its rows by internal OBJECTID, not by the region
-# number itself - OBJECTID 2 is named "4 West", OBJECTID 4 is "3 South".
-# Joining naively on OBJECTID would silently mislabel outages (region 2
-# would resolve to "West" instead of "East"). The real key is the
-# leading digit baked into each region's own name ("2 East" -> 2, "5
-# Outside" -> 5) - confirmed 2026-07-13 by fetching that layer directly
-# and comparing it by hand, same class of silent join bug as the
-# county-name mismatches caught earlier in this project (Miami-Dade,
-# St Lucie, DeSoto).
+# but the layer that names those regions numbers its rows by internal
+# id, not by the region number itself - internal id 2 is named
+# "4 West", internal id 4 is "3 South". Joining naively on that
+# internal id would silently mislabel outages (region 2 would resolve
+# to "West" instead of "East"). The real key is the leading digit baked
+# into each region's own name ("2 East" -> 2, "5 Outside" -> 5) -
+# confirmed by fetching that layer directly and comparing it by hand,
+# same class of silent join bug as the county-name mismatches caught
+# earlier in this project (Miami-Dade, St Lucie, DeSoto).
 REGION_NAMES = {1: "North", 2: "East", 3: "South", 4: "West", 5: "Outside"}
 
 # Confirmed against real historical PSC storm reports (2026-07-13): City
@@ -60,7 +55,7 @@ COUNTY = "Leon"
 def fetch_tallahassee_outages():
     """
     Fetch raw individual outage incidents from Tallahassee's public
-    ArcGIS outage-map feed. Returns a list of raw Esri "feature" dicts,
+    outage-map feed. Returns a list of raw "feature" dicts,
     or an empty list on failure/missing config.
     """
     if not TALLAHASSEE_API_URL:
@@ -80,9 +75,9 @@ def fetch_tallahassee_outages():
         return []
 
 
-def _esri_epoch_to_iso(millis):
+def _epoch_to_iso(millis):
     """
-    Esri date fields are documented as epoch milliseconds (UTC) - not yet
+    This feed's date fields are documented as epoch milliseconds (UTC) - not yet
     confirmed against a real populated value here, since the feed had
     zero active incidents (features: []) the day this was written.
     Worth double-checking the first time a real outage populates
@@ -95,7 +90,7 @@ def _esri_epoch_to_iso(millis):
 
 def parse_incidents(raw_features):
     """
-    Convert raw Tallahassee ArcGIS outage features into a flat list of
+    Convert raw Tallahassee outage features into a flat list of
     dicts, matching the same incident shape TECO/Duke use (utility,
     incident_id, customer_count, lat, lon, county, cause/cause_category)
     plus two fields unique to this source: region_name (the sub-county
@@ -123,8 +118,8 @@ def parse_incidents(raw_features):
             "cause": cause,
             "cause_category": categorize_reason(cause),
             "outage_type": attrs.get("outagetype"),
-            "reported_start_time": _esri_epoch_to_iso(attrs.get("off")),
-            "estimated_restoration": _esri_epoch_to_iso(attrs.get("etr")),
+            "reported_start_time": _epoch_to_iso(attrs.get("off")),
+            "estimated_restoration": _epoch_to_iso(attrs.get("etr")),
         })
     return records
 

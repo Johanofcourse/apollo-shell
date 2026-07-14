@@ -16,13 +16,9 @@ FPL_API_ORIGIN = os.environ.get("FPL_API_ORIGIN")
 # Gulf Power's former territory, merged into FPL corporately in 2021 but
 # apparently never consolidated into the main map/feed. Same real
 # utility, same "outages" JSON shape, just a different endpoint and
-# Referer - found 2026-07-12 behind real Incapsula bot protection (a
-# human had to check a real browser's Network tab; curl alone couldn't
-# get past it). Covers Escambia, Santa Rosa, Okaloosa, Walton, Holmes,
+# Referer. Covers Escambia, Santa Rosa, Okaloosa, Walton, Holmes,
 # Washington, Jackson, and Bay - confirmed by checking the real response,
-# not assumed. Three real Panhandle counties (Calhoun, Gadsden, Liberty)
-# still aren't covered by either FPL feed - likely a smaller rural co-op's
-# territory, not yet found.
+# not assumed.
 FPL_NORTHWEST_API_URL = os.environ.get("FPL_NORTHWEST_API_URL")
 FPL_NORTHWEST_API_REFERER = os.environ.get("FPL_NORTHWEST_API_REFERER")
 

@@ -436,6 +436,31 @@ class TestIncidentDetailLookup:
 
         assert detail is None
 
+    def test_gcec_outage_detail_returns_event_and_bounded_history(self, db_path):
+        db = OutageDatabase(db_path)
+        territory = "Bay/Calhoun/Gulf/Jackson/Walton/Washington"
+        db.log_gcec_outages([_fpl_row(territory, 7, 23206)], timestamp="2026-01-01T00:00:00")
+        db.sync_gcec_outage_events([_fpl_row(territory, 7, 23206)], timestamp="2026-01-01T00:00:00")
+        db.log_gcec_outages([_fpl_row(territory, 0, 23206)], timestamp="2026-01-01T00:15:00")
+        db.sync_gcec_outage_events([_fpl_row(territory, 0, 23206)], timestamp="2026-01-01T00:15:00")
+
+        detail = db.get_gcec_outage_detail("Gulf Coast Electric Cooperative, Inc.", territory, "2026-01-01T00:00:00")
+        db.close()
+
+        assert detail is not None
+        assert detail["event"]["end_time"] == "2026-01-01T00:15:00"
+        assert len(detail["history"]) == 2
+        assert detail["history"][0]["customers_out"] == 7
+        assert detail["history"][-1]["customers_out"] == 0
+
+    def test_gcec_outage_detail_none_for_unknown_occurrence(self, db_path):
+        db = OutageDatabase(db_path)
+        territory = "Bay/Calhoun/Gulf/Jackson/Walton/Washington"
+        detail = db.get_gcec_outage_detail("Gulf Coast Electric Cooperative, Inc.", territory, "2026-01-01T00:00:00")
+        db.close()
+
+        assert detail is None
+
     def test_fpuc_outage_detail_returns_event_and_bounded_history(self, db_path):
         db = OutageDatabase(db_path)
         territory = "Multiple Counties (NW FL & Nassau)"
@@ -681,6 +706,23 @@ class TestOpenEventsCurrentVsPeak:
         db.sync_chelco_outage_events([_fpl_row(territory, 3, 74996)], timestamp="2026-01-01T00:30:00")
 
         open_events = db.get_chelco_open_events()
+        db.close()
+
+        assert len(open_events) == 1
+        assert open_events[0]["peak_customers_out"] == 50
+        assert open_events[0]["current_customers_out"] == 3
+
+    def test_gcec_open_event_reports_current_alongside_peak(self, db_path):
+        db = OutageDatabase(db_path)
+        territory = "Bay/Calhoun/Gulf/Jackson/Walton/Washington"
+        db.log_gcec_outages([_fpl_row(territory, 7, 23206)], timestamp="2026-01-01T00:00:00")
+        db.sync_gcec_outage_events([_fpl_row(territory, 7, 23206)], timestamp="2026-01-01T00:00:00")
+        db.log_gcec_outages([_fpl_row(territory, 50, 23206)], timestamp="2026-01-01T00:15:00")
+        db.sync_gcec_outage_events([_fpl_row(territory, 50, 23206)], timestamp="2026-01-01T00:15:00")
+        db.log_gcec_outages([_fpl_row(territory, 3, 23206)], timestamp="2026-01-01T00:30:00")
+        db.sync_gcec_outage_events([_fpl_row(territory, 3, 23206)], timestamp="2026-01-01T00:30:00")
+
+        open_events = db.get_gcec_open_events()
         db.close()
 
         assert len(open_events) == 1

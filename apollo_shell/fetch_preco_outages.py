@@ -5,16 +5,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Found via Safari Web Inspector, not officially documented - kept out
-# of the committed code (this repo is public), loaded from .env instead
-# of hardcoded as a literal string, same as every other utility here.
-# Peace River Electric Cooperative (PRECO) runs on the same Siena
-# Technologies platform as Talquin (cache.sienatech.com), and exposes
-# the identical data/{CLIENT}/OUTAGE endpoint shape - confirmed
-# 2026-07-13 by testing the same URL pattern Talquin already uses,
-# swapping in PRECO's own trackingCode (captured from a live Network
-# tab request to the map's polygon-refresh endpoint, which uses the
-# same trackingCode). No bot protection, no special headers needed.
+# Not an officially documented public API - kept out of the committed
+# code (this repo is public), loaded from .env instead of hardcoded as
+# a literal string, same as every other utility here. Peace River
+# Electric Cooperative (PRECO) runs on the same underlying platform as
+# Talquin, and exposes the identical endpoint shape - just PRECO's own
+# tracking code in place of Talquin's.
 PRECO_API_URL = os.environ.get("PRECO_API_URL")
 
 # The canonical utility name, matching how this entity is formally
@@ -27,9 +23,8 @@ UTILITY_NAME = "Peace River Electric Cooperative, Inc."
 
 def fetch_preco_outages():
     """
-    Fetches live outage data from PRECO's Siena-hosted outage-map
-    endpoint. Returns the parsed JSON data, or None on failure/missing
-    config.
+    Fetches live outage data from PRECO's outage-map endpoint. Returns
+    the parsed JSON data, or None on failure/missing config.
     """
     if not PRECO_API_URL:
         print("PRECO_API_URL not set - skipping PRECO fetch")

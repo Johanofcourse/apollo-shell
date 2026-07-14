@@ -23,6 +23,7 @@ from fetch_fkec_outages import get_fkec_records, FKEC_API_URL
 from fetch_tcec_outages import get_tcec_records, TCEC_API_URL
 from fetch_erec_outages import get_erec_records, EREC_API_URL
 from fetch_chelco_outages import get_chelco_records, CHELCO_API_URL
+from fetch_gcec_outages import get_gcec_records, GCEC_API_URL
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -36,6 +37,7 @@ from correlate import (
     find_tcec_correlations,
     find_erec_correlations,
     find_chelco_correlations,
+    find_gcec_correlations,
 )
 
 
@@ -308,6 +310,30 @@ def run_chelco_cycle(db):
     db.sync_chelco_outage_events(records, timestamp=timestamp)
 
 
+def run_gcec_cycle(db):
+    """
+    Fetch Gulf Coast Electric Cooperative's live combined-territory
+    outage data, save the raw snapshot, and update gcec_outage_events
+    lifecycle tracking (start/end) - same platform/shape as TCEC/EREC/
+    CHELCO (always exactly one row, see
+    fetch_gcec_outages.COMBINED_TERRITORY_LABEL).
+
+    Raises only when GCEC_API_URL is actually configured but the fetch
+    still came back empty - same reasoning/config-check pattern as
+    run_chelco_cycle() above.
+    """
+    records = get_gcec_records()
+    if not records:
+        if GCEC_API_URL:
+            raise RuntimeError("GCEC fetch returned no data - see the poller's own log for the underlying request error")
+        print("Skipping GCEC save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_gcec_outages(records, timestamp=timestamp)
+    db.sync_gcec_outage_events(records, timestamp=timestamp)
+
+
 def run_fpuc_cycle(db):
     """
     Fetch FPUC's live outage data once, then update both trackers from
@@ -344,8 +370,8 @@ def run_fpuc_cycle(db):
 def run_correlation_cycle():
     """
     Compute current outage/weather correlations (FPL, TECO, Duke, JEA,
-    City of Tallahassee, Talquin, FPUC, PRECO, FKEC, TCEC, EREC, and
-    CHELCO) and log a summary.
+    City of Tallahassee, Talquin, FPUC, PRECO, FKEC, TCEC, EREC, CHELCO,
+    and GCEC) and log a summary.
     """
     matches = find_correlations()
     if not matches:
@@ -503,6 +529,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    gcec_matches = find_gcec_correlations()
+    if not gcec_matches:
+        print("GCEC correlation: no matches this cycle")
+    else:
+        gcec_summary = correlation_summary(gcec_matches)
+        print(f"GCEC correlation: {len(gcec_matches)} matches across {len(gcec_summary)} counties")
+        for county, stats in gcec_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def main():
     """
@@ -596,6 +635,12 @@ def main():
             except Exception as e:
                 print(f"CHELCO fetch cycle failed: {e}")
                 db.log_pipeline_error("chelco", str(e))
+
+            try:
+                run_gcec_cycle(db)
+            except Exception as e:
+                print(f"GCEC fetch cycle failed: {e}")
+                db.log_pipeline_error("gcec", str(e))
 
             try:
                 run_correlation_cycle()

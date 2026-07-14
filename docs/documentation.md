@@ -4,9 +4,10 @@ Started as a "shell." Somewhere along the way it became an outage
 detective instead. No regrets.
 
 ## Done
-- Live outage data flows in continuously from twelve independent
-  Florida utilities, alongside National Weather Service alerts, closing
-  out real coverage across nearly the entire state
+- Live outage data flows in continuously from thirteen independent
+  Florida utilities, alongside National Weather Service alerts, now
+  covering every one of Florida's 67 counties with a real, verified
+  live source
 - Correlation logic: outages and weather alerts sharing a county and a
   time window get matched up, each match carrying its own confidence
   label
@@ -65,8 +66,9 @@ and ruling out a few dead-end or fabricated sources — to confirm as
 real and usable.
 
 ## Live right now
-- The poller runs unattended from twelve independent Florida utilities
-  now, up from the original one, closing out nearly the entire state
+- The poller runs unattended from thirteen independent Florida
+  utilities now, up from the original one, with a real live source
+  covering every one of Florida's 67 counties
 - Real weather alerts are correlating with real outages statewide, each
   match carrying its own confidence label
 - A real per-county lookup tool now pulls outages, weather, and heat
@@ -518,10 +520,10 @@ counties, no per-county split, despite a real search for a richer
 per-county view that never turned one up. Built honestly instead of
 guessed around: a fixed placeholder county label that can't match a
 real weather alert, so its correlation function returns empty by
-design, not silently broken. This technically closes the last Florida
-county with zero live coverage - but only as part of one blended
-five-county number, not a verified reading for that county on its own.
-Flagged as a standing priority to revisit, not treated as done.
+design, not silently broken. At the time, this was the closest thing to
+real coverage one particular Panhandle county had - just as part of one
+blended five-county number, not a verified reading for that county on
+its own. That gap was properly closed later on (see below).
 
 ## A map that finally shows what's happening right now
 The isometric county map had one real gap the whole time: its color and
@@ -536,3 +538,23 @@ only covered by sources with no live base. Caught two rough spots in
 the rewrite before shipping: a needless workaround standing in for
 something that could just be done directly, and a conditional quietly
 returning the same value on both sides.
+
+## The last county, closed
+One real gap had been sitting there since the Panhandle work began: a
+single county with no true per-county live reading of its own, only
+ever showing up blended into someone else's combined total. Rather than
+guess at who might serve it, the answer came from data already on
+hand - cross-referencing every historical storm report for that one
+county turned up a real, consistently-appearing rural cooperative, the
+same kind of lead that had worked before for other real finds this
+project made.
+
+It turned out to run on the identical underlying platform as three
+utilities already integrated - same feed shape, same combined-territory
+situation, same "wait for a real event" gap on its own per-region
+detail. Confirmed its real six-county territory the same way as always:
+against the historical record, not assumed. Closing it means every one
+of Florida's 67 counties now has a real, verified live source behind
+it - not a milestone chased for its own sake, just the natural end of
+a thread that started with one simple question: who else out there is
+a real, live Florida utility this project isn't tracking yet.

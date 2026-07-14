@@ -7,9 +7,9 @@ from fetch_teco_outages import lookup_county, categorize_reason
 
 load_dotenv()
 
-# Found via browser devtools, not officially documented - kept out of the
-# committed code (this repo is public) the same way the auth token below
-# is, loaded from .env instead of hardcoded as a literal string.
+# Not an officially documented public API - kept out of the committed
+# code (this repo is public) the same way the auth token below is,
+# loaded from .env instead of hardcoded as a literal string.
 DUKE_API_BASE = os.environ.get("DUKE_API_BASE")
 DUKE_API_ORIGIN = os.environ.get("DUKE_API_ORIGIN")
 JURISDICTION = "DEF"  # Duke's internal code for their Florida jurisdiction
@@ -21,8 +21,7 @@ def _headers():
     if not token or not DUKE_API_BASE or not DUKE_API_ORIGIN:
         raise RuntimeError(
             "DUKE_ENERGY_API_AUTH / DUKE_API_BASE / DUKE_API_ORIGIN are not "
-            "set. Copy .env.example to .env and fill in the real values "
-            "(found via browser devtools)."
+            "set. Copy .env.example to .env and fill in the real values."
         )
     return {
         "Accept": "application/json, text/plain, */*",
