@@ -61,26 +61,23 @@ and ruling out a few dead-end or fabricated sources — to confirm as
 real and usable.
 
 ## Live right now
-- The poller runs unattended from three independent sources now
-- Real weather alerts are correlating with real (small) outages — the
-  mechanism works, just waiting on a real storm to test it against
-  something dramatic
-- The new incident-level source is the most interesting thing running
-  — first live data with an actual restoration-time field, still just
-  a handful of minor incidents so far
+- The poller runs unattended from twelve independent Florida utilities
+  now, up from the original one, closing out nearly the entire state
+- Real weather alerts are correlating with real outages statewide, each
+  match carrying its own confidence label
+- A real per-county lookup tool now pulls outages, weather, and heat
+  together for whichever county someone's actually asking about
+- 17 historical storms are queryable by county, and every collection
+  source's health is tracked so a quiet one gets noticed, not assumed
 
 ## The honest gaps
-- Guessing when the lights come back on for a *live* FPL outage? Still
-  no — FPL's feed hasn't changed. A second utility's feed does carry a
-  restoration estimate, but it's undocumented and could change or
-  break without warning — an asterisk FPL's boring, stable feed never
-  needed.
-- *Historical* storms improved a lot though: real multi-day,
-  multi-utility restoration data for two hurricanes, plus verified
-  severity context. Two storms is still a small sample, not yet
-  something to average.
-- Plan: keep working backwards through more past storms, one at a
-  time, each independently verified.
+- Guessing when the lights come back on for a *live* outage is still
+  hit or miss - most feeds don't carry a real restoration estimate, and
+  the ones that do are undocumented and could change without warning
+- *Historical* storms are the strong suit: 17 of them, 2018-2025, real
+  multi-day restoration data, cross-checked severity context
+- A genuine restoration-confidence model is still blocked on more live
+  data, not code - one season's worth isn't enough yet
 - The original plan — AI input parser, command history, an actual
   interactive shell — is still benched. "Map power outages against
   weather" turned out to be the more interesting rabbit hole.
