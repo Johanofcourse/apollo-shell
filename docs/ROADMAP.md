@@ -138,6 +138,32 @@
       is actually settled and ported.
 
 ## Phase 3: Predictive (Blocked on data, not code)
+- [ ] **Weather-based "at-risk counties" signal - a real idea, not yet
+      built, and NOT blocked the way the rest of this phase is.**
+      Everything else here needs data that only accumulates with time;
+      this one only needs data already being collected today. Idea: cross-
+      reference currently active NWS alerts (including Watches, which
+      already carry real advance notice, not just imminent Warnings)
+      against each county's own historical weather-match confidence
+      tally (already computed - see
+      county_status.historical_confidence_tally()) to flag "this county
+      has no reported outage yet, but its real history says outages here
+      have often followed this kind of alert." A heuristic built on this
+      project's own historical correlation strength, not a real
+      meteorological or grid-load forecast - same honesty standard as
+      every other confidence label already in this project.
+
+      No new external data source needed for a first version - the two
+      real inputs (live alerts, the historical confidence tally) already
+      flow through this project. The one real gap: the persisted tally
+      only stores a county-wide high/medium/low blend right now, not a
+      breakdown by alert type, so a sharper "this county specifically
+      reacts to Hurricane Warnings" signal would mean extending that
+      table - real but small work, not a new pipeline. A genuinely new
+      data source would only matter for a more sophisticated version
+      later - real storm-track/forecast-cone data (e.g. NOAA's National
+      Hurricane Center advisories) instead of just "is an alert active
+      right now" - not needed to ship a first pass.
 - [ ] **Restoration-time estimation with its own confidence** ("roughly
       a 50% chance this outage is fixed within a day," e.g.) - a
       different thing from Phase 2's weather-match confidence: that one
@@ -150,8 +176,10 @@
       deferred, not just unstarted - needs both the right analysis
       approach and a lot more live volume than exists today.
 
-This phase is **not a normal engineering task with a schedulable
-timeline.** It requires enough accumulated real outage-duration data
+The restoration-time items below (not the at-risk-counties one above,
+which is real, schedulable work already) are **not a normal engineering
+task with a schedulable timeline.** They require enough accumulated real
+outage-duration data
 before an estimate would mean anything — no amount of additional code
 shortens that. Rough sense of scale: "enough for a first rough look" is
 more like weeks of live data, "enough to trust" is more like a month or
