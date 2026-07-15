@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <title>Apollo Sentinel — Florida Outage &amp; Weather Watch</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Text:wght@700;800&family=Big+Shoulders+Stencil+Display:wght@800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --void: #060708;
@@ -30,7 +33,7 @@
   }
 
   body {
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: "Space Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-size: 16px;
     line-height: 1.45;
   }
@@ -58,7 +61,10 @@
     flex-wrap: wrap;
     border-bottom: 3px solid var(--cyan);
   }
-  .bezel h1 { margin: 0; font-size: 1.2rem; font-weight: 700; letter-spacing: 0.01em; }
+  .bezel h1 {
+    margin: 0; font-size: 1.7rem; font-weight: 900; letter-spacing: 0.03em;
+    font-family: "Big Shoulders Stencil Display", "Helvetica Neue", sans-serif;
+  }
   .bezel .tagline { color: #9fb0bd; font-size: 0.82rem; }
 
   .page { max-width: 960px; margin: 0 auto; padding: 1.75rem 1.5rem 4rem; }
@@ -157,8 +163,9 @@
   }
 
   h2.section-title {
-    font-size: 1.3rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--lime);
-    border-bottom: 2px solid var(--lime); padding-bottom: 0.6rem; margin: 0 0 1rem;
+    font-family: "Big Shoulders Stencil Text", "Helvetica Neue", sans-serif;
+    font-size: 1.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; color: var(--lime);
+    border-bottom: 2px solid var(--lime); padding-bottom: 0.5rem; margin: 0 0 1rem;
   }
   .section-sub { color: var(--ink-soft); font-size: 0.9rem; line-height: 1.55; max-width: 42rem; margin-bottom: 1.25rem; }
   section { margin-bottom: 3rem; }
@@ -188,7 +195,10 @@
   .alert-card.heat { border-left-color: var(--cyan); }
   .alert-card.heat .alert-severity { color: var(--cyan); }
 
-  .county-title { font-size: 1.3rem; font-weight: 700; margin-bottom: 0.9rem; }
+  .county-title {
+    font-family: "Big Shoulders Stencil Text", "Helvetica Neue", sans-serif;
+    font-size: 1.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; margin-bottom: 0.9rem;
+  }
   .outage-card { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--magenta); padding: 1rem 1.25rem; margin-bottom: 0.85rem; }
   .outage-card:last-child { margin-bottom: 0; }
   .outage-card.combined { border-left-color: var(--cyan); }
@@ -209,7 +219,10 @@
     letter-spacing: 0.06em; text-transform: uppercase; padding: 0 1.2rem; cursor: pointer;
   }
   .history-empty { color: var(--ink-soft); font-size: 0.9rem; padding: 0.5rem 0 1rem; }
-  .history-county-title { font-weight: 700; font-size: 1.1rem; margin-bottom: 0.25rem; }
+  .history-county-title {
+    font-family: "Big Shoulders Stencil Text", "Helvetica Neue", sans-serif;
+    font-weight: 700; font-size: 1.4rem; text-transform: uppercase; letter-spacing: 0.02em; margin-bottom: 0.3rem;
+  }
   .history-county-sub { color: var(--ink-soft); font-size: 0.8rem; margin-bottom: 1.3rem; }
 
   .storm-entry { display: flex; gap: 1rem; position: relative; }
