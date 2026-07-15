@@ -185,6 +185,19 @@
   .alert-window { color: var(--ink-soft); font-size: 0.8rem; margin-bottom: 0.6rem; }
   .alert-areas { display: flex; flex-wrap: wrap; gap: 0.4rem; }
   .alert-area-chip { font-size: 0.72rem; font-weight: 600; padding: 0.2rem 0.6rem; border: 1px solid var(--line); color: var(--ink-soft); white-space: nowrap; }
+  .alert-card.heat { border-left-color: var(--cyan); }
+  .alert-card.heat .alert-severity { color: var(--cyan); }
+
+  .county-title { font-size: 1.3rem; font-weight: 700; margin-bottom: 0.9rem; }
+  .outage-card { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--magenta); padding: 1rem 1.25rem; margin-bottom: 0.85rem; }
+  .outage-card:last-child { margin-bottom: 0; }
+  .outage-card.combined { border-left-color: var(--cyan); }
+  .outage-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
+  .outage-utility { font-weight: 700; font-size: 1rem; }
+  .outage-figure { color: var(--magenta); font-weight: 700; }
+  .outage-card.combined .outage-figure { color: var(--cyan); }
+  .outage-sub { color: var(--ink-soft); font-size: 0.85rem; }
+  .outage-note { color: var(--ink-soft); font-size: 0.75rem; margin-top: 0.4rem; }
 
   .history-search { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; max-width: 28rem; }
   .history-search input {
@@ -314,6 +327,60 @@
     {% endif %}
   </div>
 
+  <section id="countyStatusSection">
+    <h2 class="section-title">County Status</h2>
+    <p class="section-sub">
+      Real current outages and active weather alerts for whichever county you click on the map above, or search
+      in Storm History below &mdash; not a substitute for your utility's own live outage map, just our own read of it.
+    </p>
+    {% if not selected_county %}
+      <div class="history-empty">Click a county on the map above, or search one in Storm History below, to see its current status.</div>
+    {% else %}
+      <div class="county-title">{{ selected_county }}</div>
+      {% if not county_detail.real_events and not county_detail.combined_events and not county_detail.active_alerts %}
+        <div class="history-empty">No active outages or weather alerts for {{ selected_county }} County right now.</div>
+      {% else %}
+        {% for e in county_detail.real_events %}
+        <div class="outage-card">
+          <div class="outage-top">
+            <span class="outage-utility">{{ e.utility }}</span>
+            <span class="outage-figure mono">
+              {% if e.current_percentage_out is not none %}{{ "%.2f"|format(e.current_percentage_out) }}%{% else %}{{ "{:,}".format(e.customers or 0) }} customers{% endif %}
+            </span>
+          </div>
+          <div class="outage-sub">{{ "{:,}".format(e.customers or 0) }} customers out &middot; ongoing {{ e.duration }}</div>
+        </div>
+        {% endfor %}
+        {% for e in county_detail.combined_events %}
+        <div class="outage-card combined">
+          <div class="outage-top">
+            <span class="outage-utility">{{ e.utility }}</span>
+            <span class="outage-figure mono">
+              {% if e.current_percentage_out is not none %}{{ "%.2f"|format(e.current_percentage_out) }}%{% else %}{{ "{:,}".format(e.customers or 0) }} customers{% endif %}
+            </span>
+          </div>
+          <div class="outage-sub">{{ "{:,}".format(e.customers or 0) }} customers out across its whole territory &middot; ongoing {{ e.duration }}</div>
+          <div class="outage-note">Reports one combined total across several counties, not broken out by county.</div>
+        </div>
+        {% endfor %}
+        {% for a in county_detail.active_alerts %}
+        <div class="alert-card{% if a.is_heat %} heat{% endif %}">
+          <div class="alert-top">
+            <span class="alert-type">{{ a.event_type }}</span>
+            <span class="alert-severity">{{ a.severity or "Unknown" }}</span>
+          </div>
+          <div class="alert-window">Active until {{ a.expires | humanize }}</div>
+          <div class="alert-areas">
+            {% for area in a.areas_list %}
+              <span class="alert-area-chip">{{ area }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      {% endif %}
+    {% endif %}
+  </section>
+
   <section id="alertsSection">
     <h2 class="section-title">Current Weather Alerts</h2>
     <p class="section-sub">
@@ -375,9 +442,9 @@
   <section id="historySection">
     <h2 class="section-title">Storm History</h2>
     <p class="section-sub">
-      Real reports from 17 storms, 2018&ndash;2025. Search your county below, or click it on the map above &mdash;
-      every storm we have data for shows up here, including the ones where we don't have a report for your
-      county, so you can see the real gaps instead of assuming "no data" means "not affected."
+      Real reports from 17 storms, 2018&ndash;2025. Search your county below &mdash; every storm we have data for
+      shows up here, including the ones where we don't have a report for your county, so you can see the real
+      gaps instead of assuming "no data" means "not affected."
     </p>
     <form class="history-search" action="/" method="get">
       <input type="text" name="county" list="county-list" placeholder="Type your county&hellip;" value="{{ selected_county }}" autocomplete="off">
@@ -647,7 +714,7 @@
   });
 
   function selectCounty(name) {
-    window.location.href = "/?county=" + encodeURIComponent(name) + "#historySection";
+    window.location.href = "/?county=" + encodeURIComponent(name) + "#countyStatusSection";
   }
 </script>
 </body>
