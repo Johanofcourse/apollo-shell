@@ -684,6 +684,105 @@ class OutageDatabase:
             )
         ''')
 
+        # Lake Worth Beach Utilities (LWBU) raw snapshots - a real
+        # single-county rollup like FKEC/PRECO, always exactly one row
+        # (see fetch_lwbu_outages.SERVICE_COUNTY: Palm Beach), kept in
+        # its own table per the same one-utility-per-table convention.
+        # Unlike FKEC, this feed's own top-level customersServed total
+        # is always present (not just during a declared event), so this
+        # is a genuine real-percentage source, same treatment as FKEC.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS lwbu_outages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
+                customers_out INTEGER NOT NULL,
+                customers_served INTEGER NOT NULL,
+                percentage_out REAL NOT NULL
+            )
+        ''')
+
+        # LWBU county-level lifecycle tracking - identical algorithm to
+        # fkec_outage_events/gcec_outage_events (open on customers_out >
+        # 0, track peak, close on return to 0).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS lwbu_outage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customers_out INTEGER NOT NULL,
+                peak_percentage_out REAL NOT NULL,
+                customers_served INTEGER NOT NULL
+            )
+        ''')
+
+        # LWBU raw incident snapshots - same incident-level shape as
+        # duke_incidents/tallahassee_incidents (no per-record update_time
+        # of its own, so a fresh row every poll cycle keyed on our own
+        # fetched_at is the real timeline), plus real fields unique to
+        # this source: crew_assigned, work_status, and streets_affected
+        # (this feed reports these directly - a genuinely richer feed
+        # than TECO's/Duke's/Tallahassee's). Its whole territory is Palm
+        # Beach County only (see fetch_lwbu_outages.SERVICE_COUNTY), so
+        # there's no per-record reverse-geocoded county needed.
+        #
+        # Kept as its own table, separate from lwbu_outages above,
+        # deliberately NOT fed into the same aggregate/correlation paths
+        # as the rollup - same "pick exactly one real-county source for
+        # aggregate math" principle FPUC's combined-total/incident-level
+        # split already established, just mirrored: here the rollup is
+        # the one real per-county number, and these incidents are
+        # supplementary per-outage display detail only (street, cause,
+        # crew, work status), so the same real 2 customers out never get
+        # summed twice into a statewide total.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS lwbu_incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                utility TEXT,
+                customer_count INTEGER,
+                lat REAL,
+                lon REAL,
+                county TEXT,
+                cause TEXT,
+                cause_category TEXT,
+                crew_assigned INTEGER,
+                work_status TEXT,
+                streets_affected TEXT,
+                is_planned INTEGER,
+                verified INTEGER,
+                reported_start_time TEXT,
+                estimated_restoration TEXT
+            )
+        ''')
+
+        # LWBU incident lifecycle tracking - same open-on-first-seen/
+        # close-on-disappearance approach as duke_incident_events/
+        # tallahassee_incident_events (the feed only lists
+        # currently-active incidents).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS lwbu_incident_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                utility TEXT,
+                county TEXT,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customer_count INTEGER,
+                cause TEXT,
+                cause_category TEXT,
+                crew_assigned INTEGER,
+                work_status TEXT,
+                streets_affected TEXT,
+                lat REAL,
+                lon REAL
+            )
+        ''')
+
         # Create indexes
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_timestamp
@@ -748,6 +847,16 @@ class OutageDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_gcec_outage_events_open
             ON gcec_outage_events(utility, county, end_time)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_lwbu_outage_events_open
+            ON lwbu_outage_events(utility, county, end_time)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_lwbu_incident_events_open
+            ON lwbu_incident_events(incident_id, end_time)
         ''')
 
         cursor.execute('''
@@ -938,6 +1047,26 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_gcec_outage_events_unique
             ON gcec_outage_events(utility, county, start_time)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_lwbu_outages_unique
+            ON lwbu_outages(timestamp, utility, county)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_lwbu_outage_events_unique
+            ON lwbu_outage_events(utility, county, start_time)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_lwbu_incidents_unique
+            ON lwbu_incidents(incident_id, fetched_at)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_lwbu_incident_events_unique
+            ON lwbu_incident_events(incident_id, start_time)
         ''')
 
         cursor.execute('''
@@ -2066,6 +2195,216 @@ class OutageDatabase:
         print(f"GCEC outage events: {opened} opened, {closed} closed this cycle")
 
 
+    def log_lwbu_outages(self, outage_list, timestamp=None):
+        """
+        Insert Lake Worth Beach Utilities' raw single-county snapshot
+        (from fetch_lwbu_outages.py) - always exactly one record (see
+        fetch_lwbu_outages.SERVICE_COUNTY). Same shape/principle as
+        log_fkec_outages(), kept in its own table.
+
+        Args:
+            outage_list: list of dicts with keys: county, customers_out, customers_served
+            timestamp: ISO timestamp to record for this batch; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+
+        records = []
+        for outage in outage_list:
+            customers_out = outage['customers_out']
+            customers_served = outage['customers_served']
+            percentage_out = (customers_out / customers_served * 100) if customers_served > 0 else 0
+            records.append((timestamp, "Lake Worth Beach Utilities", outage['county'], customers_out, customers_served, percentage_out))
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO lwbu_outages (timestamp, utility, county, customers_out, customers_served, percentage_out)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', records)
+
+        conn.commit()
+        print(f"Logged {len(records)} LWBU outage records")
+
+
+    def sync_lwbu_outage_events(self, outage_list, timestamp=None):
+        """
+        Update lwbu_outage_events from a fresh batch of snapshots.
+        Identical algorithm to sync_fkec_outage_events() - kept as
+        LWBU's own dedicated table/method, same one-utility-per-table
+        convention.
+
+        NOT SAFE TO REPLAY - same characteristic as sync_outage_events()
+        (see its docstring): only safe for calls arriving in real
+        chronological order, one live poll at a time.
+
+        Args:
+            outage_list: list of dicts with keys: county, customers_out, customers_served
+            timestamp: ISO timestamp for opened/closed events; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        utility = "Lake Worth Beach Utilities"
+
+        opened = 0
+        closed = 0
+
+        for outage in outage_list:
+            county = outage['county']
+            customers_out = outage['customers_out']
+            customers_served = outage['customers_served']
+            percentage_out = (customers_out / customers_served * 100) if customers_served > 0 else 0
+
+            cursor.execute('''
+                SELECT id, peak_customers_out FROM lwbu_outage_events
+                WHERE utility = ? AND county = ? AND end_time IS NULL
+            ''', (utility, county))
+            open_event = cursor.fetchone()
+
+            if customers_out > 0:
+                if open_event is None:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO lwbu_outage_events
+                            (utility, county, start_time, end_time, peak_customers_out, peak_percentage_out, customers_served)
+                        VALUES (?, ?, ?, NULL, ?, ?, ?)
+                    ''', (utility, county, timestamp, customers_out, percentage_out, customers_served))
+                    if cursor.rowcount > 0:
+                        opened += 1
+                elif customers_out > open_event['peak_customers_out']:
+                    cursor.execute('''
+                        UPDATE lwbu_outage_events
+                        SET peak_customers_out = ?, peak_percentage_out = ?, customers_served = ?
+                        WHERE id = ?
+                    ''', (customers_out, percentage_out, customers_served, open_event['id']))
+            else:
+                if open_event is not None:
+                    cursor.execute('''
+                        UPDATE lwbu_outage_events SET end_time = ? WHERE id = ?
+                    ''', (timestamp, open_event['id']))
+                    closed += 1
+
+        conn.commit()
+        print(f"LWBU outage events: {opened} opened, {closed} closed this cycle")
+
+
+    def log_lwbu_incidents(self, records):
+        """
+        Insert Lake Worth Beach Utilities' live outage incidents (from
+        fetch_lwbu_outages.py).
+
+        Args:
+            records: list of dicts with keys: incident_id, utility,
+                     customer_count, lat, lon, county, cause, cause_category,
+                     crew_assigned, work_status, streets_affected,
+                     is_planned, verified, reported_start_time,
+                     estimated_restoration
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        fetched_at = datetime.now().isoformat()
+
+        rows = [
+            (
+                r['incident_id'], fetched_at, r.get('utility'),
+                r.get('customer_count'), r.get('lat'), r.get('lon'),
+                r.get('county'), r.get('cause'), r.get('cause_category'),
+                r.get('crew_assigned'), r.get('work_status'), r.get('streets_affected'),
+                r.get('is_planned'), r.get('verified'),
+                r.get('reported_start_time'), r.get('estimated_restoration'),
+            )
+            for r in records
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO lwbu_incidents
+                (incident_id, fetched_at, utility, customer_count, lat, lon,
+                 county, cause, cause_category, crew_assigned, work_status,
+                 streets_affected, is_planned, verified, reported_start_time,
+                 estimated_restoration)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+
+        conn.commit()
+        print(f"Logged {len(rows)} LWBU incident records")
+
+
+    def sync_lwbu_incident_events(self, records, timestamp=None):
+        """
+        Track LWBU incident lifecycle. Same approach as
+        sync_tallahassee_incident_events(): an event opens the first
+        time an incident_id is seen, stays updated with the latest known
+        values while still being reported, and closes once an
+        incident_id that was open stops appearing in a poll at all.
+
+        NOT SAFE TO REPLAY - same characteristic as
+        sync_tallahassee_incident_events() (see its docstring).
+
+        Args:
+            records: list of dicts as returned by
+                fetch_lwbu_outages.parse_incidents()
+            timestamp: ISO timestamp for this poll; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        current_ids = {r['incident_id'] for r in records}
+
+        opened = 0
+        closed = 0
+
+        for r in records:
+            cursor.execute('''
+                SELECT id, peak_customer_count FROM lwbu_incident_events
+                WHERE incident_id = ? AND end_time IS NULL
+            ''', (r['incident_id'],))
+            open_event = cursor.fetchone()
+
+            if open_event is None:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO lwbu_incident_events
+                        (incident_id, utility, county, start_time, end_time,
+                         peak_customer_count, cause, cause_category,
+                         crew_assigned, work_status, streets_affected, lat, lon)
+                    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    r['incident_id'], r.get('utility'), r.get('county'), timestamp,
+                    r.get('customer_count'), r.get('cause'), r.get('cause_category'),
+                    r.get('crew_assigned'), r.get('work_status'), r.get('streets_affected'),
+                    r.get('lat'), r.get('lon'),
+                ))
+                if cursor.rowcount > 0:
+                    opened += 1
+            else:
+                peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
+                cursor.execute('''
+                    UPDATE lwbu_incident_events
+                    SET peak_customer_count = ?, utility = ?, county = ?,
+                        cause = ?, cause_category = ?, crew_assigned = ?,
+                        work_status = ?, streets_affected = ?, lat = ?, lon = ?
+                    WHERE id = ?
+                ''', (
+                    peak, r.get('utility'), r.get('county'),
+                    r.get('cause'), r.get('cause_category'),
+                    r.get('crew_assigned'), r.get('work_status'), r.get('streets_affected'),
+                    r.get('lat'), r.get('lon'), open_event['id'],
+                ))
+
+        cursor.execute('SELECT id, incident_id FROM lwbu_incident_events WHERE end_time IS NULL')
+        for row in cursor.fetchall():
+            if row['incident_id'] not in current_ids:
+                cursor.execute('''
+                    UPDATE lwbu_incident_events SET end_time = ? WHERE id = ?
+                ''', (timestamp, row['id']))
+                closed += 1
+
+        conn.commit()
+        print(f"LWBU incident events: {opened} opened, {closed} closed this cycle")
+
+
     def log_fpuc_outages(self, outage_list, timestamp=None):
         """
         Insert FPUC's raw combined-territory snapshot (from
@@ -2729,6 +3068,98 @@ class OutageDatabase:
         return [dict(row) for row in cursor.fetchall()]
 
 
+    def get_lwbu_open_events(self):
+        """
+        Return currently open lwbu_outage_events (end_time IS NULL),
+        worst (by peak percentage out) first. Includes
+        current_customers_out/current_percentage_out from the latest
+        lwbu_outages snapshot for that county, alongside the lifecycle
+        peak - same "peak vs. right now" reasoning as get_gcec_open_events().
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT oe.*,
+                   cur.customers_out AS current_customers_out,
+                   cur.percentage_out AS current_percentage_out
+            FROM lwbu_outage_events oe
+            LEFT JOIN lwbu_outages cur
+                ON cur.utility = oe.utility AND cur.county = oe.county
+                AND cur.timestamp = (
+                    SELECT MAX(timestamp) FROM lwbu_outages o2
+                    WHERE o2.utility = oe.utility AND o2.county = oe.county
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_percentage_out DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_lwbu_recent_closed_events(self, limit=10):
+        """
+        Return the most recently closed lwbu_outage_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM lwbu_outage_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_lwbu_open_incidents(self):
+        """
+        Return currently open lwbu_incident_events (end_time IS NULL),
+        worst (by peak customer count) first. Includes
+        current_customer_count from the latest lwbu_incidents row
+        fetched for that incident_id, alongside the lifecycle peak - same
+        "peak vs. right now" reasoning as get_open_events(). Distinct
+        from get_lwbu_open_events() (the real-percentage county
+        rollup) - this is the real per-incident display detail (street,
+        cause, crew, work status), deliberately not fed into the same
+        aggregate/correlation paths, see lwbu_incidents' own schema
+        comment for why.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT oe.*,
+                   cur.customer_count AS current_customer_count
+            FROM lwbu_incident_events oe
+            LEFT JOIN lwbu_incidents cur
+                ON cur.incident_id = oe.incident_id
+                AND cur.fetched_at = (
+                    SELECT MAX(fetched_at) FROM lwbu_incidents t2
+                    WHERE t2.incident_id = oe.incident_id
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_customer_count DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_lwbu_recent_closed_incidents(self, limit=10):
+        """
+        Return the most recently closed lwbu_incident_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM lwbu_incident_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
     def get_fpuc_open_events(self):
         """
         Return currently open fpuc_outage_events (end_time IS NULL) -
@@ -3169,6 +3600,41 @@ class OutageDatabase:
         history = [dict(row) for row in cursor.fetchall()]
 
         return {"event": event, "history": history}
+
+    def get_lwbu_outage_detail(self, utility, county, start_time):
+        """
+        Same idea as get_gcec_outage_detail(), for one LWBU real-county
+        outage occurrence.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM lwbu_outage_events WHERE utility = ? AND county = ? AND start_time = ?
+        ''', (utility, county, start_time))
+        event = cursor.fetchone()
+        if event is None:
+            return None
+        event = dict(event)
+
+        end_bound = event["end_time"] or datetime.now().isoformat()
+        cursor.execute('''
+            SELECT timestamp, customers_out, customers_served, percentage_out FROM lwbu_outages
+            WHERE utility = ? AND county = ? AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp
+        ''', (utility, county, start_time, end_bound))
+        history = [dict(row) for row in cursor.fetchall()]
+
+        return {"event": event, "history": history}
+
+    def get_lwbu_incident_detail(self, incident_id):
+        """
+        Same as get_teco_incident_detail(), for an LWBU incident_id.
+        """
+        return {
+            "events": self._get_incident_events("lwbu_incident_events", incident_id),
+            "history": self._get_incident_raw_history("lwbu_incidents", incident_id),
+        }
 
     def get_teco_open_events(self):
         """

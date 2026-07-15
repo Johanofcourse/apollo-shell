@@ -13,7 +13,7 @@ from correlate import (
     find_correlations, find_teco_correlations, find_duke_correlations,
     find_jea_correlations, find_tallahassee_correlations,
     find_talquin_correlations, find_fpuc_incident_correlations,
-    find_preco_correlations, find_fkec_correlations,
+    find_preco_correlations, find_fkec_correlations, find_lwbu_correlations,
 )
 from historical_import import FLORIDA_COUNTIES
 
@@ -97,8 +97,8 @@ def _normalize_open_events(open_events, customers_field, peak_field):
 
     current_percentage_out/peak_percentage_out/customers_served are
     carried through when the source row has them (the real per-county/
-    territory rollup sources - FPL, JEA, Talquin, PRECO, FKEC, and all
-    five combined-territory trackers) and come back None otherwise (the
+    territory rollup sources - FPL, JEA, Talquin, PRECO, FKEC, LWBU, and
+    all five combined-territory trackers) and come back None otherwise (the
     incident-level sources - TECO, Duke, Tallahassee, FPUC's incidents -
     which have no clean per-incident denominator/customer base at all).
     See county_verdict() for how the two cases get tiered together.
@@ -136,6 +136,7 @@ def _real_per_county_open_events(db):
         + _normalize_open_events(db.get_talquin_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_preco_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_fkec_open_events(), "current_customers_out", "peak_customers_out")
+        + _normalize_open_events(db.get_lwbu_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_fpuc_open_incidents(), "current_customer_count", "peak_customer_count")
     )
 
@@ -264,6 +265,7 @@ _REAL_CORRELATION_SOURCES = [
     (find_fpuc_incident_correlations, correlation_summary),
     (find_preco_correlations, correlation_summary),
     (find_fkec_correlations, correlation_summary),
+    (find_lwbu_correlations, correlation_summary),
 ]
 
 

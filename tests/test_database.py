@@ -183,6 +183,19 @@ def _fpuc_incident(incident_id, county="Liberty", customer_count=56, substation=
     }
 
 
+def _lwbu_incident(incident_id, customer_count=2, streets_affected="PENNY LN",
+                    cause="Material or equipment fault/failure", crew_assigned=False,
+                    work_status="Crew in Route"):
+    return {
+        "incident_id": incident_id, "utility": "Lake Worth Beach Utilities",
+        "customer_count": customer_count, "lat": 26.6, "lon": -80.1, "county": "Palm Beach",
+        "cause": cause, "cause_category": "other", "crew_assigned": crew_assigned,
+        "work_status": work_status, "streets_affected": streets_affected,
+        "is_planned": False, "verified": True,
+        "reported_start_time": "2026-01-01T00:00:00", "estimated_restoration": None,
+    }
+
+
 class TestIncidentDetailLookup:
     """
     Tests for the incident-detail DB methods added 2026-07-12 for the
@@ -460,6 +473,53 @@ class TestIncidentDetailLookup:
         db.close()
 
         assert detail is None
+
+    def test_lwbu_outage_detail_returns_event_and_bounded_history(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_lwbu_outages([_fpl_row("Palm Beach", 2, 28232)], timestamp="2026-01-01T00:00:00")
+        db.sync_lwbu_outage_events([_fpl_row("Palm Beach", 2, 28232)], timestamp="2026-01-01T00:00:00")
+        db.log_lwbu_outages([_fpl_row("Palm Beach", 0, 28232)], timestamp="2026-01-01T00:15:00")
+        db.sync_lwbu_outage_events([_fpl_row("Palm Beach", 0, 28232)], timestamp="2026-01-01T00:15:00")
+
+        detail = db.get_lwbu_outage_detail("Lake Worth Beach Utilities", "Palm Beach", "2026-01-01T00:00:00")
+        db.close()
+
+        assert detail is not None
+        assert detail["event"]["end_time"] == "2026-01-01T00:15:00"
+        assert len(detail["history"]) == 2
+        assert detail["history"][0]["customers_out"] == 2
+        assert detail["history"][-1]["customers_out"] == 0
+
+    def test_lwbu_outage_detail_none_for_unknown_occurrence(self, db_path):
+        db = OutageDatabase(db_path)
+        detail = db.get_lwbu_outage_detail("Lake Worth Beach Utilities", "Palm Beach", "2026-01-01T00:00:00")
+        db.close()
+
+        assert detail is None
+
+    def test_lwbu_incident_detail_has_one_episode_and_raw_history(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_lwbu_incidents([_lwbu_incident("2026-07-14-0099")])
+        db.sync_lwbu_incident_events([_lwbu_incident("2026-07-14-0099")], timestamp="2026-01-01T00:00:00")
+        db.sync_lwbu_incident_events([], timestamp="2026-01-01T03:00:00")
+
+        detail = db.get_lwbu_incident_detail("2026-07-14-0099")
+        db.close()
+
+        assert len(detail["events"]) == 1
+        assert detail["events"][0]["end_time"] == "2026-01-01T03:00:00"
+        assert detail["events"][0]["county"] == "Palm Beach"
+        assert detail["events"][0]["streets_affected"] == "PENNY LN"
+        assert len(detail["history"]) == 1
+        assert detail["history"][0]["work_status"] == "Crew in Route"
+
+    def test_lwbu_incident_detail_empty_for_unknown_id(self, db_path):
+        db = OutageDatabase(db_path)
+        detail = db.get_lwbu_incident_detail("NOT-A-REAL-ID")
+        db.close()
+
+        assert detail["events"] == []
+        assert detail["history"] == []
 
     def test_fpuc_outage_detail_returns_event_and_bounded_history(self, db_path):
         db = OutageDatabase(db_path)
@@ -761,6 +821,38 @@ class TestOpenEventsCurrentVsPeak:
         assert len(open_events) == 1
         assert open_events[0]["peak_customer_count"] == 400
         assert open_events[0]["current_customer_count"] == 60
+
+    def test_lwbu_open_event_reports_current_alongside_peak(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_lwbu_outages([_fpl_row("Palm Beach", 2, 28232)], timestamp="2026-01-01T00:00:00")
+        db.sync_lwbu_outage_events([_fpl_row("Palm Beach", 2, 28232)], timestamp="2026-01-01T00:00:00")
+        db.log_lwbu_outages([_fpl_row("Palm Beach", 50, 28232)], timestamp="2026-01-01T00:15:00")
+        db.sync_lwbu_outage_events([_fpl_row("Palm Beach", 50, 28232)], timestamp="2026-01-01T00:15:00")
+        db.log_lwbu_outages([_fpl_row("Palm Beach", 3, 28232)], timestamp="2026-01-01T00:30:00")
+        db.sync_lwbu_outage_events([_fpl_row("Palm Beach", 3, 28232)], timestamp="2026-01-01T00:30:00")
+
+        open_events = db.get_lwbu_open_events()
+        db.close()
+
+        assert len(open_events) == 1
+        assert open_events[0]["peak_customers_out"] == 50
+        assert open_events[0]["current_customers_out"] == 3
+
+    def test_lwbu_open_incident_reports_current_alongside_peak(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_lwbu_incidents([_lwbu_incident("I1", customer_count=2)])
+        db.sync_lwbu_incident_events([_lwbu_incident("I1", customer_count=2)], timestamp="2026-01-01T00:00:00")
+        db.log_lwbu_incidents([_lwbu_incident("I1", customer_count=40)])
+        db.sync_lwbu_incident_events([_lwbu_incident("I1", customer_count=40)], timestamp="2026-01-01T00:15:00")
+        db.log_lwbu_incidents([_lwbu_incident("I1", customer_count=6)])
+        db.sync_lwbu_incident_events([_lwbu_incident("I1", customer_count=6)], timestamp="2026-01-01T00:30:00")
+
+        open_events = db.get_lwbu_open_incidents()
+        db.close()
+
+        assert len(open_events) == 1
+        assert open_events[0]["peak_customer_count"] == 40
+        assert open_events[0]["current_customer_count"] == 6
 
 
 class TestPipelineErrorHistory:

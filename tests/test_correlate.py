@@ -19,6 +19,7 @@ from correlate import (
     find_fpuc_incident_correlations, duke_correlation_summary, correlation_summary,
     find_preco_correlations, find_fkec_correlations, find_tcec_correlations,
     find_erec_correlations, find_chelco_correlations, find_gcec_correlations,
+    find_lwbu_correlations,
 )
 from database import OutageDatabase
 
@@ -596,3 +597,39 @@ class TestFindGcecCorrelations:
         db.close()
 
         assert find_gcec_correlations(db_path, days=None) == []
+
+
+class TestFindLwbuCorrelations:
+    """
+    find_lwbu_correlations() reuses the exact same matching helpers
+    already proven via find_correlations()/find_fkec_correlations()
+    above - a real single-county rollup source (Palm Beach), not a
+    combined-territory label, so (unlike TCEC/EREC/CHELCO/GCEC) a real
+    match is expected here, not an always-empty result.
+    """
+
+    def test_matches_an_lwbu_outage_to_an_overlapping_alert(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Palm Beach"))
+        db.log_lwbu_outages(
+            [{"county": "Palm Beach", "customers_out": 2, "customers_served": 28232}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        matches = find_lwbu_correlations(db_path, days=None)
+        assert len(matches) == 1
+
+        summary = correlation_summary(matches)
+        assert summary["Palm Beach"]["outage_count"] == 1
+
+    def test_zero_customer_snapshots_are_not_matched(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Palm Beach"))
+        db.log_lwbu_outages(
+            [{"county": "Palm Beach", "customers_out": 0, "customers_served": 28232}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_lwbu_correlations(db_path, days=None) == []

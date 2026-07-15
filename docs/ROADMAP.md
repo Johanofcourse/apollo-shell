@@ -275,7 +275,7 @@ and don't substitute for everyday-outage volume.
       and the test/prod split above first, not something to start now.
 
 ## Utility coverage
-Grew from one utility (FPL) to thirteen live sources across this
+Grew from one utility (FPL) to fourteen live sources across this
 project's life, each one closing a real, verified county-coverage gap
 rather than being added for its own sake. In rough order: a second and
 third utility added genuinely richer per-incident detail (real cause,
@@ -298,7 +298,13 @@ as such rather than guessed at a fake single-county number) - the last
 of the four found by cross-referencing this project's own historical
 storm data for a consistently-appearing real utility rather than
 guessing, and completing full real per-county live coverage across all
-67 Florida counties for the first time.
+67 Florida counties for the first time. A fourteenth (Lake Worth Beach
+Utilities) added a real, always-present city-wide percentage for a
+single county already covered indirectly through FPL, plus a separate,
+richer per-incident feed (street, cause, crew status) - kept as two
+independent views of the same real outages, with only the city-wide
+total feeding the statewide numbers, the same "pick exactly one real
+per-county source" principle FPUC's own dual-shape feed established.
 
 Every combined-territory source (where one number covers multiple real
 counties rather than a true per-county breakdown) is disclosed as such

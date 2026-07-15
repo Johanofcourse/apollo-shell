@@ -226,6 +226,54 @@ class TestRunGcecCycleFailureVisibility:
         main.run_gcec_cycle(db)  # should not raise
 
 
+class TestRunLwbuCycleFailureVisibility:
+    """
+    run_lwbu_cycle() fetches two independent shapes (summary rollup +
+    incidents) in one call, same two-shapes-one-utility approach as
+    run_duke_cycle()/run_fpuc_cycle() - the raise-on-empty check only
+    applies to the summary rollup (the always-present real total);
+    incidents are allowed to legitimately be empty on a quiet day.
+    """
+
+    def test_raises_when_configured_but_summary_empty(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_lwbu_records", lambda: [])
+        monkeypatch.setattr(main, "get_lwbu_incidents_summary", lambda: [])
+        monkeypatch.setattr(main, "LWBU_API_BASE", "https://example.com/real-endpoint")
+        with pytest.raises(RuntimeError):
+            main.run_lwbu_cycle(db)
+
+    def test_does_not_raise_when_not_configured(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_lwbu_records", lambda: [])
+        monkeypatch.setattr(main, "get_lwbu_incidents_summary", lambda: [])
+        monkeypatch.setattr(main, "LWBU_API_BASE", None)
+        main.run_lwbu_cycle(db)  # should not raise
+
+    def test_does_not_raise_when_records_present(self, db, monkeypatch):
+        monkeypatch.setattr(main, "get_lwbu_records", lambda: [
+            {"county": "Palm Beach", "customers_out": 2, "customers_served": 28232}
+        ])
+        monkeypatch.setattr(main, "get_lwbu_incidents_summary", lambda: [])
+        monkeypatch.setattr(main, "LWBU_API_BASE", "https://example.com/real-endpoint")
+        main.run_lwbu_cycle(db)  # should not raise
+
+    def test_does_not_raise_when_only_incidents_present(self, db, monkeypatch):
+        # A quiet day for the summary total but a real incident still on
+        # file would be a real, if odd, live state - must not crash.
+        monkeypatch.setattr(main, "get_lwbu_records", lambda: [
+            {"county": "Palm Beach", "customers_out": 0, "customers_served": 28232}
+        ])
+        monkeypatch.setattr(main, "get_lwbu_incidents_summary", lambda: [
+            {"incident_id": "2026-07-14-0099", "utility": "Lake Worth Beach Utilities",
+             "customer_count": 2, "lat": 26.6, "lon": -80.1, "county": "Palm Beach",
+             "cause": "Material or equipment fault/failure", "cause_category": "other",
+             "crew_assigned": False, "work_status": "Crew in Route", "streets_affected": "PENNY LN",
+             "is_planned": False, "verified": True,
+             "reported_start_time": "2026-01-01T00:00:00", "estimated_restoration": None}
+        ])
+        monkeypatch.setattr(main, "LWBU_API_BASE", "https://example.com/real-endpoint")
+        main.run_lwbu_cycle(db)  # should not raise
+
+
 class TestRunFpucCycleFailureVisibility:
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
         monkeypatch.setattr(main, "fetch_fpuc_outage_summary", lambda: None)

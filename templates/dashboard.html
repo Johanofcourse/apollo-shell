@@ -847,6 +847,63 @@
   {% endif %}
   </div>
 
+  <h3>LWBU — Currently Open Outages ({{ lwbu_open_events|length }})</h3>
+  <p class="section-note">
+    Lake Worth Beach Utilities' live feed reports a real city-wide total, always present (not just during a
+    declared event) &mdash; a genuine real-percentage single-county source, confirmed to sit entirely within
+    Palm Beach County. See the incidents section below for real per-outage street/cause/crew detail from the
+    same feed; the two are kept separate so the same customers never get counted twice.
+  </p>
+  <div class="wrap">
+  {% if lwbu_open_events %}
+    <table>
+      <tr><th>County</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in lwbu_open_events %}
+      <tr>
+        <td><a href="/incident?source=lwbu&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
+        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open LWBU outages right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>LWBU — Currently Open Incidents ({{ lwbu_open_incidents|length }})</h3>
+  <p class="section-note">
+    Real per-outage detail from the same feed &mdash; street(s) affected, cause, and crew status, all reported
+    directly. Not fed into the county rollup or correlation above; see the county-level section for the
+    authoritative percentage/customer figures.
+  </p>
+  <div class="wrap">
+  {% if lwbu_open_incidents %}
+    <table>
+      <tr><th>Incident</th><th>Streets</th><th>Cause</th><th>Crew</th><th>Status</th><th>Current</th><th>Peak</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in lwbu_open_incidents %}
+      <tr>
+        <td><a href="/incident?source=lwbu_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
+        <td>{{ e.streets_affected or "—" }}</td>
+        <td>{{ e.cause or "—" }}</td>
+        <td>{{ "Yes" if e.crew_assigned else "No" }}</td>
+        <td>{{ e.work_status or "—" }}</td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open LWBU incidents right now.</div>
+  {% endif %}
+  </div>
+
     </div>
   </details>
 
@@ -1130,6 +1187,47 @@
       <tr>
         <td><a href="/incident?source=gcec&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>LWBU — Recently Resolved</h3>
+  <div class="wrap">
+  {% if lwbu_closed_events %}
+    <table>
+      <tr><th>County</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in lwbu_closed_events %}
+      <tr>
+        <td><a href="/incident?source=lwbu&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>LWBU — Recently Resolved Incidents</h3>
+  <div class="wrap">
+  {% if lwbu_closed_incidents %}
+    <table>
+      <tr><th>Incident</th><th>Streets</th><th>Peak Customers</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in lwbu_closed_incidents %}
+      <tr>
+        <td><a href="/incident?source=lwbu_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
+        <td>{{ e.streets_affected or "—" }}</td>
+        <td class="pct-ok">{{ e.peak_customer_count }}</td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.end_time | humanize }}</td>
         <td>{{ e.duration }}</td>
@@ -1542,6 +1640,39 @@
     </table>
   {% else %}
     <div class="empty">No correlated GCEC outage/weather events right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>Weather / Outage Correlation (LWBU) &mdash; last {{ window_days }} days</h3>
+  <p class="section-note">
+    Reads LWBU's county rollup (a real single county, Palm Beach), not its incidents feed &mdash; same
+    "pick exactly one real per-county source" principle as every other dual-shape source here.
+  </p>
+  <div class="wrap">
+  {% if lwbu_correlation %}
+    <table>
+      <tr><th>County</th><th>Correlated Outages</th><th>Peak % Out</th><th>Alert Types</th><th>Confidence</th></tr>
+      {% for county, stats in lwbu_correlation.items() %}
+      <tr>
+        <td>{{ county }}</td>
+        <td>{{ stats.outage_count }}</td>
+        <td>{{ "%.2f"|format(stats.max_percentage_out) }}%</td>
+        <td>{{ stats.alert_types_display }}</td>
+        <td>
+          {% if stats.confidence_bar %}
+          <div class="conf-bar">
+            {% for seg in stats.confidence_bar %}
+            <div class="conf-seg-{{ seg.tier }}" style="width: {{ seg.pct }}%;" title="{{ seg.tier }} ×{{ seg.count }}"></div>
+            {% endfor %}
+          </div>
+          <div class="conf-caption">{{ stats.confidence_display }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No correlated LWBU outage/weather events right now.</div>
   {% endif %}
   </div>
     </div>

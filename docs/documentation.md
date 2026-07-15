@@ -4,7 +4,7 @@ Started as a "shell." Somewhere along the way it became an outage
 detective instead. No regrets.
 
 ## Done
-- Live outage data flows in continuously from thirteen independent
+- Live outage data flows in continuously from fourteen independent
   Florida utilities, alongside National Weather Service alerts, now
   covering every one of Florida's 67 counties with a real, verified
   live source
@@ -70,7 +70,7 @@ and ruling out a few dead-end or fabricated sources — to confirm as
 real and usable.
 
 ## Live right now
-- The poller runs unattended from thirteen independent Florida
+- The poller runs unattended from fourteen independent Florida
   utilities now, up from the original one, with a real live source
   covering every one of Florida's 67 counties
 - Real weather alerts are correlating with real outages statewide, each
@@ -647,3 +647,25 @@ tally from scratch on every single view - fixed the same way an
 identical problem was already solved once on the internal dashboard, a
 short-lived cache, since the underlying data only actually changes once
 a poll cycle.
+
+## A fourteenth utility, and one number instead of two
+Lake Worth Beach Utilities joined next - a single real city inside Palm
+Beach County, already covered indirectly through FPL's county-wide
+number but never on its own. Its live feed turned out to offer
+something genuinely new: a real, always-present city-wide total
+(current customers out over total customers served) alongside a
+separate, richer feed of individual outages - street, cause, and crew
+status per incident, more detail than any other source here reports
+directly.
+
+That shape raised a real design question rather than a parsing one:
+with two views of the same real outages, which one counts? Reusing
+both would double the same real customers into every statewide total.
+The answer followed a principle this project had already reached for
+once before, in the other direction - Florida Public Utilities
+Corporation's combined total and its real per-incident view exist side
+by side, and only one of them feeds the statewide numbers. Here, the
+city-wide total became that one authoritative number (a real
+percentage, not a raw count) and the individual incidents stayed
+exactly what they are: real, useful, per-outage detail, on their own
+dashboard section, never summed into anything statewide.

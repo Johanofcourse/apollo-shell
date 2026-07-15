@@ -24,6 +24,10 @@ from fetch_tcec_outages import get_tcec_records, TCEC_API_URL
 from fetch_erec_outages import get_erec_records, EREC_API_URL
 from fetch_chelco_outages import get_chelco_records, CHELCO_API_URL
 from fetch_gcec_outages import get_gcec_records, GCEC_API_URL
+from fetch_lwbu_outages import (
+    get_lwbu_records, LWBU_API_BASE,
+    get_incidents_summary as get_lwbu_incidents_summary,
+)
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -38,6 +42,7 @@ from correlate import (
     find_erec_correlations,
     find_chelco_correlations,
     find_gcec_correlations,
+    find_lwbu_correlations,
 )
 
 
@@ -334,6 +339,37 @@ def run_gcec_cycle(db):
     db.sync_gcec_outage_events(records, timestamp=timestamp)
 
 
+def run_lwbu_cycle(db):
+    """
+    Fetch Lake Worth Beach Utilities' live outage summary and individual
+    incidents, save both, and update both lifecycle trackers - a
+    real-percentage single-county rollup (Palm Beach) plus a separate
+    real per-incident detail feed, same two-shapes-one-utility approach
+    as run_duke_cycle() above.
+
+    Raises only when LWBU_API_BASE is actually configured but the
+    summary fetch still came back empty - same reasoning/config-check
+    pattern as run_gcec_cycle() above.
+    """
+    records = get_lwbu_records()
+    if records:
+        timestamp = datetime.now().isoformat()
+        db.log_lwbu_outages(records, timestamp=timestamp)
+        db.sync_lwbu_outage_events(records, timestamp=timestamp)
+    elif LWBU_API_BASE:
+        raise RuntimeError("LWBU summary fetch returned no data - see the poller's own log for the underlying request error")
+    else:
+        print("Skipping LWBU summary save - no data fetched")
+
+    incidents = get_lwbu_incidents_summary()
+    if incidents:
+        timestamp = datetime.now().isoformat()
+        db.log_lwbu_incidents(incidents)
+        db.sync_lwbu_incident_events(incidents, timestamp=timestamp)
+    else:
+        print("Skipping LWBU incident save - no active incidents")
+
+
 def run_fpuc_cycle(db):
     """
     Fetch FPUC's live outage data once, then update both trackers from
@@ -371,7 +407,7 @@ def run_correlation_cycle():
     """
     Compute current outage/weather correlations (FPL, TECO, Duke, JEA,
     City of Tallahassee, Talquin, FPUC, PRECO, FKEC, TCEC, EREC, CHELCO,
-    and GCEC) and log a summary.
+    GCEC, and LWBU) and log a summary.
     """
     matches = find_correlations()
     if not matches:
@@ -542,6 +578,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    lwbu_matches = find_lwbu_correlations()
+    if not lwbu_matches:
+        print("LWBU correlation: no matches this cycle")
+    else:
+        lwbu_summary = correlation_summary(lwbu_matches)
+        print(f"LWBU correlation: {len(lwbu_matches)} matches across {len(lwbu_summary)} counties")
+        for county, stats in lwbu_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def main():
     """
@@ -641,6 +690,12 @@ def main():
             except Exception as e:
                 print(f"GCEC fetch cycle failed: {e}")
                 db.log_pipeline_error("gcec", str(e))
+
+            try:
+                run_lwbu_cycle(db)
+            except Exception as e:
+                print(f"LWBU fetch cycle failed: {e}")
+                db.log_pipeline_error("lwbu", str(e))
 
             try:
                 run_correlation_cycle()
