@@ -21,8 +21,9 @@ detective instead. No regrets.
 - A live per-county lookup tool, pulling together outages, weather, and
   heat advisories for any of Florida's 67 counties
 - A genuinely separate public-facing page - its own app, its own real
-  Florida county map colored by current status, running locally,
-  wired to the same live data as everything else
+  isometric Florida county map toggling between all-time historical
+  pattern and current live severity, plus a narrative summary, running
+  locally, wired to the same live data as everything else
 - **Real historical storm data**, not just live-forward collection — 17
   storms, 2018-2025, across every utility per storm, queryable by
   county. Kept off GitHub.
@@ -612,3 +613,37 @@ pretending to agree with the map.
 Runs locally for now, same as the internal dashboard always has -
 putting it on the actual internet is still its own later decision, not
 something that happens by default just because the code exists.
+
+## The rebuild: fetching the real thing instead of remembering it
+First pass above shipped, then failed a look-at-it-live test almost
+immediately: wrong colors, a flat map where an isometric one was
+promised, no narrative summary, and a real comma-joining bug the
+moment an alert or a storm entry rendered with more than one item in
+it. The root cause was process, not code - the actual design mockup
+was temporarily unreachable when the build started, so it got built
+from a remembered description instead of the real file. A reasonable
+fallback in the moment, but not actually the same thing, and it showed.
+
+Once the mockup was reachable again, the honest fix was a real,
+close port instead of another guess: the same isometric projection
+math, the same color and type system as the internal dashboard (this
+page was always meant to share that identity, not invent its own), the
+same narrative-summary block, and a toggle between two ways of coloring
+the map - one all-time, from how often a county's weather alerts have
+actually lined up with a real outage historically, one live, from
+current severity right now. The all-time view needed a new pass over
+every real per-county correlation function at once, tallied per
+county - a genuine new piece of logic, not a copy of anything that
+existed before.
+
+Two real bugs only showed up once the page was checked with something
+that actually runs its JavaScript, not a static thumbnail: a
+county-name casing mismatch that silently grayed out the entire map,
+and the same comma-joining bug from the first pass, still present
+because an alert's list of areas comes back as one joined string, not
+a real list, unless something along the way splits it. A third real
+bug was a 44-second page load, caused by recomputing that new all-time
+tally from scratch on every single view - fixed the same way an
+identical problem was already solved once on the internal dashboard, a
+short-lived cache, since the underlying data only actually changes once
+a poll cycle.

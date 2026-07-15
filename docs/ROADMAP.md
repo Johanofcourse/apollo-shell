@@ -186,22 +186,28 @@ and don't substitute for everyday-outage volume.
       the read-only data layer with the internal tool - it imports
       nothing from the internal dashboard's own code, and the internal
       dashboard imports nothing from it, so the two can change
-      independently. A real Florida county map (same real public
-      boundary data approach as the earlier design exploration,
+      independently. Ported closely from the real design-sandbox
+      artifact rather than a from-memory approximation: a real
+      isometric Florida county map (true angled projection, real
+      per-county extrusion tied to severity, real public boundary data
       regenerated fresh via a small one-time build script since the
-      original was never committed to this repo) colors every county
-      by its current live status, clickable through to that county's
-      real current outages, active weather alerts, and full storm
-      history. Statewide hero numbers (counties clear vs. with an
-      active issue, total customers currently affected) come from one
-      pass over the same live data used for the map coloring, not a
-      separate query. Three small shared modules were extracted out of
-      the internal dashboard's own code along the way
-      (county-status/storm-history/timestamp-formatting helpers) so
-      both apps read live and historical data the same way without
-      duplicating that logic or coupling to each other - a real
-      refactor, not just new code, and the full existing test suite
-      still passes unchanged after it. Currently runs locally only, not
+      original never made it into this repo) toggles between an
+      all-time historical weather-match view and current live severity,
+      clickable through to a county's real current outages, active
+      weather alerts, and full storm history. A real narrative summary
+      (worst county/utility by count and by percentage, computed from
+      one live data pass, not invented) sits above the fold. Three
+      small shared modules were extracted out of the internal
+      dashboard's own code along the way (county-status/storm-history/
+      timestamp-formatting helpers, plus a new all-time confidence
+      tally) so both apps read live and historical data the same way
+      without duplicating that logic or coupling to each other - a real
+      refactor, and the full existing test suite still passes unchanged
+      after it. A real performance bug surfaced during this build (a
+      44-second cold page load from re-running expensive all-time
+      correlation queries on every view) - fixed the same way an
+      identical problem was already fixed once on the internal
+      dashboard, a short-lived cache. Currently runs locally only, not
       exposed to the internet - that's still its own later decision,
       gated on the same test/prod environment split below.
 - [ ] **Public-facing heat advisory view.** A different risk profile

@@ -1,6 +1,6 @@
 """
 One-time build script: projects and simplifies real Florida county
-boundary polygons into SVG path data, writing the result to
+boundary polygons into flat 2D point rings, writing the result to
 florida_county_paths.py. Not run by the live app - the output is a
 static data file, regenerated only if the source geography or
 simplification tolerance ever needs to change.
@@ -10,9 +10,15 @@ Florida county, confirmed by name). Projection is simple
 equirectangular with longitude scaled by cos(mean latitude) - the same
 approach used for the earlier design-sandbox map, real surveyed
 coordinates rather than anything hand-traced. Simplification is a
-standard Douglas-Peucker pass per ring, to keep the resulting path data
-a reasonable size without visibly distorting county shapes at map
+standard Douglas-Peucker pass per ring, to keep the resulting point
+data a reasonable size without visibly distorting county shapes at map
 scale.
+
+Output is flat (top-down) point rings, not pre-rendered SVG paths - the
+public page's own client-side JS does the isometric projection and
+per-county extrusion at render time (height depends on live/historical
+severity, which isn't known until request time), the same approach the
+original design-sandbox map used.
 """
 import json
 import math
@@ -24,8 +30,12 @@ import math
 SOURCE_PATH = "/tmp/fl_counties.geojson"
 OUTPUT_PATH = "florida_county_paths.py"
 
-# Real US Census GEO_ID prefix per Florida county name (not needed for
-# rendering, just documents where NAME comes from).
+# Rescale the raw projected coordinates (a few degrees wide) up to a
+# pixel-like range comparable to the original design sandbox's map
+# (roughly 700 units wide) - purely cosmetic, so extrusion heights (a
+# handful of units) read as a sensible fraction of the map's size
+# rather than either invisible or wildly oversized.
+TARGET_WIDTH = 700
 
 
 def _douglas_peucker(points, tolerance):
@@ -74,7 +84,7 @@ def build():
     mean_lat = sum(all_lats) / len(all_lats)
     cos_mean_lat = math.cos(math.radians(mean_lat))
 
-    county_paths = {}
+    county_rings_raw = {}
     all_x, all_y = [], []
 
     for feature in data["features"]:
@@ -82,7 +92,7 @@ def build():
         geom = feature["geometry"]
         polygons = geom["coordinates"] if geom["type"] == "MultiPolygon" else [geom["coordinates"]]
 
-        subpaths = []
+        rings = []
         for polygon in polygons:
             exterior_ring = polygon[0]
             projected = [_project(lon, lat, cos_mean_lat) for lon, lat in exterior_ring]
@@ -90,30 +100,40 @@ def build():
             for x, y in simplified:
                 all_x.append(x)
                 all_y.append(y)
-            d = "M " + " L ".join(f"{x:.4f},{y:.4f}" for x, y in simplified) + " Z"
-            subpaths.append(d)
+            rings.append(simplified)
 
-        county_paths[name] = " ".join(subpaths)
+        county_rings_raw[name] = rings
 
-    bounds = {
-        "min_x": min(all_x), "max_x": max(all_x),
-        "min_y": min(all_y), "max_y": max(all_y),
-    }
+    min_x, max_x = min(all_x), max(all_x)
+    min_y, max_y = min(all_y), max(all_y)
+    scale = TARGET_WIDTH / (max_x - min_x)
+
+    def to_screen(x, y):
+        return ((x - min_x) * scale, (y - min_y) * scale)
+
+    county_rings = {}
+    for name, rings in county_rings_raw.items():
+        county_rings[name] = [
+            " ".join(f"{sx:.1f},{sy:.1f}" for sx, sy in (to_screen(x, y) for x, y in ring))
+            for ring in rings
+        ]
 
     with open(OUTPUT_PATH, "w") as f:
         f.write('"""\n')
-        f.write("Real Florida county boundary paths, pre-projected and simplified -\n")
+        f.write("Real Florida county boundary rings, pre-projected and simplified -\n")
         f.write("generated once by build_county_map_paths.py, not computed at request\n")
-        f.write("time. See that script for the real source and method.\n")
+        f.write("time. See that script for the real source and method. Each county maps\n")
+        f.write('to a list of ring strings ("x1,y1 x2,y2 ...", one per real polygon -\n')
+        f.write("more than one for the 4 real multi-part counties), ready for a\n")
+        f.write("client-side isometric projection + extrusion pass, not pre-rendered.\n")
         f.write('"""\n\n')
-        f.write(f"FLORIDA_MAP_BOUNDS = {bounds!r}\n\n")
-        f.write("FLORIDA_COUNTY_PATHS = {\n")
-        for name in sorted(county_paths):
-            f.write(f"    {name!r}: {county_paths[name]!r},\n")
+        f.write("FLORIDA_COUNTY_RINGS = {\n")
+        for name in sorted(county_rings):
+            f.write(f"    {name!r}: {county_rings[name]!r},\n")
         f.write("}\n")
 
-    print(f"Wrote {len(county_paths)} county paths to {OUTPUT_PATH}")
-    print(f"Bounds: {bounds}")
+    print(f"Wrote {len(county_rings)} county ring sets to {OUTPUT_PATH}")
+    print(f"Scale: {scale:.2f}, target width: {TARGET_WIDTH}")
 
 
 if __name__ == "__main__":

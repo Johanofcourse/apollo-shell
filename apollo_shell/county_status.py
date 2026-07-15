@@ -7,7 +7,14 @@ formatting functions only; no Flask/template dependency here.
 """
 from datetime import datetime
 
-from correlate import _county_in_alert
+from correlate import (
+    _county_in_alert, correlation_summary,
+    teco_correlation_summary, duke_correlation_summary,
+    find_correlations, find_teco_correlations, find_duke_correlations,
+    find_jea_correlations, find_tallahassee_correlations,
+    find_talquin_correlations, find_fpuc_incident_correlations,
+    find_preco_correlations, find_fkec_correlations,
+)
 from historical_import import FLORIDA_COUNTIES
 
 # The 67 real Florida county names, properly cased for display. See
@@ -88,14 +95,13 @@ def _normalize_open_events(open_events, customers_field, peak_field):
     open events, no end_time to bound it), rather than assuming some
     other caller already added it as a side effect.
 
-    current_percentage_out/peak_percentage_out are carried through when
-    the source row has them (the real per-county/territory rollup
-    sources - FPL, JEA, Talquin, PRECO, FKEC, and all five combined-
-    territory trackers) and come back None otherwise (the incident-
-    level sources - TECO, Duke, Tallahassee, FPUC's incidents - which
-    have no clean per-incident denominator to compute a percentage
-    against). See county_verdict() for how the two cases get tiered
-    together.
+    current_percentage_out/peak_percentage_out/customers_served are
+    carried through when the source row has them (the real per-county/
+    territory rollup sources - FPL, JEA, Talquin, PRECO, FKEC, and all
+    five combined-territory trackers) and come back None otherwise (the
+    incident-level sources - TECO, Duke, Tallahassee, FPUC's incidents -
+    which have no clean per-incident denominator/customer base at all).
+    See county_verdict() for how the two cases get tiered together.
     """
     return [{
         "utility": e["utility"],
@@ -104,6 +110,7 @@ def _normalize_open_events(open_events, customers_field, peak_field):
         "peak_customers": e[peak_field],
         "current_percentage_out": e.get("current_percentage_out"),
         "peak_percentage_out": e.get("peak_percentage_out"),
+        "customers_served": e.get("customers_served"),
         "start_time": e["start_time"],
         "duration": _duration_since(e["start_time"]),
     } for e in open_events]
@@ -240,3 +247,52 @@ def all_county_verdicts(db, county_names=None):
         )
         for county in county_names
     }
+
+
+# Every real per-county correlation source - deliberately NOT the
+# combined-territory ones (TCEC/EREC/CHELCO/GCEC/FPUC-combined), which
+# always return empty by design (a multi-county label can never match
+# a single-county alert), so including them here would just be
+# needless work for a result that's always {}.
+_REAL_CORRELATION_SOURCES = [
+    (find_correlations, correlation_summary),
+    (find_teco_correlations, teco_correlation_summary),
+    (find_duke_correlations, duke_correlation_summary),
+    (find_jea_correlations, correlation_summary),
+    (find_tallahassee_correlations, correlation_summary),
+    (find_talquin_correlations, correlation_summary),
+    (find_fpuc_incident_correlations, correlation_summary),
+    (find_preco_correlations, correlation_summary),
+    (find_fkec_correlations, correlation_summary),
+]
+
+
+def historical_confidence_tally(db_path="outages.db"):
+    """
+    All-time weather-match confidence tally per county, combined across
+    every real per-county source - "how often has this county's real
+    outage history plausibly overlapped with real weather, and how
+    confidently." Powers the public page's "Historical Pattern" map
+    view, a genuinely different question from current live severity
+    (all_county_verdicts() above): this one asks "does this county's
+    track record look weather-driven," not "is anything open right
+    now."
+
+    Returns a dict keyed by county name (matching COUNTY_PICKER_CHOICES
+    casing where possible) to {"high": n, "medium": n, "low": n} -
+    counties with no correlation history at all simply don't appear as
+    a key, left to the caller to treat as "no data yet" rather than
+    zero.
+    """
+    tally = {}
+    for find_fn, summary_fn in _REAL_CORRELATION_SOURCES:
+        matches = find_fn(db_path, days=None)
+        if not matches:
+            continue
+        summary = summary_fn(matches)
+        for county, stats in summary.items():
+            bucket = tally.setdefault(county, {"high": 0, "medium": 0, "low": 0})
+            for tier, count in stats.get("confidence_breakdown", {}).items():
+                if tier in bucket:
+                    bucket[tier] += count
+    return tally

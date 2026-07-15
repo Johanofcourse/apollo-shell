@@ -98,6 +98,62 @@ class TestAllCountyVerdicts:
         assert verdicts == {"Alachua": "clear", "Baker": "clear"}
 
 
+class TestHistoricalConfidenceTally:
+    """
+    historical_confidence_tally() - added 2026-07-14 to power the
+    public page's "Historical Pattern" map view. Genuinely different
+    question from county_verdict()/all_county_verdicts() above (current
+    live severity): this asks "how often has this county's outage
+    history plausibly overlapped with real weather, all-time."
+    """
+
+    def test_no_data_returns_empty_dict(self, db_path):
+        db = OutageDatabase(db_path)
+        tally = cs.historical_confidence_tally(db_path)
+        db.close()
+
+        assert tally == {}
+
+    def test_real_correlated_match_shows_up_in_the_tally(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([{
+            "id": "test-alert-1", "event": "Tornado Warning", "severity": "Severe",
+            "urgency": "Expected", "areas": "ALACHUA",
+            "effective": "2026-01-01T00:00:00", "expires": "2026-01-01T23:59:59",
+            "headline": "test", "description": "test",
+        }])
+        db.log_multiple_outages("FPL", [
+            {"county": "ALACHUA", "customers_out": 50, "customers_served": 1000},
+        ], timestamp="2026-01-01T12:00:00")
+        db.close()
+
+        tally = cs.historical_confidence_tally(db_path)
+
+        # correlation_summary() groups by whatever raw county string is
+        # stored (no casing normalization) - real live FPL data happens
+        # to already be properly cased, but this test seeds the same
+        # ALL-CAPS convention the rest of the suite uses for FPL rows.
+        assert "ALACHUA" in tally
+        assert sum(tally["ALACHUA"].values()) == 1
+
+    def test_counties_with_no_history_are_absent_not_zero(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([{
+            "id": "test-alert-1", "event": "Tornado Warning", "severity": "Severe",
+            "urgency": "Expected", "areas": "ALACHUA",
+            "effective": "2026-01-01T00:00:00", "expires": "2026-01-01T23:59:59",
+            "headline": "test", "description": "test",
+        }])
+        db.log_multiple_outages("FPL", [
+            {"county": "ALACHUA", "customers_out": 50, "customers_served": 1000},
+        ], timestamp="2026-01-01T12:00:00")
+        db.close()
+
+        tally = cs.historical_confidence_tally(db_path)
+
+        assert "Baker" not in tally
+
+
 class TestCountyPickerChoicesSharedCorrectly:
     def test_has_all_67_real_counties(self):
         assert len(cs.COUNTY_PICKER_CHOICES) == 67

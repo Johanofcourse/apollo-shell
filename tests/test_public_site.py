@@ -3,10 +3,16 @@ Tests for public_site.py - the public-facing page, built 2026-07-14 as
 a genuinely separate Flask app from dashboard.py (own port, own
 template folder, shares only the read-only apollo_shell/ data layer).
 
-_statewide_snapshot() is the one piece of real new logic here (map
-coloring + hero KPIs from a single pass over live data) - the rest of
-the route reuses already-tested county_status.py/storm_history.py
-functions directly.
+Rebuilt the same day after Johan compared the live page against the
+real design-sandbox artifact and found it didn't match (wrong color
+scheme, no isometric map, no narrative summary, a real comma-joining
+bug in the alert/storm display). The real artifact was re-fetched and
+ported closely: an isometric map (client-side JS, fed by real per-
+county data), a real narrative summary (_narrative_stats), and a real
+historical weather-match confidence tally per county
+(county_status.historical_confidence_tally(), tested in
+test_county_status.py). _county_map_data()/_narrative_stats() are the
+new pieces of real logic here.
 """
 import os
 import tempfile
@@ -31,50 +37,90 @@ def _fpl_row(county, customers_out, customers_served=100_000):
     return {"county": county, "customers_out": customers_out, "customers_served": customers_served}
 
 
-class TestStatewideSnapshot:
-    def test_clean_database_is_all_clear(self, db_path):
+class TestCountyMapData:
+    def test_clean_database_has_zero_customers_everywhere(self, db_path):
         db = OutageDatabase(db_path)
-        snapshot = public_site._statewide_snapshot(db)
+        rows = public_site._statewide_rows(db)
+        counties = public_site._county_map_data(db, rows)
         db.close()
 
-        assert snapshot["counties_with_issue"] == 0
-        assert snapshot["counties_clear"] == snapshot["total_counties"]
-        assert snapshot["total_customers_affected"] == 0
-        assert all(v == "clear" for v in snapshot["verdicts"].values())
+        assert len(counties) == 67
+        assert all(c["customers"] == 0 for c in counties)
 
-    def test_one_real_outage_shows_up_in_the_snapshot(self, db_path):
+    def test_real_outage_shows_up_for_its_county_only(self, db_path):
         db = OutageDatabase(db_path)
         db.log_multiple_outages("FPL", [_fpl_row("ALACHUA", 500)], timestamp="2026-01-01T00:00:00")
         db.sync_outage_events("FPL", [_fpl_row("ALACHUA", 500)], timestamp="2026-01-01T00:00:00")
 
-        snapshot = public_site._statewide_snapshot(db)
+        rows = public_site._statewide_rows(db)
+        counties = public_site._county_map_data(db, rows)
         db.close()
 
-        assert snapshot["verdicts"]["Alachua"] != "clear"
-        assert snapshot["counties_with_issue"] == 1
-        assert snapshot["total_customers_affected"] == 500
+        by_name = {c["name"]: c for c in counties}
+        assert by_name["Alachua"]["customers"] == 500
+        assert by_name["Baker"]["customers"] == 0
 
-    def test_total_customers_sums_across_multiple_open_events(self, db_path):
+    def test_county_name_casing_mismatch_still_matches(self, db_path):
+        # Real regression: historical_confidence_tally()'s keys and each
+        # source's own raw county field can be cased differently
+        # ("ALACHUA" vs "Alachua") from FLORIDA_COUNTY_RINGS's canonical
+        # title-case names - matching must be case-insensitive, not
+        # exact-string, or real counties silently show no data.
+        db = OutageDatabase(db_path)
+        db.log_multiple_outages("FPL", [_fpl_row("ALACHUA", 500)], timestamp="2026-01-01T00:00:00")
+        db.sync_outage_events("FPL", [_fpl_row("ALACHUA", 500)], timestamp="2026-01-01T00:00:00")
+
+        rows = public_site._statewide_rows(db)
+        counties = public_site._county_map_data(db, rows)
+        db.close()
+
+        by_name = {c["name"]: c for c in counties}
+        assert by_name["Alachua"]["customers"] == 500
+
+
+class TestNarrativeStats:
+    def test_clean_database_has_zero_totals(self, db_path):
+        db = OutageDatabase(db_path)
+        rows = public_site._statewide_rows(db)
+        narrative = public_site._narrative_stats(rows)
+        db.close()
+
+        assert narrative["total_current"] == 0
+        assert narrative["worst_county_name"] is None
+        assert narrative["top_utility_name"] is None
+
+    def test_worst_county_and_utility_by_raw_count(self, db_path):
         db = OutageDatabase(db_path)
         db.log_multiple_outages("FPL", [_fpl_row("ALACHUA", 300)], timestamp="2026-01-01T00:00:00")
         db.sync_outage_events("FPL", [_fpl_row("ALACHUA", 300)], timestamp="2026-01-01T00:00:00")
-        db.log_multiple_outages("FPL", [_fpl_row("BAKER", 200)], timestamp="2026-01-01T00:00:00")
-        db.sync_outage_events("FPL", [_fpl_row("BAKER", 200)], timestamp="2026-01-01T00:00:00")
+        db.log_multiple_outages("FPL", [_fpl_row("BAKER", 100)], timestamp="2026-01-01T00:00:00")
+        db.sync_outage_events("FPL", [_fpl_row("BAKER", 100)], timestamp="2026-01-01T00:00:00")
 
-        snapshot = public_site._statewide_snapshot(db)
+        rows = public_site._statewide_rows(db)
+        narrative = public_site._narrative_stats(rows)
         db.close()
 
-        assert snapshot["total_customers_affected"] == 500
-        assert snapshot["counties_with_issue"] == 2
+        assert narrative["total_current"] == 400
+        assert narrative["worst_county_name"] == "ALACHUA"
+        assert narrative["worst_county_customers"] == 300
+        assert narrative["top_utility_name"] == "FPL"
+        assert narrative["top_utility_customers"] == 400
 
-    def test_every_real_county_gets_a_verdict_entry(self, db_path):
+    def test_worst_by_percentage_only_considers_rows_with_a_known_base(self, db_path):
         db = OutageDatabase(db_path)
-        snapshot = public_site._statewide_snapshot(db)
+        # 300/100000 = 0.3% - small share, but a known base
+        db.log_multiple_outages("FPL", [_fpl_row("ALACHUA", 300, 100_000)], timestamp="2026-01-01T00:00:00")
+        db.sync_outage_events("FPL", [_fpl_row("ALACHUA", 300, 100_000)], timestamp="2026-01-01T00:00:00")
+        # a small county with a much smaller base -> higher real percentage
+        db.log_multiple_outages("FPL", [_fpl_row("BAKER", 100, 1_000)], timestamp="2026-01-01T00:00:00")
+        db.sync_outage_events("FPL", [_fpl_row("BAKER", 100, 1_000)], timestamp="2026-01-01T00:00:00")
+
+        rows = public_site._statewide_rows(db)
+        narrative = public_site._narrative_stats(rows)
         db.close()
 
-        assert len(snapshot["verdicts"]) == 67
-        assert "Miami-Dade" in snapshot["verdicts"]
-        assert "DeSoto" in snapshot["verdicts"]
+        assert narrative["worst_pct_county_name"] == "BAKER"
+        assert round(narrative["worst_pct_value"], 1) == 10.0
 
 
 class TestIndexRoute:
@@ -84,24 +130,35 @@ class TestIndexRoute:
         r = client.get("/")
         assert r.status_code == 200
 
-    def test_county_query_param_renders_detail_section(self):
+    def test_county_query_param_renders_history_section(self):
         public_site.app.testing = True
         client = public_site.app.test_client()
         r = client.get("/?county=Calhoun")
         assert r.status_code == 200
-        assert b"Calhoun County" in r.data
+        assert b"Calhoun" in r.data
 
-    def test_unselected_page_has_no_detail_section(self):
+    def test_unselected_page_shows_the_empty_history_prompt(self):
         public_site.app.testing = True
         client = public_site.app.test_client()
         r = client.get("/")
-        assert b'id="detail"' not in r.data
+        assert b"Search a county above" in r.data
 
     def test_county_with_no_history_data_does_not_error(self):
-        # Combined-territory-only "counties" (e.g. a made-up name) and
-        # real counties genuinely absent from some storms both need to
-        # render cleanly, not 500.
+        # A search that matches no real county needs to render cleanly,
+        # not 500.
         public_site.app.testing = True
         client = public_site.app.test_client()
         r = client.get("/?county=Nonexistent+County")
+        assert r.status_code == 200
+
+    def test_alert_areas_are_split_into_a_real_list_not_iterated_as_a_string(self):
+        # Real regression: get_active_weather_alerts()'s areas field is
+        # a raw "Area One; Area Two" string - Jinja iterating it
+        # directly (instead of a pre-split list) renders one chip per
+        # character. Not directly assertable without a live alert, but
+        # confirms the route never 500s building areas_list from
+        # whatever alerts happen to be active right now.
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
         assert r.status_code == 200

@@ -1,5 +1,7 @@
+import json
 import os
 import sys
+import time
 
 from flask import Flask, render_template, request
 
@@ -8,14 +10,37 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apo
 from database import OutageDatabase
 from correlate import _county_in_alert
 from county_status import (
-    COUNTY_PICKER_CHOICES, county_verdict, _real_per_county_open_events,
+    COUNTY_PICKER_CHOICES, _real_per_county_open_events,
     _combined_territory_open_events, _rows_for_county, humanize_timestamp,
+    historical_confidence_tally,
 )
 from storm_history import available_history_counties, load_history_for_county
 import florida_county_paths as county_map
 
 app = Flask(__name__, template_folder="templates_public")
 app.jinja_env.filters['humanize'] = humanize_timestamp
+
+# historical_confidence_tally() re-runs every real per-county
+# correlation function all-time (days=None) - a real, expensive nested-
+# loop query over the live history (measured at ~44s on this project's
+# real data as of 2026-07-14). The underlying data only actually
+# changes once per ~15-minute poll cycle, so recomputing it on every
+# single page view is pure waste - same class of problem, same fix
+# already applied once to the internal dashboard's own correlation
+# cache (dashboard.py's CORRELATION_CACHE_TTL_SECONDS).
+_TALLY_CACHE_TTL_SECONDS = 300
+_tally_cache = {}
+
+
+def _cached_historical_confidence_tally(db_path):
+    now = time.time()
+    cached = _tally_cache.get(db_path)
+    if cached is not None and (now - cached["computed_at"]) < _TALLY_CACHE_TTL_SECONDS:
+        return cached["data"]
+
+    tally = historical_confidence_tally(db_path)
+    _tally_cache[db_path] = {"data": tally, "computed_at": now}
+    return tally
 
 # Genuinely separate from dashboard.py's app - its own Flask instance,
 # its own template folder, its own port when run directly. Reads the
@@ -26,59 +51,133 @@ app.jinja_env.filters['humanize'] = humanize_timestamp
 # why this exists as a second, separate thing rather than a mode of the
 # internal dashboard.
 
-VERDICT_ORDER = ["clear", "low", "medium", "high", "critical"]
 
-# Map fill colors per verdict tier - a restrained, semantic palette
-# (not the same accent color used for anything decorative elsewhere on
-# the page), consistent with this project's "form encodes state, not
-# just the number" principle already established on the internal tool.
-VERDICT_COLORS = {
-    "clear": "#1b2a3a",
-    "low": "#2c6e49",
-    "medium": "#c9a227",
-    "high": "#d97b29",
-    "critical": "#c0392b",
-    "no-source": "#232f3d",
-}
-
-
-def _statewide_snapshot(db):
+def _statewide_rows(db):
     """
     One pass over every currently-open event, real and combined-
-    territory, statewide - used to build both the per-county map
-    coloring and the hero KPIs from the same fetched data, rather than
-    querying twice.
+    territory, statewide - the common input for the map data, the hero
+    hover, and the narrative summary, so all three describe the exact
+    same snapshot rather than three separate queries that could
+    disagree with each other by a poll cycle.
     """
-    real_rows = _real_per_county_open_events(db)
-    combined_rows = _combined_territory_open_events(db)
+    return _real_per_county_open_events(db) + _combined_territory_open_events(db)
 
-    verdicts = {}
-    for county in COUNTY_PICKER_CHOICES:
-        verdicts[county] = county_verdict(
-            _rows_for_county(real_rows, county),
-            _rows_for_county(combined_rows, county),
-        )
 
-    total_customers_affected = sum(
-        (r.get("customers") or 0) for r in real_rows + combined_rows
-    )
-    counties_with_issue = sum(1 for v in verdicts.values() if v != "clear")
+def _county_map_data(db, all_rows):
+    """
+    Per-county data for the client-side map: current live customers/
+    served (for the "Live Severity" view) plus the all-time historical
+    weather-match confidence tally (for the "Historical Pattern" view -
+    see county_status.historical_confidence_tally()). Matches
+    COUNTY_RINGS's real county names so the client can join the two
+    directly.
+    """
+    tally = _cached_historical_confidence_tally(db.db_path)
+    # historical_confidence_tally()'s keys are whatever raw casing each
+    # source's own county field happens to use (already-proper-case for
+    # some live sources, all-caps for others) - never assume one casing,
+    # match case-insensitively instead.
+    tally_by_upper = {county.upper(): stats for county, stats in tally.items()}
+
+    # Same case-insensitivity concern for live customer counts - a real
+    # per-county source's own casing shouldn't have to match
+    # FLORIDA_COUNTY_RINGS's canonical title-case names exactly.
+    by_county_customers = {}
+    by_county_served = {}
+    for r in all_rows:
+        county_key = r["county"].upper()
+        by_county_customers[county_key] = by_county_customers.get(county_key, 0) + (r.get("customers") or 0)
+        if r.get("customers_served"):
+            by_county_served[county_key] = by_county_served.get(county_key, 0) + r["customers_served"]
+
+    counties = []
+    for name in county_map.FLORIDA_COUNTY_RINGS:
+        confidence = tally_by_upper.get(name.upper(), {})
+        counties.append({
+            "name": name,
+            "customers": by_county_customers.get(name.upper(), 0),
+            "served": by_county_served.get(name.upper(), 0),
+            "high": confidence.get("high", 0),
+            "medium": confidence.get("medium", 0),
+            "low": confidence.get("low", 0),
+        })
+    return counties
+
+
+def _narrative_stats(all_rows):
+    """
+    Real statewide numbers for the plain-language summary paragraph -
+    total customers currently out, the single worst county/utility by
+    raw count, and (only among counties/utilities with a real known
+    customer base) the worst by percentage. Never invents a percentage
+    for a source that doesn't carry a real customer base (TECO, Duke,
+    City of Tallahassee, FPUC's incident-level view) - those are
+    counted in every raw total but deliberately left out of every
+    percentage figure, same honest split the map's own "what counts as
+    a customer" note already draws.
+    """
+    total_current = sum(r.get("customers") or 0 for r in all_rows)
+
+    by_county = {}
+    by_utility = {}
+    for r in all_rows:
+        c = by_county.setdefault(r["county"], {"customers": 0, "known_customers": 0, "known_served": 0})
+        u = by_utility.setdefault(r["utility"], {"customers": 0, "known_customers": 0, "known_served": 0})
+        customers = r.get("customers") or 0
+        c["customers"] += customers
+        u["customers"] += customers
+        if r.get("customers_served"):
+            c["known_customers"] += customers
+            c["known_served"] += r["customers_served"]
+            u["known_customers"] += customers
+            u["known_served"] += r["customers_served"]
+
+    def _worst_by_count(groups):
+        if not groups:
+            return None, 0
+        name, stats = max(groups.items(), key=lambda kv: kv[1]["customers"])
+        return name, stats["customers"]
+
+    def _worst_by_pct(groups):
+        known = {k: v for k, v in groups.items() if v["known_served"] > 0}
+        if not known:
+            return None, None
+        name, stats = max(known.items(), key=lambda kv: kv[1]["known_customers"] / kv[1]["known_served"])
+        return name, stats["known_customers"] / stats["known_served"] * 100
+
+    worst_county_name, worst_county_customers = _worst_by_count(by_county)
+    worst_pct_county_name, worst_pct_value = _worst_by_pct(by_county)
+    top_utility_name, top_utility_customers = _worst_by_count(by_utility)
+    top_pct_utility_name, top_pct_utility_value = _worst_by_pct(by_utility)
+
+    known_rows = [r for r in all_rows if r.get("customers_served")]
+    total_known_served = sum(r["customers_served"] for r in known_rows)
+    total_current_known_base = sum(r.get("customers") or 0 for r in known_rows)
+    overall_pct = (total_current_known_base / total_known_served * 100) if total_known_served else 0.0
 
     return {
-        "verdicts": verdicts,
-        "total_customers_affected": total_customers_affected,
-        "counties_with_issue": counties_with_issue,
-        "counties_clear": len(verdicts) - counties_with_issue,
-        "total_counties": len(verdicts),
+        "total_current": total_current,
+        "total_known_served": total_known_served,
+        "overall_pct": overall_pct,
+        "worst_county_name": worst_county_name,
+        "worst_county_customers": worst_county_customers,
+        "worst_pct_county_name": worst_pct_county_name,
+        "worst_pct_value": worst_pct_value,
+        "top_utility_name": top_utility_name,
+        "top_utility_customers": top_utility_customers,
+        "top_pct_utility_name": top_pct_utility_name,
+        "top_pct_utility_value": top_pct_utility_value,
     }
 
 
 @app.route("/")
 def index():
     """
-    The public-facing page: a real Florida county map colored by
-    current live status, a plain-language hero summary, this month's
-    heat advisories, and - once a county is picked, by clicking the map
+    The public-facing page: a real, isometric Florida county map
+    (toggle between its all-time historical weather-match pattern and
+    current live severity), a plain-language narrative summary built
+    from the same live snapshot, this month's heat advisories, current
+    weather alerts, and - once a county is picked, by clicking the map
     or the search box - that county's live status plus its real
     historical storm pattern.
 
@@ -87,8 +186,18 @@ def index():
     dashboard, see docs/ROADMAP.md's "Explicitly not planned" section.
     """
     db = OutageDatabase()
-    snapshot = _statewide_snapshot(db)
+    all_rows = _statewide_rows(db)
+    counties_data = _county_map_data(db, all_rows)
+    narrative = _narrative_stats(all_rows)
     heat_summary = db.get_heat_advisory_summary()
+
+    all_active_alerts = db.get_active_weather_alerts()
+    # areas is a raw "Area One; Area Two; ..." string in the underlying
+    # table - _county_in_alert() matches directly against that string,
+    # but display needs a real list, not Jinja iterating character by
+    # character over an un-split string.
+    for a in all_active_alerts:
+        a["areas_list"] = [part.strip() for part in a["areas"].split(";") if part.strip()]
 
     selected_county = request.args.get("county", "").strip()
     county_detail = None
@@ -96,7 +205,6 @@ def index():
     if selected_county:
         real_events = _rows_for_county(_real_per_county_open_events(db), selected_county)
         combined_events = _rows_for_county(_combined_territory_open_events(db), selected_county)
-        all_active_alerts = db.get_active_weather_alerts()
         active_alerts = [a for a in all_active_alerts if _county_in_alert(selected_county, a["areas"])]
         for a in active_alerts:
             a["is_heat"] = a["event_type"] in ("Heat Advisory", "Excessive Heat Warning")
@@ -109,7 +217,6 @@ def index():
         storms_with_data_count = sum(1 for s in storms if s["has_data"])
 
         county_detail = {
-            "verdict": snapshot["verdicts"].get(selected_county, "clear"),
             "real_events": real_events,
             "combined_events": combined_events,
             "active_alerts": active_alerts,
@@ -121,14 +228,14 @@ def index():
 
     return render_template(
         "index.html",
-        snapshot=snapshot,
+        counties_json=json.dumps(counties_data),
+        county_rings_json=json.dumps(county_map.FLORIDA_COUNTY_RINGS),
+        narrative=narrative,
         heat_summary=heat_summary,
+        active_alerts=all_active_alerts,
         available_counties=COUNTY_PICKER_CHOICES,
         selected_county=selected_county,
         county_detail=county_detail,
-        county_paths=county_map.FLORIDA_COUNTY_PATHS,
-        map_bounds=county_map.FLORIDA_MAP_BOUNDS,
-        verdict_colors=VERDICT_COLORS,
     )
 
 
