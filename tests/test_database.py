@@ -991,3 +991,54 @@ class TestGetActiveWeatherAlerts:
         db.close()
 
         assert active == []
+
+
+class TestHistoricalConfidenceTallyStorage:
+    """
+    store_historical_confidence_tally()/get_historical_confidence_tally() -
+    added 2026-07-14 so the public page can read a precomputed value
+    instead of re-running the real, expensive nested-loop correlation
+    query (county_status.historical_confidence_tally(), ~44s on real
+    data) on every single page view.
+    """
+
+    def test_round_trip(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_historical_confidence_tally({
+            "Alachua": {"high": 2, "medium": 1, "low": 0},
+            "Duval": {"high": 0, "medium": 3, "low": 5},
+        })
+        result = db.get_historical_confidence_tally()
+        db.close()
+
+        assert result == {
+            "Alachua": {"high": 2, "medium": 1, "low": 0},
+            "Duval": {"high": 0, "medium": 3, "low": 5},
+        }
+
+    def test_empty_table_before_first_compute_returns_empty_dict(self, db_path):
+        db = OutageDatabase(db_path)
+        result = db.get_historical_confidence_tally()
+        db.close()
+
+        assert result == {}
+
+    def test_recompute_fully_replaces_previous_result(self, db_path):
+        # A county with no more correlation history at all should
+        # disappear, not linger with a stale nonzero count from an
+        # earlier cycle.
+        db = OutageDatabase(db_path)
+        db.store_historical_confidence_tally({"Alachua": {"high": 2, "medium": 0, "low": 0}})
+        db.store_historical_confidence_tally({"Duval": {"high": 0, "medium": 1, "low": 0}})
+        result = db.get_historical_confidence_tally()
+        db.close()
+
+        assert result == {"Duval": {"high": 0, "medium": 1, "low": 0}}
+
+    def test_missing_tier_keys_default_to_zero(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_historical_confidence_tally({"Alachua": {"high": 3}})
+        result = db.get_historical_confidence_tally()
+        db.close()
+
+        assert result == {"Alachua": {"high": 3, "medium": 0, "low": 0}}

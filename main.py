@@ -44,6 +44,7 @@ from correlate import (
     find_gcec_correlations,
     find_lwbu_correlations,
 )
+from county_status import historical_confidence_tally
 
 
 POLL_INTERVAL_SECONDS = 15 * 60
@@ -592,6 +593,22 @@ def run_correlation_cycle():
             )
 
 
+def run_historical_tally_cycle(db):
+    """
+    Precompute the all-time historical weather-match confidence tally
+    (county_status.historical_confidence_tally()) once per poll cycle
+    and store it, so the public page can read a precomputed value
+    instantly instead of paying for this real, expensive nested-loop
+    correlation query (measured at ~44s as of 2026-07-14) on every page
+    view. The underlying data only actually changes once per cycle
+    anyway, so computing it here - right after the correlation cycle
+    above, using the same fresh data - costs nothing extra in
+    staleness, only removes real load-time risk from public_site.py.
+    """
+    tally = historical_confidence_tally()
+    db.store_historical_confidence_tally(tally)
+
+
 def main():
     """
     Long-running poller: fetches outages and weather alerts every
@@ -702,6 +719,12 @@ def main():
             except Exception as e:
                 print(f"Correlation cycle failed: {e}")
                 db.log_pipeline_error("correlation", str(e))
+
+            try:
+                run_historical_tally_cycle(db)
+            except Exception as e:
+                print(f"Historical tally cycle failed: {e}")
+                db.log_pipeline_error("historical_tally", str(e))
 
             print(f"Cycle complete. Sleeping {POLL_INTERVAL_SECONDS}s...")
             time.sleep(POLL_INTERVAL_SECONDS)

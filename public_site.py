@@ -1,7 +1,6 @@
 import json
 import os
 import sys
-import time
 
 from flask import Flask, render_template, request
 
@@ -12,7 +11,7 @@ from correlate import _county_in_alert
 from county_status import (
     COUNTY_PICKER_CHOICES, _real_per_county_open_events,
     _combined_territory_open_events, _rows_for_county, humanize_timestamp,
-    historical_confidence_tally, _row_tier,
+    _row_tier,
 )
 from storm_history import available_history_counties, load_history_for_county
 import florida_county_paths as county_map
@@ -34,28 +33,6 @@ def _severity_icon(severity):
 
 
 app.jinja_env.filters['severity_icon'] = _severity_icon
-
-# historical_confidence_tally() re-runs every real per-county
-# correlation function all-time (days=None) - a real, expensive nested-
-# loop query over the live history (measured at ~44s on this project's
-# real data as of 2026-07-14). The underlying data only actually
-# changes once per ~15-minute poll cycle, so recomputing it on every
-# single page view is pure waste - same class of problem, same fix
-# already applied once to the internal dashboard's own correlation
-# cache (dashboard.py's CORRELATION_CACHE_TTL_SECONDS).
-_TALLY_CACHE_TTL_SECONDS = 300
-_tally_cache = {}
-
-
-def _cached_historical_confidence_tally(db_path):
-    now = time.time()
-    cached = _tally_cache.get(db_path)
-    if cached is not None and (now - cached["computed_at"]) < _TALLY_CACHE_TTL_SECONDS:
-        return cached["data"]
-
-    tally = historical_confidence_tally(db_path)
-    _tally_cache[db_path] = {"data": tally, "computed_at": now}
-    return tally
 
 # Genuinely separate from dashboard.py's app - its own Flask instance,
 # its own template folder, its own port when run directly. Reads the
@@ -83,11 +60,13 @@ def _county_map_data(db, all_rows):
     Per-county data for the client-side map: current live customers/
     served (for the "Live Severity" view) plus the all-time historical
     weather-match confidence tally (for the "Historical Pattern" view -
-    see county_status.historical_confidence_tally()). Matches
+    precomputed once per poll cycle by main.py's own cycle function and
+    just read back here, see database.get_historical_confidence_tally()
+    for why this isn't computed at page-load time). Matches
     COUNTY_RINGS's real county names so the client can join the two
     directly.
     """
-    tally = _cached_historical_confidence_tally(db.db_path)
+    tally = db.get_historical_confidence_tally()
     # historical_confidence_tally()'s keys are whatever raw casing each
     # source's own county field happens to use (already-proper-case for
     # some live sources, all-caps for others) - never assume one casing,

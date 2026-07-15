@@ -60,6 +60,24 @@ class TestCountyMapData:
         assert by_name["Alachua"]["customers"] == 500
         assert by_name["Baker"]["customers"] == 0
 
+    def test_reads_precomputed_confidence_tally_not_computed_live(self, db_path):
+        # Real regression guard for the 2026-07-14 fix: _county_map_data
+        # must read the precomputed table (db.get_historical_confidence_tally,
+        # written once per poll cycle by main.py) rather than recomputing
+        # the real, expensive nested-loop correlation query on every page
+        # view - that recomputation was measured at ~44s on real data.
+        db = OutageDatabase(db_path)
+        db.store_historical_confidence_tally({"ALACHUA": {"high": 2, "medium": 1, "low": 0}})
+
+        rows = public_site._statewide_rows(db)
+        counties = public_site._county_map_data(db, rows)
+        db.close()
+
+        by_name = {c["name"]: c for c in counties}
+        assert by_name["Alachua"]["high"] == 2
+        assert by_name["Alachua"]["medium"] == 1
+        assert by_name["Baker"]["high"] == 0
+
     def test_county_name_casing_mismatch_still_matches(self, db_path):
         # Real regression: historical_confidence_tally()'s keys and each
         # source's own raw county field can be cased differently

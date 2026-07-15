@@ -292,3 +292,28 @@ class TestRunFpucCycleFailureVisibility:
         monkeypatch.setattr(main, "fpuc_outages_to_records", lambda data: [])
         monkeypatch.setattr(main, "markers_to_incidents", lambda data: [])
         main.run_fpuc_cycle(db)  # should not raise
+
+
+class TestRunHistoricalTallyCycle:
+    """
+    run_historical_tally_cycle() - added 2026-07-14 so the public page
+    reads a precomputed value instead of re-running the real, expensive
+    nested-loop correlation query on every page view (measured at ~44s
+    on real data). Only tests the wiring (compute -> store) here, not
+    historical_confidence_tally()'s own logic - that's covered directly
+    in test_county_status.py.
+    """
+
+    def test_stores_the_computed_tally(self, db, monkeypatch):
+        monkeypatch.setattr(
+            main, "historical_confidence_tally",
+            lambda: {"Alachua": {"high": 2, "medium": 0, "low": 0}},
+        )
+        main.run_historical_tally_cycle(db)
+        assert db.get_historical_confidence_tally() == {"Alachua": {"high": 2, "medium": 0, "low": 0}}
+
+    def test_empty_tally_clears_any_previous_result(self, db, monkeypatch):
+        db.store_historical_confidence_tally({"Duval": {"high": 1, "medium": 0, "low": 0}})
+        monkeypatch.setattr(main, "historical_confidence_tally", lambda: {})
+        main.run_historical_tally_cycle(db)
+        assert db.get_historical_confidence_tally() == {}

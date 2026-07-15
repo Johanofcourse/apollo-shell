@@ -783,6 +783,25 @@ class OutageDatabase:
             )
         ''')
 
+        # Precomputed all-time historical weather-match confidence tally
+        # (see county_status.historical_confidence_tally()) - a real,
+        # expensive nested-loop correlation query across every real
+        # per-county source (measured at ~44s as of 2026-07-14). Computed
+        # once per poll cycle by main.py's own cycle function, not once
+        # per public-page view - the underlying data only actually
+        # changes once per cycle anyway, so there's no reason a page
+        # load should ever pay this cost directly. One row per county,
+        # fully replaced each cycle (see store_historical_confidence_tally).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS historical_confidence_tally (
+                county TEXT PRIMARY KEY,
+                high INTEGER NOT NULL,
+                medium INTEGER NOT NULL,
+                low INTEGER NOT NULL,
+                computed_at TEXT NOT NULL
+            )
+        ''')
+
         # Create indexes
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_timestamp
@@ -4227,6 +4246,55 @@ class OutageDatabase:
             LIMIT ?
         ''', (limit,))
         return [dict(row) for row in cursor.fetchall()]
+
+    def store_historical_confidence_tally(self, tally, timestamp=None):
+        """
+        Overwrite the precomputed all-time historical confidence tally
+        (see county_status.historical_confidence_tally()) with a fresh
+        result - called once per poll cycle from main.py, not once per
+        public-page view.
+
+        Replaces the whole table (DELETE + INSERT) rather than upserting
+        row by row - a county with no more correlation history at all
+        should disappear from the table, not linger with a stale nonzero
+        count from a previous cycle.
+
+        Args:
+            tally: dict as returned by
+                county_status.historical_confidence_tally() - keyed by
+                county to {"high": n, "medium": n, "low": n}
+            timestamp: ISO timestamp for this computation; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        timestamp = timestamp or datetime.now().isoformat()
+
+        cursor.execute('DELETE FROM historical_confidence_tally')
+        cursor.executemany('''
+            INSERT INTO historical_confidence_tally (county, high, medium, low, computed_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', [
+            (county, stats.get('high', 0), stats.get('medium', 0), stats.get('low', 0), timestamp)
+            for county, stats in tally.items()
+        ])
+        conn.commit()
+
+    def get_historical_confidence_tally(self):
+        """
+        Read back the precomputed tally stored by
+        store_historical_confidence_tally() - instant, no recomputation.
+        Returns {} if the poller hasn't completed a cycle yet since this
+        table was added - a real, honest "no data yet" state, not an
+        error, same shape convention as historical_confidence_tally()
+        itself (counties with no history simply absent, not zero).
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute('SELECT county, high, medium, low FROM historical_confidence_tally')
+        return {
+            row['county']: {'high': row['high'], 'medium': row['medium'], 'low': row['low']}
+            for row in cursor.fetchall()
+        }
 
 
 				
