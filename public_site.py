@@ -12,13 +12,28 @@ from correlate import _county_in_alert
 from county_status import (
     COUNTY_PICKER_CHOICES, _real_per_county_open_events,
     _combined_territory_open_events, _rows_for_county, humanize_timestamp,
-    historical_confidence_tally,
+    historical_confidence_tally, _row_tier,
 )
 from storm_history import available_history_counties, load_history_for_county
 import florida_county_paths as county_map
 
 app = Flask(__name__, template_folder="templates_public")
 app.jinja_env.filters['humanize'] = humanize_timestamp
+app.jinja_env.filters['row_tier'] = _row_tier
+
+
+def _severity_icon(severity):
+    """
+    Map a raw NWS alert severity string (Extreme/Severe/Moderate/Minor,
+    or missing) to the same critical/high/medium/low/nodata icon
+    vocabulary _row_tier() already uses for live outages - one shared
+    hazard-icon language across the whole page instead of two.
+    """
+    mapping = {"extreme": "critical", "severe": "high", "moderate": "medium", "minor": "low"}
+    return mapping.get((severity or "").lower(), "nodata")
+
+
+app.jinja_env.filters['severity_icon'] = _severity_icon
 
 # historical_confidence_tally() re-runs every real per-county
 # correlation function all-time (days=None) - a real, expensive nested-

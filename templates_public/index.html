@@ -184,11 +184,22 @@
   .heat-now.quiet .dot { background: var(--line); box-shadow: none; }
   @media (max-width: 760px) { .heat-panel { grid-template-columns: 1fr; text-align: left; } }
 
+  .hz-icon { width: 1.15em; height: 1.15em; display: inline-block; vertical-align: -0.22em; flex-shrink: 0; }
+
+  .outage-card, .alert-card, .heat-panel {
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  }
+  .hz-stripe { position: relative; }
+  .hz-stripe::before {
+    content: ""; display: block; height: 6px; margin: -1rem -1.25rem 0.8rem;
+    background: repeating-linear-gradient(-45deg, var(--yellow) 0 10px, #0a0a0a 10px 20px);
+  }
+
   .alert-card { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--yellow); padding: 1rem 1.25rem; margin-bottom: 0.85rem; }
   .alert-card:last-child { margin-bottom: 0; }
   .alert-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
   .alert-type { font-weight: 700; font-size: 1rem; }
-  .alert-severity { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--yellow); }
+  .alert-severity { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--yellow); display: inline-flex; align-items: center; gap: 0.3rem; }
   .alert-window { color: var(--ink-soft); font-size: 0.8rem; margin-bottom: 0.6rem; }
   .alert-areas { display: flex; flex-wrap: wrap; gap: 0.4rem; }
   .alert-area-chip { font-size: 0.72rem; font-weight: 600; padding: 0.2rem 0.6rem; border: 1px solid var(--line); color: var(--ink-soft); white-space: nowrap; }
@@ -204,10 +215,14 @@
   .outage-card.combined { border-left-color: var(--cyan); }
   .outage-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
   .outage-utility { font-weight: 700; font-size: 1rem; }
-  .outage-figure { color: var(--magenta); font-weight: 700; }
+  .outage-figure { color: var(--magenta); font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem; }
   .outage-card.combined .outage-figure { color: var(--cyan); }
   .outage-sub { color: var(--ink-soft); font-size: 0.85rem; }
   .outage-note { color: var(--ink-soft); font-size: 0.75rem; margin-top: 0.4rem; }
+
+  .map-legend { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; margin-top: 0.7rem; }
+  .legend-item { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  .legend-label { color: var(--ink-soft); }
 
   .history-search { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; max-width: 28rem; }
   .history-search input {
@@ -249,6 +264,40 @@
 </head>
 <body>
 
+<svg style="position: absolute; width: 0; height: 0; overflow: hidden;" aria-hidden="true">
+  <defs>
+    <g id="hz-blade">
+      <path d="M14.6 10.5 A 3 3 0 0 1 14.6 13.5 L 21.53 17.5 A 11 11 0 0 0 21.53 6.5 Z"/>
+    </g>
+    <symbol id="hz-critical" viewBox="0 0 24 24" fill="currentColor">
+      <use href="#hz-blade"/>
+      <use href="#hz-blade" transform="rotate(120 12 12)"/>
+      <use href="#hz-blade" transform="rotate(240 12 12)"/>
+      <circle cx="12" cy="12" r="2.4"/>
+    </symbol>
+    <symbol id="hz-high" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+      <circle cx="12" cy="16" r="5"/>
+      <circle cx="8.54" cy="10" r="5"/>
+      <circle cx="15.46" cy="10" r="5"/>
+    </symbol>
+    <symbol id="hz-medium" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M12 3 L21.5 19.5 L2.5 19.5 Z"/>
+      <line x1="12" y1="9" x2="12" y2="14"/>
+      <circle cx="12" cy="16.7" r="0.9" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="hz-low" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+      <rect x="8" y="8" width="8" height="8" transform="rotate(45 12 12)"/>
+    </symbol>
+    <symbol id="hz-clear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M8 12.5 L11 15.5 L16 9"/>
+    </symbol>
+    <symbol id="hz-nodata" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 3">
+      <circle cx="12" cy="12" r="9"/>
+    </symbol>
+  </defs>
+</svg>
+
 <div class="bezel">
   <h1>APOLLO SENTINEL</h1>
   <div class="tagline mono">FLORIDA OUTAGE &amp; WEATHER WATCH</div>
@@ -282,6 +331,7 @@
         <button type="button" class="map-mode-btn active" id="mapModeHistorical">Historical Pattern</button>
         <button type="button" class="map-mode-btn" id="mapModeLive">Live Severity</button>
       </div>
+      <div class="map-legend" id="mapLegend"></div>
       <div class="gauge-hint">&darr; click a county, or search below</div>
     </div>
     <div class="hero-cell stat-cell">
@@ -354,10 +404,12 @@
         <div class="history-empty">No active outages or weather alerts for {{ selected_county }} County right now.</div>
       {% else %}
         {% for e in county_detail.real_events %}
-        <div class="outage-card">
+        {% set tier = e | row_tier %}
+        <div class="outage-card{% if tier == 'critical' %} hz-stripe{% endif %}">
           <div class="outage-top">
             <span class="outage-utility">{{ e.utility }}</span>
             <span class="outage-figure mono">
+              <svg class="hz-icon"><use href="#hz-{{ tier }}"/></svg>
               {% if e.current_percentage_out is not none %}{{ "%.2f"|format(e.current_percentage_out) }}%{% else %}{{ "{:,}".format(e.customers or 0) }} customers{% endif %}
             </span>
           </div>
@@ -365,10 +417,12 @@
         </div>
         {% endfor %}
         {% for e in county_detail.combined_events %}
-        <div class="outage-card combined">
+        {% set tier = e | row_tier %}
+        <div class="outage-card combined{% if tier == 'critical' %} hz-stripe{% endif %}">
           <div class="outage-top">
             <span class="outage-utility">{{ e.utility }}</span>
             <span class="outage-figure mono">
+              <svg class="hz-icon"><use href="#hz-{{ tier }}"/></svg>
               {% if e.current_percentage_out is not none %}{{ "%.2f"|format(e.current_percentage_out) }}%{% else %}{{ "{:,}".format(e.customers or 0) }} customers{% endif %}
             </span>
           </div>
@@ -377,10 +431,11 @@
         </div>
         {% endfor %}
         {% for a in county_detail.active_alerts %}
-        <div class="alert-card{% if a.is_heat %} heat{% endif %}">
+        {% set icon = a.severity | severity_icon %}
+        <div class="alert-card{% if a.is_heat %} heat{% endif %}{% if icon == 'critical' %} hz-stripe{% endif %}">
           <div class="alert-top">
             <span class="alert-type">{{ a.event_type }}</span>
-            <span class="alert-severity">{{ a.severity or "Unknown" }}</span>
+            <span class="alert-severity"><svg class="hz-icon"><use href="#hz-{{ icon }}"/></svg>{{ a.severity or "Unknown" }}</span>
           </div>
           <div class="alert-window">Active until {{ a.expires | humanize }}</div>
           <div class="alert-areas">
@@ -403,10 +458,11 @@
     </p>
     {% if active_alerts %}
       {% for a in active_alerts %}
-      <div class="alert-card">
+      {% set icon = a.severity | severity_icon %}
+      <div class="alert-card{% if icon == 'critical' %} hz-stripe{% endif %}">
         <div class="alert-top">
           <span class="alert-type">{{ a.event_type }}</span>
-          <span class="alert-severity">{{ a.severity or "Unknown" }}</span>
+          <span class="alert-severity"><svg class="hz-icon"><use href="#hz-{{ icon }}"/></svg>{{ a.severity or "Unknown" }}</span>
         </div>
         <div class="alert-window">Active until {{ a.expires | humanize }}</div>
         <div class="alert-areas">
@@ -631,6 +687,33 @@
     return `${n.toLocaleString()} ${unit} in outage right now`;
   }
 
+  const LEGEND_SETS = {
+    historical: [
+      ["storm", "hz-critical", "Storm Related"],
+      ["watch", "hz-medium", "Keep An Eye Out"],
+      ["clear", "hz-clear", "Probably Not Weather"],
+      ["nodata", "hz-nodata", "No Historical Data Yet"],
+    ],
+    live: [
+      ["critical", "hz-critical", "Critical"],
+      ["high", "hz-high", "High"],
+      ["medium", "hz-medium", "Medium"],
+      ["low", "hz-low", "Low"],
+      ["clear", "hz-clear", "No Active Outage"],
+    ],
+  };
+
+  function renderLegend() {
+    const items = LEGEND_SETS[mapMode];
+    const colorMap = mapMode === "live" ? LIVE_TILE_COLOR : TILE_COLOR;
+    document.getElementById("mapLegend").innerHTML = items.map(([cls, icon, label]) => `
+      <span class="legend-item" style="color: ${colorMap[cls]};">
+        <svg class="hz-icon"><use href="#${icon}"/></svg>
+        <span class="legend-label">${label}</span>
+      </span>
+    `).join("");
+  }
+
   let mapMode = "historical";
 
   function renderMap() {
@@ -709,6 +792,8 @@
       const anyWatch = counties.some(c => verdictOf(c).cls === "watch");
       captionEl.textContent = anyStorm ? "STORM ACTIVITY IN AT LEAST ONE COUNTY" : anyWatch ? "SOME STORM ACTIVITY" : "MOSTLY ROUTINE";
     }
+
+    renderLegend();
   }
 
   renderMap();
