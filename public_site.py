@@ -41,6 +41,15 @@ app.jinja_env.filters['severity_icon'] = _severity_icon
 # county_status._CLOSED_EVENTS_LIMIT for the query-side cap).
 OUTAGE_HISTORY_DISPLAY_LIMIT = 15
 
+# Real count of independently-integrated live utility sources, for the
+# narrative summary's "We track N utilities" line. Kept as an explicit
+# constant here rather than inferred from live data (a utility with
+# zero currently-open outages would otherwise silently undercount) -
+# deliberately not imported from dashboard.py's own
+# PIPELINE_SOURCE_DISPLAY_NAMES, since the two apps share only the
+# read-only apollo_shell/ data layer, never each other's code.
+TRACKED_UTILITY_COUNT = 14
+
 # Genuinely separate from dashboard.py's app - its own Flask instance,
 # its own template folder, its own port when run directly. Reads the
 # same live/historical databases (via the shared apollo_shell/ data
@@ -252,6 +261,7 @@ def index():
         counties_json=json.dumps(counties_data),
         county_rings_json=json.dumps(county_map.FLORIDA_COUNTY_RINGS),
         narrative=narrative,
+        tracked_utility_count=TRACKED_UTILITY_COUNT,
         heat_summary=heat_summary,
         active_alerts=all_active_alerts,
         available_counties=COUNTY_PICKER_CHOICES,

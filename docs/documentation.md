@@ -21,9 +21,14 @@ detective instead. No regrets.
 - A live per-county lookup tool, pulling together outages, weather, and
   heat advisories for any of Florida's 67 counties
 - A genuinely separate public-facing page - its own app, its own real
-  isometric Florida county map toggling between all-time historical
-  pattern and current live severity, plus a narrative summary, running
-  locally, wired to the same live data as everything else
+  isometric Florida county map (opens on current Live Severity by
+  default, one click over to the all-time Historical Pattern view),
+  plus a narrative summary, a per-county Outage History (real start/end
+  times for individual outages this project has directly observed,
+  distinct from the independently-sourced storm archive), a bold
+  hazard-placard visual identity (custom SVG iconography, stenciled
+  display type, diagonal-cut framing), running locally, wired to the
+  same live data as everything else
 - **Real historical storm data**, not just live-forward collection — 17
   storms, 2018-2025, across every utility per storm, queryable by
   county. Kept off GitHub.
@@ -77,8 +82,16 @@ real and usable.
   match carrying its own confidence label
 - A real per-county lookup tool now pulls outages, weather, and heat
   together for whichever county someone's actually asking about
+- The public page's own per-county view goes further: current status,
+  active alerts, and a real itemized outage history (individual
+  start/end occurrences, not just a summary number) for whichever
+  county gets clicked or searched
 - 17 historical storms are queryable by county, and every collection
   source's health is tracked so a quiet one gets noticed, not assumed
+- The public page's own expensive all-time correlation read is
+  precomputed once per poll cycle now, not recalculated per visitor -
+  a real load-time bug (up to 44s) fixed at the source, not papered
+  over with a longer cache
 
 ## The honest gaps
 - Guessing when the lights come back on for a *live* outage is still

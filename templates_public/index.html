@@ -329,8 +329,8 @@
       <div class="gauge-caption" id="gaugeCaption">—</div>
       <div class="gauge-sub mono">67 FLORIDA COUNTIES, REAL CENSUS BOUNDARY DATA. CLICK ANY COUNTY FOR ITS STORM HISTORY.</div>
       <div class="map-mode-toggle" role="group" aria-label="Map view mode">
-        <button type="button" class="map-mode-btn active" id="mapModeHistorical">Historical Pattern</button>
-        <button type="button" class="map-mode-btn" id="mapModeLive">Live Severity</button>
+        <button type="button" class="map-mode-btn active" id="mapModeLive">Live Severity</button>
+        <button type="button" class="map-mode-btn" id="mapModeHistorical">Historical Pattern</button>
       </div>
       <div class="map-legend" id="mapLegend"></div>
       <div class="gauge-hint">&darr; click a county, or search below</div>
@@ -377,7 +377,7 @@
     {% endif %}
     {% if narrative.top_utility_name %}
     <p>
-      We track <strong>thirteen utilities</strong> live across Florida. <strong>{{ narrative.top_utility_name }}</strong>
+      We track <strong>{{ tracked_utility_count }} utilities</strong> live across Florida. <strong>{{ narrative.top_utility_name }}</strong>
       has the most customers out right now, with <strong class="mono">{{ "{:,}".format(narrative.top_utility_customers) }}</strong>.
       {% if narrative.top_pct_utility_name %}
       <strong>{{ narrative.top_pct_utility_name }}</strong> has the highest share of its tracked customers affected,
@@ -763,7 +763,7 @@
     `).join("");
   }
 
-  let mapMode = "historical";
+  let mapMode = "live";
 
   function renderMap() {
     countiesGroup.innerHTML = "";
