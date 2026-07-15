@@ -161,3 +161,98 @@ class TestCountyPickerChoicesSharedCorrectly:
     def test_desoto_casing_special_case_preserved(self):
         assert "DeSoto" in cs.COUNTY_PICKER_CHOICES
         assert "Desoto" not in cs.COUNTY_PICKER_CHOICES
+
+
+class TestNormalizeClosedEvents:
+    def test_shape_and_bounded_duration(self):
+        rows = cs._normalize_closed_events([{
+            "utility": "FPL", "county": "Alachua", "peak_customers_out": 500,
+            "peak_percentage_out": 2.5, "customers_served": 20000,
+            "start_time": "2026-01-01T00:00:00", "end_time": "2026-01-01T02:00:00",
+        }], "peak_customers_out")
+
+        assert rows == [{
+            "utility": "FPL", "county": "Alachua", "peak_customers": 500,
+            "peak_percentage_out": 2.5, "customers_served": 20000,
+            "start_time": "2026-01-01T00:00:00", "end_time": "2026-01-01T02:00:00",
+            "duration": "2h 0m",
+        }]
+
+    def test_incident_level_source_has_no_percentage(self):
+        rows = cs._normalize_closed_events([{
+            "utility": "TECO", "county": "Hillsborough", "peak_customer_count": 40,
+            "start_time": "2026-01-01T00:00:00", "end_time": "2026-01-01T00:30:00",
+        }], "peak_customer_count")
+
+        assert rows[0]["peak_customers"] == 40
+        assert rows[0]["peak_percentage_out"] is None
+
+
+class TestRealPerCountyClosedEvents:
+    def test_includes_a_real_resolved_fpl_outage(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_multiple_outages("FPL", [
+            {"county": "ALACHUA", "customers_out": 50, "customers_served": 1000},
+        ], timestamp="2026-01-01T00:00:00")
+        db.sync_outage_events("FPL", [
+            {"county": "ALACHUA", "customers_out": 50, "customers_served": 1000},
+        ], timestamp="2026-01-01T00:00:00")
+        db.log_multiple_outages("FPL", [
+            {"county": "ALACHUA", "customers_out": 0, "customers_served": 1000},
+        ], timestamp="2026-01-01T02:00:00")
+        db.sync_outage_events("FPL", [
+            {"county": "ALACHUA", "customers_out": 0, "customers_served": 1000},
+        ], timestamp="2026-01-01T02:00:00")
+
+        rows = cs._real_per_county_closed_events(db)
+        db.close()
+
+        alachua_rows = [r for r in rows if r["county"] == "ALACHUA"]
+        assert len(alachua_rows) == 1
+        assert alachua_rows[0]["peak_customers"] == 50
+        assert alachua_rows[0]["end_time"] == "2026-01-01T02:00:00"
+
+    def test_still_open_events_are_not_included(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_multiple_outages("FPL", [
+            {"county": "ALACHUA", "customers_out": 50, "customers_served": 1000},
+        ], timestamp="2026-01-01T00:00:00")
+        db.sync_outage_events("FPL", [
+            {"county": "ALACHUA", "customers_out": 50, "customers_served": 1000},
+        ], timestamp="2026-01-01T00:00:00")
+
+        rows = cs._real_per_county_closed_events(db)
+        db.close()
+
+        assert rows == []
+
+
+class TestCombinedTerritoryClosedEvents:
+    def test_includes_a_real_resolved_gcec_outage(self, db_path):
+        db = OutageDatabase(db_path)
+        territory = "Bay/Calhoun/Gulf/Jackson/Walton/Washington"
+        db.log_gcec_outages([{"county": territory, "customers_out": 7, "customers_served": 23206}], timestamp="2026-01-01T00:00:00")
+        db.sync_gcec_outage_events([{"county": territory, "customers_out": 7, "customers_served": 23206}], timestamp="2026-01-01T00:00:00")
+        db.log_gcec_outages([{"county": territory, "customers_out": 0, "customers_served": 23206}], timestamp="2026-01-01T01:00:00")
+        db.sync_gcec_outage_events([{"county": territory, "customers_out": 0, "customers_served": 23206}], timestamp="2026-01-01T01:00:00")
+
+        rows = cs._combined_territory_closed_events(db)
+        db.close()
+
+        assert len(rows) == 1
+        assert rows[0]["county"] == territory
+        assert rows[0]["peak_customers"] == 7
+
+    def test_rows_for_county_finds_it_by_real_county_name(self, db_path):
+        db = OutageDatabase(db_path)
+        territory = "Bay/Calhoun/Gulf/Jackson/Walton/Washington"
+        db.log_gcec_outages([{"county": territory, "customers_out": 7, "customers_served": 23206}], timestamp="2026-01-01T00:00:00")
+        db.sync_gcec_outage_events([{"county": territory, "customers_out": 7, "customers_served": 23206}], timestamp="2026-01-01T00:00:00")
+        db.log_gcec_outages([{"county": territory, "customers_out": 0, "customers_served": 23206}], timestamp="2026-01-01T01:00:00")
+        db.sync_gcec_outage_events([{"county": territory, "customers_out": 0, "customers_served": 23206}], timestamp="2026-01-01T01:00:00")
+
+        rows = cs._combined_territory_closed_events(db)
+        calhoun_rows = cs._rows_for_county(rows, "Calhoun")
+        db.close()
+
+        assert len(calhoun_rows) == 1

@@ -10,7 +10,8 @@ from database import OutageDatabase
 from correlate import _county_in_alert
 from county_status import (
     COUNTY_PICKER_CHOICES, _real_per_county_open_events,
-    _combined_territory_open_events, _rows_for_county, humanize_timestamp,
+    _combined_territory_open_events, _real_per_county_closed_events,
+    _combined_territory_closed_events, _rows_for_county, humanize_timestamp,
     _row_tier,
 )
 from storm_history import available_history_counties, load_history_for_county
@@ -33,6 +34,12 @@ def _severity_icon(severity):
 
 
 app.jinja_env.filters['severity_icon'] = _severity_icon
+
+# Most recent resolved outages shown per county in the Outage History
+# section - a high-churn county's full history could otherwise be an
+# unbounded scroll; this is a display cap, not a data limitation (see
+# county_status._CLOSED_EVENTS_LIMIT for the query-side cap).
+OUTAGE_HISTORY_DISPLAY_LIMIT = 15
 
 # Genuinely separate from dashboard.py's app - its own Flask instance,
 # its own template folder, its own port when run directly. Reads the
@@ -206,6 +213,22 @@ def index():
         real_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
         combined_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
 
+        # This project's own directly-observed outage history for this
+        # county (real start/end pairs from the live poller, running
+        # since 2026-04) - a genuinely different dataset from Storm
+        # History below (independently-sourced, backfilled 2018-2025).
+        # Capped to the most recent OUTAGE_HISTORY_DISPLAY_LIMIT per
+        # group so a high-churn county's page doesn't turn into an
+        # unbounded scroll.
+        closed_events = _rows_for_county(_real_per_county_closed_events(db), selected_county)
+        combined_closed_events = _rows_for_county(_combined_territory_closed_events(db), selected_county)
+        closed_events.sort(key=lambda r: r["end_time"] or "", reverse=True)
+        combined_closed_events.sort(key=lambda r: r["end_time"] or "", reverse=True)
+        closed_events_total = len(closed_events)
+        combined_closed_events_total = len(combined_closed_events)
+        closed_events = closed_events[:OUTAGE_HISTORY_DISPLAY_LIMIT]
+        combined_closed_events = combined_closed_events[:OUTAGE_HISTORY_DISPLAY_LIMIT]
+
         has_history = selected_county.upper() in {c.upper() for c in available_history_counties()}
         storms = load_history_for_county(selected_county) if has_history else []
         storms_with_data_count = sum(1 for s in storms if s["has_data"])
@@ -214,6 +237,10 @@ def index():
             "real_events": real_events,
             "combined_events": combined_events,
             "active_alerts": active_alerts,
+            "closed_events": closed_events,
+            "closed_events_total": closed_events_total,
+            "combined_closed_events": combined_closed_events,
+            "combined_closed_events_total": combined_closed_events_total,
             "storms": storms,
             "storms_with_data_count": storms_with_data_count,
         }

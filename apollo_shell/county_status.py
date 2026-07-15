@@ -173,6 +173,73 @@ def _rows_for_county(rows, search_county):
     return [r for r in rows if r.get("county") and _county_in_alert(search_county, r["county"])]
 
 
+def _normalize_closed_events(closed_events, peak_field):
+    """
+    Common shape for a resolved (closed) event regardless of source -
+    same fields as _normalize_open_events() except there's no "current"
+    reading (the event is over) and "duration" is bounded between
+    start_time and end_time rather than start_time and now.
+    """
+    return [{
+        "utility": e["utility"],
+        "county": e["county"],
+        "peak_customers": e[peak_field],
+        "peak_percentage_out": e.get("peak_percentage_out"),
+        "customers_served": e.get("customers_served"),
+        "start_time": e["start_time"],
+        "end_time": e["end_time"],
+        "duration": _duration_since(e["start_time"], e["end_time"]),
+    } for e in closed_events]
+
+
+# Generous enough that a specific county's real history isn't crowded
+# out by other counties' more frequent recent closures within the same
+# global "most recent N" cut each get_X_recent_closed_*() call makes -
+# in practice this project's real closure counts per source are nowhere
+# near this over its whole life (started polling 2026-04), so this
+# reads as "effectively all of it" rather than a real cap.
+_CLOSED_EVENTS_LIMIT = 500
+
+
+def _real_per_county_closed_events(db):
+    """
+    Every resolved event from a source whose "county" field is a real,
+    single Florida county - the closed-event counterpart to
+    _real_per_county_open_events() above, same source list, same
+    real-vs-combined-territory split.
+    """
+    limit = _CLOSED_EVENTS_LIMIT
+    return (
+        _normalize_closed_events(db.get_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_teco_recent_closed_events(limit=limit), "peak_customer_count")
+        + _normalize_closed_events(db.get_duke_recent_closed_events(limit=limit), "peak_customer_count")
+        + _normalize_closed_events(db.get_jea_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_tallahassee_recent_closed_events(limit=limit), "peak_customer_count")
+        + _normalize_closed_events(db.get_talquin_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_preco_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_fkec_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_lwbu_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_fpuc_recent_closed_incidents(limit=limit), "peak_customer_count")
+    )
+
+
+def _combined_territory_closed_events(db):
+    """
+    Every resolved event from a combined-territory source - the closed-
+    event counterpart to _combined_territory_open_events() above, same
+    source list. Kept as its own distinct group for the same reason:
+    never mixed in with real per-county rows.
+    """
+    limit = _CLOSED_EVENTS_LIMIT
+    return (
+        _normalize_closed_events(db.get_fpuc_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_tcec_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_erec_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_chelco_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_gcec_recent_closed_events(limit=limit), "peak_customers_out")
+    )
+
+
 # Raw-count fallback tiers for incident-level sources (TECO, Duke,
 # Tallahassee, FPUC's incidents) that have no clean per-incident
 # denominator to compute a real percentage against - same "tiered by

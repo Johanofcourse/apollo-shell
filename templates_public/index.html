@@ -213,6 +213,7 @@
   .outage-card { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--magenta); padding: 1rem 1.25rem; margin-bottom: 0.85rem; }
   .outage-card:last-child { margin-bottom: 0; }
   .outage-card.combined { border-left-color: var(--cyan); }
+  .outage-card.resolved { opacity: 0.82; }
   .outage-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
   .outage-utility { font-weight: 700; font-size: 1rem; }
   .outage-figure { color: var(--magenta); font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem; }
@@ -506,6 +507,54 @@
         <div class="heat-now quiet"><span class="dot"></span>No advisory active right now</div>
       {% endif %}
     </div>
+  </section>
+
+  <section id="outageHistorySection">
+    <h2 class="section-title">Outage History</h2>
+    <p class="section-sub">
+      Real, individual outages this project has directly observed for your county since live tracking began
+      (2026-04) &mdash; when each one started and ended. Different from Storm History below, which is
+      independently-sourced storm-severity data going back to 2018, not our own live observations.
+    </p>
+    {% if not selected_county %}
+      <div class="history-empty">Click a county on the map above, or search one in Storm History below, to see its real outage history.</div>
+    {% elif not county_detail.closed_events and not county_detail.combined_closed_events %}
+      <div class="history-empty">No resolved outages on file for {{ selected_county }} County yet.</div>
+    {% else %}
+      {% for e in county_detail.closed_events %}
+      {% set tier = e | row_tier %}
+      <div class="outage-card resolved{% if tier == 'critical' %} hz-stripe{% endif %}">
+        <div class="outage-top">
+          <span class="outage-utility">{{ e.utility }}</span>
+          <span class="outage-figure mono">
+            <svg class="hz-icon"><use href="#hz-{{ tier }}"/></svg>
+            {% if e.peak_percentage_out is not none %}{{ "%.2f"|format(e.peak_percentage_out) }}% peak{% else %}{{ "{:,}".format(e.peak_customers or 0) }} peak{% endif %}
+          </span>
+        </div>
+        <div class="outage-sub">{{ e.start_time | humanize }} &rarr; {{ e.end_time | humanize }} &middot; lasted {{ e.duration }}</div>
+      </div>
+      {% endfor %}
+      {% if county_detail.closed_events_total > county_detail.closed_events | length %}
+        <div class="history-county-sub">Showing the {{ county_detail.closed_events | length }} most recent of {{ county_detail.closed_events_total }} resolved outages on file.</div>
+      {% endif %}
+      {% for e in county_detail.combined_closed_events %}
+      {% set tier = e | row_tier %}
+      <div class="outage-card combined resolved{% if tier == 'critical' %} hz-stripe{% endif %}">
+        <div class="outage-top">
+          <span class="outage-utility">{{ e.utility }}</span>
+          <span class="outage-figure mono">
+            <svg class="hz-icon"><use href="#hz-{{ tier }}"/></svg>
+            {% if e.peak_percentage_out is not none %}{{ "%.2f"|format(e.peak_percentage_out) }}% peak{% else %}{{ "{:,}".format(e.peak_customers or 0) }} peak{% endif %}
+          </span>
+        </div>
+        <div class="outage-sub">{{ e.start_time | humanize }} &rarr; {{ e.end_time | humanize }} &middot; lasted {{ e.duration }}</div>
+        <div class="outage-note">Reports one combined total across several counties, not broken out by county.</div>
+      </div>
+      {% endfor %}
+      {% if county_detail.combined_closed_events_total > county_detail.combined_closed_events | length %}
+        <div class="history-county-sub">Showing the {{ county_detail.combined_closed_events | length }} most recent of {{ county_detail.combined_closed_events_total }} combined-territory resolved outages touching this county.</div>
+      {% endif %}
+    {% endif %}
   </section>
 
   <section id="historySection">

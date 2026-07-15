@@ -169,6 +169,20 @@ class TestIndexRoute:
         r = client.get("/?county=Nonexistent+County")
         assert r.status_code == 200
 
+    def test_outage_history_section_renders_for_a_selected_county(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Palm+Beach")
+        assert r.status_code == 200
+        assert b"Outage History" in r.data
+
+    def test_outage_history_empty_prompt_when_no_county_selected(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+        assert r.status_code == 200
+        assert b"to see its real outage history" in r.data
+
     def test_alert_areas_are_split_into_a_real_list_not_iterated_as_a_string(self):
         # Real regression: get_active_weather_alerts()'s areas field is
         # a raw "Area One; Area Two" string - Jinja iterating it
