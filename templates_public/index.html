@@ -533,7 +533,7 @@
       <div class="history-county-title">{{ selected_county }}</div>
       <div class="history-county-sub">{{ county_detail.storms_with_data_count }} of {{ county_detail.storms | length }} storms have a real report for this county</div>
       <div class="timeline">
-        {% for s in county_detail.storms %}
+        {% for s in county_detail.storms | reverse %}
           {% if s.has_data %}
           <div class="storm-entry">
             <div class="storm-year mono">{{ s.storm_year }}</div>
