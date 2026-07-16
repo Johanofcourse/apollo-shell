@@ -136,6 +136,47 @@ class TestHistoricalConfidenceTally:
         assert "ALACHUA" in tally
         assert sum(tally["ALACHUA"].values()) == 1
 
+    def test_real_incident_shaped_source_does_not_crash_the_whole_tally(self, db_path):
+        # Real regression (found 2026-07-16 during the Oracle Cloud
+        # migration, on a VM run that finally had a real all-time FPUC
+        # incident-level match): find_tallahassee_correlations() and
+        # find_fpuc_incident_correlations() both return
+        # {"incident": ..., "alert": ...}-shaped matches, not
+        # {"outage": ...}-shaped ones - pairing either with the generic
+        # correlation_summary() (which reads match["outage"]) instead of
+        # duke_correlation_summary() (which reads match["incident"])
+        # raises a real KeyError the moment either source ever has a
+        # non-empty all-time match, aborting the ENTIRE tally
+        # computation for every other county too, not just theirs. This
+        # had been silently dormant because both real sources rarely had
+        # a non-empty all-time match until now.
+        db = OutageDatabase(db_path)
+        # log_tallahassee_incidents() stamps fetched_at as the real
+        # current time (not reported_start_time below), and
+        # find_tallahassee_correlations() matches against that real
+        # timestamp - so the alert's window has to be wide enough to
+        # cover "now", not a fixed date.
+        db.log_weather_alerts([{
+            "id": "test-alert-tally", "event": "Severe Thunderstorm Warning", "severity": "Severe",
+            "urgency": "Expected", "areas": "Leon",
+            "effective": "2020-01-01T00:00:00", "expires": "2030-01-01T23:59:59",
+            "headline": "test", "description": "test",
+        }])
+        db.log_tallahassee_incidents([{
+            "incident_id": "T1", "utility": "City of Tallahassee", "customer_count": 50,
+            "lat": 30.44, "lon": -84.28, "county": "Leon", "region_name": "North",
+            "status": "Investigating", "status_category": "investigating",
+            "cause": "Tree down", "cause_category": "vegetation", "outage_type": "Unplanned",
+            "reported_start_time": "2026-01-01T12:00:00", "estimated_restoration": None,
+        }])
+        db.close()
+
+        # Must not raise, and every other real source (FPL included)
+        # must still get processed despite Tallahassee's real match.
+        tally = cs.historical_confidence_tally(db_path)
+        assert "Leon" in tally
+        assert sum(tally["Leon"].values()) == 1
+
     def test_counties_with_no_history_are_absent_not_zero(self, db_path):
         db = OutageDatabase(db_path)
         db.log_weather_alerts([{
