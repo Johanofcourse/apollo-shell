@@ -1,6 +1,6 @@
 # apollo-shell
 
-Outage map focused on last-mile issue and speculative analysis on resolutions.
+Apollo Shell — Grid Outage Tracking System (Personal Project)
 
 ## Docs
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's built, in progress, and proposed
