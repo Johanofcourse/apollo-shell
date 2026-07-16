@@ -11,7 +11,28 @@ load_dotenv()
 # Electric Cooperative (PRECO) runs on the same underlying platform as
 # Talquin, and exposes the identical endpoint shape - just PRECO's own
 # tracking code in place of Talquin's.
+#
+# Like Talquin's, this trackingCode is NOT forever-static - our
+# original one had been individually blocked at the WAF/CDN layer in
+# front of cache.sienatech.com (real 420s, same root cause as
+# Talquin's, diagnosed 2026-07-16/17). A fresh trackingCode plus
+# Origin/Referer/Client headers matching a real browser visit to
+# outages.preco.coop (see PRECO_REQUEST_HEADERS below) is required.
 PRECO_API_URL = os.environ.get("PRECO_API_URL")
+
+# Required for the request to pass the WAF in front of
+# cache.sienatech.com - same mechanism as Talquin's
+# TALQUIN_REQUEST_HEADERS, just PRECO's own Origin/Referer/Client.
+PRECO_REQUEST_HEADERS = {
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "Origin": "https://outages.preco.coop",
+    "Referer": "https://outages.preco.coop/",
+    "Client": "preco",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/26.5.2 Safari/605.1.15"
+    ),
+}
 
 # The canonical utility name, matching how this entity is formally
 # known ("Peace River Electric Cooperative, Inc.") - not yet present
@@ -32,7 +53,7 @@ def fetch_preco_outages():
 
     try:
         print("Fetching PRECO outage data...")
-        response = requests.get(PRECO_API_URL, timeout=15)
+        response = requests.get(PRECO_API_URL, headers=PRECO_REQUEST_HEADERS, timeout=15)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
