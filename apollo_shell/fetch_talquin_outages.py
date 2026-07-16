@@ -7,11 +7,34 @@ load_dotenv()
 
 # Not an officially documented public API - kept out of the committed
 # code (this repo is public), loaded from .env instead of hardcoded as
-# a literal string, same as every other utility here. A required
-# tracking-code query param is baked into this URL - it's a stable
-# string tied to this utility's specific embed, not a rotating session
-# token, so it's safe to treat as effectively static.
+# a literal string, same as every other utility here.
+#
+# The trackingCode query param embedded in this URL is NOT a stable,
+# forever-static string, despite what an earlier version of this
+# comment claimed - our original one got blocked at the WAF/CDN layer
+# in front of cache.sienatech.com (real 420 responses, identical ETag
+# regardless of the request), while the live embed at
+# my.talquinelectric.com/outages/maps was serving a different
+# trackingCode the whole time. Diagnosed 2026-07-16 by comparing a real
+# browser capture against our own request - the WAF also requires
+# Origin/Referer/Client headers matching a real browser visit (see
+# TALQUIN_REQUEST_HEADERS below); trackingCode alone or headers alone
+# were each independently insufficient, only the combination worked.
 TALQUIN_API_URL = os.environ.get("TALQUIN_API_URL")
+
+# Required for the request to pass the WAF in front of
+# cache.sienatech.com - without these (confirmed via direct testing)
+# the backend returns a blanket 420 regardless of trackingCode.
+TALQUIN_REQUEST_HEADERS = {
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "Origin": "https://my.talquinelectric.com",
+    "Referer": "https://my.talquinelectric.com/",
+    "Client": "talquin",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/26.5.2 Safari/605.1.15"
+    ),
+}
 
 # The canonical utility name, matching the exact string this same real
 # entity is stored as in historical_import.py's PSC-report data
@@ -31,7 +54,7 @@ def fetch_talquin_outages():
 
     try:
         print("Fetching Talquin outage data...")
-        response = requests.get(TALQUIN_API_URL, timeout=15)
+        response = requests.get(TALQUIN_API_URL, headers=TALQUIN_REQUEST_HEADERS, timeout=15)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
