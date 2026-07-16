@@ -4,7 +4,7 @@ Started as a "shell." Somewhere along the way it became an outage
 detective instead. No regrets.
 
 ## Done
-- Live outage data flows in continuously from fourteen independent
+- Live outage data flows in continuously from fifteen independent
   Florida utilities, alongside National Weather Service alerts, now
   covering every one of Florida's 67 counties with a real, verified
   live source
@@ -75,7 +75,7 @@ and ruling out a few dead-end or fabricated sources — to confirm as
 real and usable.
 
 ## Live right now
-- The poller runs unattended from fourteen independent Florida
+- The poller runs unattended from fifteen independent Florida
   utilities now, up from the original one, with a real live source
   covering every one of Florida's 67 counties
 - Real weather alerts are correlating with real outages statewide, each
@@ -682,3 +682,31 @@ city-wide total became that one authoritative number (a real
 percentage, not a raw count) and the individual incidents stayed
 exactly what they are: real, useful, per-outage detail, on their own
 dashboard section, never summed into anything statewide.
+
+## The fifteenth utility, found the same honest way as the fourteenth
+A live poller restart was quietly grinding through a genuinely
+different kind of wait - a cloud VM stuck behind a real capacity
+shortage on a free-tier compute shape, nothing to do about it but check
+back periodically. Rather than let that dead time actually be dead
+time, the same question that once found the twelfth utility came back
+around: who else out there is a real, live Florida utility this
+project isn't tracking yet - ranked honestly by how much they'd
+actually matter, not just the next name on a list.
+
+Cross-referencing every utility that's ever appeared in this project's
+own historical storm data, one candidate stood out by a wide margin -
+more than double the size of the next real option, and present in
+two-thirds of the storms on file. A real live outage map for it was
+confirmed before anything else got built, same discipline as every
+integration before it. It turned out to run on the identical
+underlying vendor platform the fourth utility already uses, so the
+resolution logic didn't need to be invented twice.
+
+Its feed also hinted at something richer - real per-incident detail,
+not just a summary number - but that layer only ever showed up empty
+the day it was checked, for an honest reason: nothing was actively
+wrong at that exact moment for it to describe. Rather than guess at a
+shape from an empty response, only the real, confirmed part shipped -
+a real city-wide percentage for a county that already had some
+coverage, just never a clean customer-base denominator to trust before
+now.

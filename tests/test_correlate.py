@@ -20,6 +20,7 @@ from correlate import (
     find_preco_correlations, find_fkec_correlations, find_tcec_correlations,
     find_erec_correlations, find_chelco_correlations, find_gcec_correlations,
     find_lwbu_correlations,
+    find_ouc_correlations,
 )
 from database import OutageDatabase
 
@@ -633,3 +634,38 @@ class TestFindLwbuCorrelations:
         db.close()
 
         assert find_lwbu_correlations(db_path, days=None) == []
+
+
+class TestFindOucCorrelations:
+    """
+    find_ouc_correlations() reuses the exact same matching helpers
+    already proven via find_correlations()/find_fkec_correlations()
+    above - a real single-county rollup source (Orange), not a
+    combined-territory label, so a real match is expected here.
+    """
+
+    def test_matches_an_ouc_outage_to_an_overlapping_alert(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Orange"))
+        db.log_ouc_outages(
+            [{"county": "Orange", "customers_out": 500, "customers_served": 291868}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        matches = find_ouc_correlations(db_path, days=None)
+        assert len(matches) == 1
+
+        summary = correlation_summary(matches)
+        assert summary["Orange"]["outage_count"] == 1
+
+    def test_zero_customer_snapshots_are_not_matched(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Orange"))
+        db.log_ouc_outages(
+            [{"county": "Orange", "customers_out": 0, "customers_served": 291868}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_ouc_correlations(db_path, days=None) == []

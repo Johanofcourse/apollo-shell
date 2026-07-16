@@ -14,6 +14,7 @@ from correlate import (
     find_jea_correlations, find_tallahassee_correlations,
     find_talquin_correlations, find_fpuc_incident_correlations,
     find_preco_correlations, find_fkec_correlations, find_lwbu_correlations,
+    find_ouc_correlations,
 )
 from historical_import import FLORIDA_COUNTIES
 
@@ -137,6 +138,7 @@ def _real_per_county_open_events(db):
         + _normalize_open_events(db.get_preco_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_fkec_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_lwbu_open_events(), "current_customers_out", "peak_customers_out")
+        + _normalize_open_events(db.get_ouc_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_fpuc_open_incidents(), "current_customer_count", "peak_customer_count")
     )
 
@@ -219,6 +221,7 @@ def _real_per_county_closed_events(db):
         + _normalize_closed_events(db.get_preco_recent_closed_events(limit=limit), "peak_customers_out")
         + _normalize_closed_events(db.get_fkec_recent_closed_events(limit=limit), "peak_customers_out")
         + _normalize_closed_events(db.get_lwbu_recent_closed_events(limit=limit), "peak_customers_out")
+        + _normalize_closed_events(db.get_ouc_recent_closed_events(limit=limit), "peak_customers_out")
         + _normalize_closed_events(db.get_fpuc_recent_closed_incidents(limit=limit), "peak_customer_count")
     )
 
@@ -333,6 +336,7 @@ _REAL_CORRELATION_SOURCES = [
     (find_preco_correlations, correlation_summary),
     (find_fkec_correlations, correlation_summary),
     (find_lwbu_correlations, correlation_summary),
+    (find_ouc_correlations, correlation_summary),
 ]
 
 

@@ -28,6 +28,7 @@ from fetch_lwbu_outages import (
     get_lwbu_records, LWBU_API_BASE,
     get_incidents_summary as get_lwbu_incidents_summary,
 )
+from fetch_ouc_outages import get_ouc_records, OUC_INSTANCE_ID
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -43,6 +44,7 @@ from correlate import (
     find_chelco_correlations,
     find_gcec_correlations,
     find_lwbu_correlations,
+    find_ouc_correlations,
 )
 from county_status import historical_confidence_tally
 
@@ -371,6 +373,32 @@ def run_lwbu_cycle(db):
         print("Skipping LWBU incident save - no active incidents")
 
 
+def run_ouc_cycle(db):
+    """
+    Fetch Orlando Utilities Commission's live county-level outage data,
+    save the raw snapshot, and update ouc_outage_events lifecycle
+    tracking (start/end) - a real single-county rollup source (Orange),
+    same shape as FKEC/PRECO, not an incident list. OUC's own real
+    per-incident/cluster layer is confirmed to exist but was only ever
+    observed empty (see fetch_ouc_outages.py's module docstring) - not
+    integrated here yet.
+
+    Raises only when OUC_INSTANCE_ID is actually configured but the
+    fetch still came back empty - same reasoning/config-check pattern
+    as run_fkec_cycle() above.
+    """
+    records = get_ouc_records()
+    if not records:
+        if OUC_INSTANCE_ID:
+            raise RuntimeError("OUC fetch returned no records - see the poller's own log for the underlying request error")
+        print("Skipping OUC save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_ouc_outages(records, timestamp=timestamp)
+    db.sync_ouc_outage_events(records, timestamp=timestamp)
+
+
 def run_fpuc_cycle(db):
     """
     Fetch FPUC's live outage data once, then update both trackers from
@@ -592,6 +620,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    ouc_matches = find_ouc_correlations()
+    if not ouc_matches:
+        print("OUC correlation: no matches this cycle")
+    else:
+        ouc_summary = correlation_summary(ouc_matches)
+        print(f"OUC correlation: {len(ouc_matches)} matches across {len(ouc_summary)} counties")
+        for county, stats in ouc_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def run_historical_tally_cycle(db):
     """
@@ -713,6 +754,12 @@ def main():
             except Exception as e:
                 print(f"LWBU fetch cycle failed: {e}")
                 db.log_pipeline_error("lwbu", str(e))
+
+            try:
+                run_ouc_cycle(db)
+            except Exception as e:
+                print(f"OUC fetch cycle failed: {e}")
+                db.log_pipeline_error("ouc", str(e))
 
             try:
                 run_correlation_cycle()

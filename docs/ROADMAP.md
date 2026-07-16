@@ -303,7 +303,7 @@ and don't substitute for everyday-outage volume.
       and the test/prod split above first, not something to start now.
 
 ## Utility coverage
-Grew from one utility (FPL) to fourteen live sources across this
+Grew from one utility (FPL) to fifteen live sources across this
 project's life, each one closing a real, verified county-coverage gap
 rather than being added for its own sake. In rough order: a second and
 third utility added genuinely richer per-incident detail (real cause,
@@ -333,6 +333,13 @@ richer per-incident feed (street, cause, crew status) - kept as two
 independent views of the same real outages, with only the city-wide
 total feeding the statewide numbers, the same "pick exactly one real
 per-county source" principle FPUC's own dual-shape feed established.
+A fifteenth (Orlando Utilities Commission) added a second, real-
+percentage reading for a county already covered by an incident-level
+source with no clean customer-base denominator - found the same honest
+way as GCEC, by ranking every utility that's ever shown up in this
+project's own historical storm data and confirming a real live feed
+existed before building anything. Runs on the same shared vendor
+platform JEA's feed does.
 
 Every combined-territory source (where one number covers multiple real
 counties rather than a true per-county breakdown) is disclosed as such
