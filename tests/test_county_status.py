@@ -194,6 +194,29 @@ class TestHistoricalConfidenceTally:
 
         assert "Baker" not in tally
 
+    def test_every_real_correlation_function_is_registered(self):
+        # Real regression (found 2026-07-17 during a full VM test sweep):
+        # find_tcec_correlations()/find_erec_correlations()/
+        # find_chelco_correlations()/find_gcec_correlations() all existed
+        # and worked fine, but were never added to
+        # _REAL_CORRELATION_SOURCES - so their data silently never
+        # reached historical_confidence_tally() (the public site's
+        # Historical Pattern map), even though the same four functions
+        # were correctly wired into dashboard.py's own per-utility
+        # correlation display. No crash, just a quiet undercount - this
+        # guards against the same class of oversight for any future
+        # utility, not just these four.
+        import inspect
+        import correlate
+
+        all_correlation_fns = {
+            name for name, obj in inspect.getmembers(correlate, inspect.isfunction)
+            if name.startswith("find_") and name.endswith("_correlations")
+        }
+        registered_fns = {fn.__name__ for fn, _ in cs._REAL_CORRELATION_SOURCES}
+
+        assert all_correlation_fns == registered_fns
+
 
 class TestCountyPickerChoicesSharedCorrectly:
     def test_has_all_67_real_counties(self):

@@ -94,6 +94,7 @@ PIPELINE_SOURCE_DISPLAY_NAMES = {
     "lwbu": "Lake Worth Beach Utilities",
     "ouc": "Orlando Utilities Commission",
     "correlation": "Correlation",
+    "historical_tally": "Historical Confidence Tally",
 }
 
 # COUNTY_PICKER_CHOICES now lives in county_status.py (imported above).
@@ -538,7 +539,7 @@ def index():
     ouc_open_events = db.get_ouc_open_events()
     ouc_closed_events = db.get_ouc_recent_closed_events(limit=10)
 
-    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "correlation"])
+    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "correlation", "historical_tally"])
     heat_summary = db.get_heat_advisory_summary()
 
     db.close()

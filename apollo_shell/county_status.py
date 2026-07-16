@@ -13,8 +13,9 @@ from correlate import (
     find_correlations, find_teco_correlations, find_duke_correlations,
     find_jea_correlations, find_tallahassee_correlations,
     find_talquin_correlations, find_fpuc_incident_correlations,
-    find_preco_correlations, find_fkec_correlations, find_lwbu_correlations,
-    find_ouc_correlations,
+    find_preco_correlations, find_fkec_correlations, find_tcec_correlations,
+    find_erec_correlations, find_chelco_correlations, find_gcec_correlations,
+    find_lwbu_correlations, find_ouc_correlations,
 )
 from historical_import import FLORIDA_COUNTIES
 
@@ -335,6 +336,10 @@ _REAL_CORRELATION_SOURCES = [
     (find_fpuc_incident_correlations, duke_correlation_summary),
     (find_preco_correlations, correlation_summary),
     (find_fkec_correlations, correlation_summary),
+    (find_tcec_correlations, correlation_summary),
+    (find_erec_correlations, correlation_summary),
+    (find_chelco_correlations, correlation_summary),
+    (find_gcec_correlations, correlation_summary),
     (find_lwbu_correlations, correlation_summary),
     (find_ouc_correlations, correlation_summary),
 ]
