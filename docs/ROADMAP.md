@@ -365,6 +365,25 @@ empty rather than fake a match it can't actually verify.
   generalize. Worth treating as its own design decision when it comes
   up, not an incremental add.
 
+## Phase 6: Public Launch (Not started - after the Oracle Cloud migration settles)
+Making the Apollo Sentinel public page a real, clickable website - not
+just reachable over an SSH tunnel. Same VM, no second server needed;
+this project's traffic never justifies one.
+
+- [ ] A real domain name (the one actual recurring cost in this plan)
+- [ ] DNS pointed at the VM's IP
+- [ ] A real production web server in front of Flask (nginx + gunicorn -
+      Flask's own dev server explicitly isn't meant for real traffic)
+- [ ] HTTPS via Let's Encrypt (free)
+- [ ] Firewall opened for real web traffic (80/443) - only SSH is open
+      today
+- [ ] A real choice on analytics: self-hosted/privacy-respecting (e.g.
+      Plausible, Umami) vs. a hosted third-party tool - decide
+      deliberately, don't default
+
+The internal dashboard stays SSH-tunnel-only regardless - never
+publicly exposed, a firm decision, not just the current state.
+
 ## Explicitly not planned
 - **Any public pass-through of the raw live utility feeds** - never
   planned, not up for reconsideration. These are not official public
