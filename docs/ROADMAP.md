@@ -182,22 +182,46 @@
       asks "was this outage really caused by weather," this one asks
       "how long will it take." A real answer needs both eventually, but
       they're separate pieces built at separate times.
-- [ ] Connect live data to the historical storm dataset — e.g. "current
-      live weather resembles what we saw in this county during a past
-      storm, which took about this long to restore." Explicitly
-      deferred, not just unstarted - needs both the right analysis
-      approach and a lot more live volume than exists today.
+- [ ] Connect live data to the historical storm dataset for TECO/Duke/JEA
+      territory — e.g. "current live conditions resemble what we saw in
+      this county during a past storm, which took about this long to
+      restore." Explicitly deferred, not just unstarted - needs both the
+      right analysis approach and a lot more live volume than exists
+      today for these utilities specifically.
+- [ ] **FPL historical-precedent restoration model - re-checked
+      2026-07-17, confirmed ready to build now, not blocked on more data
+      after all.** FPL can never get a live incident-level model (its
+      feed only reports a county-wide total, and events blur together -
+      see Phase 2's county-history findings), but a historical-precedent
+      version doesn't need that: the 17-storm backfill is already
+      consolidated into 498 real FPL outage events across 40 counties
+      and 15 storms (`historical_consolidated.db`), each with a real
+      start/end window, so per-county historical duration stats are
+      computable today with zero new data collection. Two real build
+      steps left: (1) a per-county stats function (median/range
+      duration, N storms) off the already-consolidated table; (2) wiring
+      it into the live side so an open FPL county event shows "outages
+      this severe have historically taken X-Y hours here, based on N
+      storms" instead of a fake live ETA. One honest caveat carried over
+      from the source data itself, not a new one: these historical
+      durations come from the same periodic county-wide PSC situation
+      reports FPL's live feed uses, so a single reported "event" can
+      still blur multiple real repair jobs together the same way live
+      data can - the output is a rough, honest precedent, not
+      incident-level precision, even historically. This is a **county-
+      level** range, not a per-customer ETA - see the product-review
+      doc-worthy distinction the moment this actually gets scoped.
 
-The restoration-time items below (not the at-risk-counties one above,
-which is real, schedulable work already) are **not a normal engineering
-task with a schedulable timeline.** They require enough accumulated real
-outage-duration data
+The TECO/Duke/JEA restoration-time items above (not the at-risk-counties
+or FPL-historical-precedent items, both real schedulable work already)
+are **not a normal engineering task with a schedulable timeline.** They
+require enough accumulated real outage-duration data
 before an estimate would mean anything — no amount of additional code
 shortens that. Rough sense of scale: "enough for a first rough look" is
 more like weeks of live data, "enough to trust" is more like a month or
 two, and that's still only one season's worth of conditions. The 17
 historical storms cover a different, rarer category of outage entirely
-and don't substitute for everyday-outage volume.
+and don't substitute for everyday-outage volume for these utilities.
 
 ## Phase 4: Public-Facing Query Layer (Future consideration, not started)
 - [ ] Let people query the **derived/aggregated** data (historical
