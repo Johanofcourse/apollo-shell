@@ -377,3 +377,50 @@ def historical_confidence_tally(db_path="outages.db"):
                 if tier in bucket:
                     bucket[tier] += count
     return tally
+
+
+def explain_missing_historical_data(county, db):
+    """
+    Real, computed explanation for why a county has no entry in the
+    precomputed historical confidence tally (see
+    OutageDatabase.get_historical_confidence_tally()) - for operator-
+    facing display on dashboard.py's /county page. Deliberately computed
+    fresh from live data on every call rather than hardcoded per-county
+    text, so it stays accurate as a chronic source recovers or a new
+    live source gets added, instead of quietly going stale.
+
+    Returns None if the county already has a tally entry (nothing to
+    explain). Otherwise a dict with one of three honest reasons, built
+    from exactly what's actually known right now:
+    - "combined_only": only a combined-territory source (utilities
+      named) covers this county - its one shared multi-county number
+      can't be honestly attributed to this county's own local weather.
+    - "no_live_source": no live source at all currently reports this
+      county (shouldn't happen at full 67-county coverage, but a real
+      fallback rather than a silent crash if it ever did).
+    - "not_yet_matched": a real per-county source does cover this
+      county (utilities + real event count named) - it just hasn't
+      logged an outage that overlapped an active NWS alert yet. Often
+      resolves on its own with time, not a bug to chase.
+    """
+    tally = db.get_historical_confidence_tally()
+    if any(c.upper() == county.upper() for c in tally):
+        return None
+
+    real_events = _rows_for_county(
+        _real_per_county_open_events(db) + _real_per_county_closed_events(db), county
+    )
+    if real_events:
+        return {
+            "reason": "not_yet_matched",
+            "utilities": sorted({e["utility"] for e in real_events}),
+            "real_event_count": len(real_events),
+        }
+
+    combined_events = _rows_for_county(
+        _combined_territory_open_events(db) + _combined_territory_closed_events(db), county
+    )
+    if combined_events:
+        return {"reason": "combined_only", "utilities": sorted({e["utility"] for e in combined_events})}
+
+    return {"reason": "no_live_source", "utilities": []}

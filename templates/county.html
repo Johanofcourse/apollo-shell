@@ -190,6 +190,41 @@
       {% endif %}
     </div>
 
+    <h2>Historical Weather-Match Pattern</h2>
+    <p class="section-note">
+      All-time count of this county's own real outages that plausibly overlapped active NWS weather, by
+      confidence tier - the same reading the public page's "Historical Pattern" map view shows. A separate
+      question from the live sections above: this asks whether the track record looks weather-driven, not
+      whether anything is open right now.
+    </p>
+    {% if historical_confidence %}
+      <div class="wrap">
+        <table>
+          <tr><th>High Confidence</th><th>Medium Confidence</th><th>Low Confidence</th></tr>
+          <tr>
+            <td>{{ historical_confidence.high }}</td>
+            <td>{{ historical_confidence.medium }}</td>
+            <td>{{ historical_confidence.low }}</td>
+          </tr>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty">
+        {% if historical_gap_reason.reason == "not_yet_matched" %}
+          No entry yet. {{ selected_county }} has {{ historical_gap_reason.real_event_count }} real outage
+          event{{ "s" if historical_gap_reason.real_event_count != 1 }} on record from
+          {{ historical_gap_reason.utilities | join(", ") }}, but none has coincided with an active NWS alert
+          yet - this can fill in on its own over time, not necessarily a bug.
+        {% elif historical_gap_reason.reason == "combined_only" %}
+          No entry. The only live source covering {{ selected_county }} is a combined-territory reading
+          ({{ historical_gap_reason.utilities | join(", ") }}) - one shared number across several counties,
+          which can't be honestly attributed to this county's own local weather.
+        {% else %}
+          No entry, and no live source currently reports outage data for {{ selected_county }} at all.
+        {% endif %}
+      </div>
+    {% endif %}
+
     <h2>Active Weather Alerts{{ ' (' ~ active_alerts|length ~ ')' if active_alerts else '' }}</h2>
     {% if active_alerts %}
       {% for a in active_alerts %}

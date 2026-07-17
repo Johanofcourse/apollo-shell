@@ -28,6 +28,7 @@ from county_status import (
     _normalize_open_events, _real_per_county_open_events,
     _combined_territory_open_events, _rows_for_county,
     humanize_timestamp as _humanize_timestamp,
+    explain_missing_historical_data,
 )
 from storm_history import (
     HISTORICAL_DB_PATH,
@@ -937,12 +938,22 @@ def county_detail():
     real_events = []
     combined_events = []
     active_alerts = []
+    historical_confidence = None
+    historical_gap_reason = None
 
     if selected_county:
         db = OutageDatabase()
         real_events = _rows_for_county(_real_per_county_open_events(db), selected_county)
         combined_events = _rows_for_county(_combined_territory_open_events(db), selected_county)
         all_active_alerts = db.get_active_weather_alerts()
+
+        tally = db.get_historical_confidence_tally()
+        historical_confidence = next(
+            (stats for county, stats in tally.items() if county.upper() == selected_county.upper()), None
+        )
+        if historical_confidence is None:
+            historical_gap_reason = explain_missing_historical_data(selected_county, db)
+
         db.close()
 
         active_alerts = [a for a in all_active_alerts if _county_in_alert(selected_county, a["areas"])]
@@ -959,6 +970,8 @@ def county_detail():
         real_events=real_events,
         combined_events=combined_events,
         active_alerts=active_alerts,
+        historical_confidence=historical_confidence,
+        historical_gap_reason=historical_gap_reason,
     )
 
 

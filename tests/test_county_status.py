@@ -218,6 +218,74 @@ class TestHistoricalConfidenceTally:
         assert all_correlation_fns == registered_fns
 
 
+class TestExplainMissingHistoricalData:
+    """
+    explain_missing_historical_data() - added 2026-07-17 for dashboard.py's
+    /county page, so an operator sees why a county has no Historical
+    Pattern entry instead of silence. Computed fresh from live data every
+    call (never hardcoded per-county text) so it stays accurate as a
+    chronic source recovers or a new live source gets added.
+    """
+
+    def test_county_with_a_tally_entry_needs_no_explanation(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_historical_confidence_tally({"Alachua": {"high": 1, "medium": 0, "low": 0}})
+
+        result = cs.explain_missing_historical_data("Alachua", db)
+        db.close()
+
+        assert result is None
+
+    def test_tally_match_is_case_insensitive(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_historical_confidence_tally({"ALACHUA": {"high": 1, "medium": 0, "low": 0}})
+
+        result = cs.explain_missing_historical_data("Alachua", db)
+        db.close()
+
+        assert result is None
+
+    def test_real_events_with_no_tally_entry_reports_not_yet_matched(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_multiple_outages("FPL", [
+            {"county": "BRADFORD", "customers_out": 5, "customers_served": 1000},
+        ], timestamp="2026-01-01T00:00:00")
+        db.sync_outage_events("FPL", [
+            {"county": "BRADFORD", "customers_out": 5, "customers_served": 1000},
+        ], timestamp="2026-01-01T00:00:00")
+
+        result = cs.explain_missing_historical_data("Bradford", db)
+        db.close()
+
+        assert result["reason"] == "not_yet_matched"
+        assert result["utilities"] == ["FPL"]
+        assert result["real_event_count"] == 1
+
+    def test_combined_territory_only_reports_combined_only(self, db_path):
+        db = OutageDatabase(db_path)
+        territory = "Bay/Calhoun/Gulf/Jackson/Walton/Washington"
+        db.log_gcec_outages([
+            {"county": territory, "customers_out": 7, "customers_served": 23206},
+        ], timestamp="2026-01-01T00:00:00")
+        db.sync_gcec_outage_events([
+            {"county": territory, "customers_out": 7, "customers_served": 23206},
+        ], timestamp="2026-01-01T00:00:00")
+
+        result = cs.explain_missing_historical_data("Calhoun", db)
+        db.close()
+
+        assert result["reason"] == "combined_only"
+        assert result["utilities"] == ["Gulf Coast Electric Cooperative, Inc."]
+
+    def test_no_coverage_at_all_reports_no_live_source(self, db_path):
+        db = OutageDatabase(db_path)
+
+        result = cs.explain_missing_historical_data("Baker", db)
+        db.close()
+
+        assert result == {"reason": "no_live_source", "utilities": []}
+
+
 class TestCountyPickerChoicesSharedCorrectly:
     def test_has_all_67_real_counties(self):
         assert len(cs.COUNTY_PICKER_CHOICES) == 67
