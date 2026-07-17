@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dashboard import (
     _incident_label, _explain_pipeline_error, _group_pipeline_errors,
     _is_pipeline_error_ongoing, _normalize_open_events, _rows_for_county,
-    _paginate, COUNTY_PICKER_CHOICES,
+    _paginate, _split_chronic_errors, COUNTY_PICKER_CHOICES,
 )
 
 
@@ -262,6 +262,46 @@ class TestPaginate:
         result = _paginate(items, page=999, per_page=10)
         assert result["page"] == 3
         assert result["items"] == list(range(20, 25))
+
+
+class TestSplitChronicErrors:
+    """
+    _split_chronic_errors() - added 2026-07-17 so Talquin/PRECO's real
+    but already-understood recurring credential failures don't dominate
+    /pipeline-errors's combined "all sources" view and bury genuinely
+    rare failures from every other source.
+    """
+
+    def _err(self, source):
+        return {"source": source}
+
+    def test_chronic_sources_pulled_into_their_own_list(self):
+        errors = [self._err("talquin"), self._err("fpl"), self._err("preco"), self._err("duke")]
+        chronic, other = _split_chronic_errors(errors, {"talquin", "preco"}, limit=10)
+
+        assert chronic == [self._err("talquin"), self._err("preco")]
+        assert other == [self._err("fpl"), self._err("duke")]
+
+    def test_no_chronic_sources_present_leaves_other_unchanged(self):
+        errors = [self._err("fpl"), self._err("duke")]
+        chronic, other = _split_chronic_errors(errors, {"talquin", "preco"}, limit=10)
+
+        assert chronic == []
+        assert other == errors
+
+    def test_chronic_list_is_capped_at_limit(self):
+        errors = [self._err("talquin") for _ in range(15)]
+        chronic, other = _split_chronic_errors(errors, {"talquin", "preco"}, limit=10)
+
+        assert len(chronic) == 10
+        assert other == []
+
+    def test_order_is_preserved_within_each_list(self):
+        errors = [self._err("fpl"), self._err("talquin"), self._err("duke"), self._err("preco")]
+        chronic, other = _split_chronic_errors(errors, {"talquin", "preco"}, limit=10)
+
+        assert chronic == [self._err("talquin"), self._err("preco")]
+        assert other == [self._err("fpl"), self._err("duke")]
 
     def test_page_number_below_one_clamps_to_first_page(self):
         items = list(range(25))

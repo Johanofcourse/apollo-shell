@@ -10,6 +10,7 @@ from flask import Flask, render_template, request
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
 from database import OutageDatabase
+from alerting import ALERT_WORTHY_SOURCES
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -1052,6 +1053,12 @@ def _is_pipeline_error_ongoing(last_timestamp, now=None):
 
 PIPELINE_ERRORS_PER_PAGE = 20
 
+# The "known chronic issues" section isn't paginated like the main
+# list - it's meant as a quick, bounded "yes, still the same known
+# thing" glance, not a full history (use the source=talquin/preco
+# filter for that).
+CHRONIC_ISSUE_DISPLAY_LIMIT = 10
+
 
 def _paginate(items, page, per_page):
     """
@@ -1078,6 +1085,25 @@ def _paginate(items, page, per_page):
         "has_prev": page > 1,
         "has_next": page < total_pages,
     }
+
+
+def _split_chronic_errors(errors, chronic_sources, limit):
+    """
+    Pull streaks from known-chronic sources (Talquin/PRECO's rotating
+    credential - see alerting.ALERT_WORTHY_SOURCES) out of the main
+    /pipeline-errors list into their own bounded, unpaginated group -
+    otherwise their real but already-understood recurring failures
+    would dominate the combined view and bury genuinely rare failures
+    from every other source.
+
+    Returns (chronic, other) - chronic capped at `limit` (a quick "yes,
+    still the same known thing" glance, not a full history; the
+    source=talquin/preco filter already shows that), other unchanged
+    apart from the removal.
+    """
+    chronic = [e for e in errors if e["source"] in chronic_sources][:limit]
+    other = [e for e in errors if e["source"] not in chronic_sources]
+    return chronic, other
 
 
 @app.route("/pipeline-errors")
@@ -1125,11 +1151,21 @@ def pipeline_errors():
         e["explanation_label"], e["explanation_text"], e["explanation_severity"] = _explain_pipeline_error(e["latest_message"])
         e["is_ongoing"] = _is_pipeline_error_ongoing(e["last_timestamp"])
 
+    # Split known-chronic sources (Talquin/PRECO) into their own
+    # section, but only on the combined "all sources" view - a direct
+    # source=talquin filter already shows exactly what was asked for.
+    # Same source list alerting.py uses for its email cooldown, so both
+    # stay in sync automatically.
+    chronic_errors = []
+    if not selected_source:
+        chronic_errors, errors = _split_chronic_errors(errors, ALERT_WORTHY_SOURCES, CHRONIC_ISSUE_DISPLAY_LIMIT)
+
     pagination = _paginate(errors, page, PIPELINE_ERRORS_PER_PAGE)
 
     return render_template(
         "pipeline_errors.html",
         errors=pagination["items"],
+        chronic_errors=chronic_errors,
         page=pagination["page"],
         total_pages=pagination["total_pages"],
         total_errors=pagination["total"],

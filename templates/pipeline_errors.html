@@ -248,6 +248,54 @@
     {% endfor %}
   </div>
 
+  {% if chronic_errors %}
+  <div class="explainer">
+    <p>
+      <strong>Known chronic issue, not a fresh incident:</strong> Talquin and Peace River Electric Cooperative
+      sit behind a live-data credential that needs periodic manual refreshing - a real, ongoing vendor-side
+      issue (a major third-party outage aggregator independently reports the exact same problem, unresolved
+      on their end too). The entries below are that same known issue recurring, not distinct new problems -
+      shown separately so they don't bury genuinely rare failures elsewhere on this page. Use the source
+      filters above for either utility's full history.
+    </p>
+  </div>
+  {% for e in chronic_errors %}
+    <div class="error-card error-card-{{ e.explanation_severity }}">
+      <div class="error-card-head">
+        <span class="source-chip">{{ e.display_name }}</span>
+        <span class="severity-badge severity-badge-{{ e.explanation_severity }}">{{ e.explanation_label | replace("-", " ") }}</span>
+        {% if e.is_ongoing %}
+        <span class="ongoing-badge"><span class="ongoing-dot"></span>Currently ongoing</span>
+        {% else %}
+        <span class="resolved-badge"><span class="resolved-dot"></span>Issue resolved</span>
+        {% endif %}
+        <span class="error-when">
+          {% if e.is_ongoing %}
+            Started {{ e.first_timestamp | humanize }} &middot;
+            {% if e.count > 1 %}
+              ongoing {{ e.duration }} so far ({{ e.count }}&times; and counting)
+            {% else %}
+              first occurrence
+            {% endif %}
+          {% else %}
+            {{ e.first_timestamp | humanize }} &middot;
+            {% if e.count > 1 %}
+              occurred over {{ e.duration }} ({{ e.count }}&times;)
+            {% else %}
+              single occurrence
+            {% endif %}
+          {% endif %}
+        </span>
+      </div>
+      <div class="error-explanation">{{ e.explanation_text }}</div>
+      <div class="error-raw">
+        <span class="error-raw-label">{{ "Most recent message" if e.count > 1 else "Message" }}</span>{{ e.latest_message }}
+      </div>
+    </div>
+  {% endfor %}
+  <div class="meta" style="margin-bottom: 1.5rem;">&uarr; Known chronic issue &middot; Everything below is unrelated &darr;</div>
+  {% endif %}
+
   {% if errors %}
     {% for e in errors %}
     <div class="error-card error-card-{{ e.explanation_severity }}">
