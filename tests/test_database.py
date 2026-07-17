@@ -687,6 +687,34 @@ class TestOpenEventsCurrentVsPeak:
         assert open_events[0]["peak_customer_count"] == 300
         assert open_events[0]["current_customer_count"] == 25
 
+    def test_teco_transient_geocode_failure_does_not_erase_known_county(self, db_path):
+        # Real bug, 2026-07-17: TECO/Duke's county comes from a live
+        # reverse-geocode call (fetch_teco_outages.lookup_county) that can
+        # fail transiently on any given poll. sync_teco_incident_events
+        # used to unconditionally overwrite county with that poll's fresh
+        # (possibly-None) result, so one bad lookup permanently downgraded
+        # an already-known-good county back to None for a still-open
+        # incident. A later successful lookup should still fill in county
+        # if it was never known yet.
+        db = OutageDatabase(db_path)
+        db.sync_teco_incident_events([_teco_incident("T1", county="Hillsborough")], timestamp="2026-01-01T00:00:00")
+        db.sync_teco_incident_events([_teco_incident("T1", county=None)], timestamp="2026-01-01T00:15:00")
+
+        open_events = db.get_teco_open_events()
+        db.close()
+
+        assert open_events[0]["county"] == "Hillsborough"
+
+    def test_teco_county_fills_in_once_a_later_lookup_succeeds(self, db_path):
+        db = OutageDatabase(db_path)
+        db.sync_teco_incident_events([_teco_incident("T1", county=None)], timestamp="2026-01-01T00:00:00")
+        db.sync_teco_incident_events([_teco_incident("T1", county="Hillsborough")], timestamp="2026-01-01T00:15:00")
+
+        open_events = db.get_teco_open_events()
+        db.close()
+
+        assert open_events[0]["county"] == "Hillsborough"
+
     def test_duke_open_event_reports_current_alongside_peak(self, db_path):
         db = OutageDatabase(db_path)
         db.log_duke_incidents([_duke_incident("D1", customer_count=20)])
@@ -702,6 +730,30 @@ class TestOpenEventsCurrentVsPeak:
         assert len(open_events) == 1
         assert open_events[0]["peak_customer_count"] == 400
         assert open_events[0]["current_customer_count"] == 60
+
+    def test_duke_transient_geocode_failure_does_not_erase_known_county(self, db_path):
+        # Same real bug as TECO's equivalent test above - this is the exact
+        # scenario that crashed the public site on 2026-07-17 (a Duke
+        # incident's county flipped from a real value to None after a later
+        # poll's reverse-geocode call failed).
+        db = OutageDatabase(db_path)
+        db.sync_duke_incident_events([_duke_incident("D1", county="Orange")], timestamp="2026-01-01T00:00:00")
+        db.sync_duke_incident_events([_duke_incident("D1", county=None)], timestamp="2026-01-01T00:15:00")
+
+        open_events = db.get_duke_open_events()
+        db.close()
+
+        assert open_events[0]["county"] == "Orange"
+
+    def test_duke_county_fills_in_once_a_later_lookup_succeeds(self, db_path):
+        db = OutageDatabase(db_path)
+        db.sync_duke_incident_events([_duke_incident("D1", county=None)], timestamp="2026-01-01T00:00:00")
+        db.sync_duke_incident_events([_duke_incident("D1", county="Orange")], timestamp="2026-01-01T00:15:00")
+
+        open_events = db.get_duke_open_events()
+        db.close()
+
+        assert open_events[0]["county"] == "Orange"
 
     def test_tallahassee_open_event_reports_current_alongside_peak(self, db_path):
         db = OutageDatabase(db_path)

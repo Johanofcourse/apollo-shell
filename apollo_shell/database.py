@@ -4245,7 +4245,7 @@ class OutageDatabase:
 
         for r in records:
             cursor.execute('''
-                SELECT id, peak_customer_count FROM teco_incident_events
+                SELECT id, peak_customer_count, county FROM teco_incident_events
                 WHERE incident_id = ? AND end_time IS NULL
             ''', (r['incident_id'],))
             open_event = cursor.fetchone()
@@ -4265,13 +4265,21 @@ class OutageDatabase:
                     opened += 1
             else:
                 peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
+                # A fresh reverse-geocode lookup can fail transiently (the
+                # FCC Census API has no SLA) even for an incident whose
+                # location already resolved correctly on an earlier poll -
+                # never let one failed lookup downgrade an already-known
+                # county back to None. Real incident, 2026-07-17: this
+                # exact overwrite is why a live incident crashed the public
+                # page after its county flipped from a real value to None.
+                county = r.get('county') or open_event['county']
                 cursor.execute('''
                     UPDATE teco_incident_events
                     SET peak_customer_count = ?, utility = ?, county = ?,
                         reason = ?, reason_category = ?, lat = ?, lon = ?
                     WHERE id = ?
                 ''', (
-                    peak, r.get('utility'), r.get('county'),
+                    peak, r.get('utility'), county,
                     r.get('reason'), r.get('reason_category'),
                     r.get('lat'), r.get('lon'), open_event['id'],
                 ))
@@ -4354,7 +4362,7 @@ class OutageDatabase:
 
         for r in records:
             cursor.execute('''
-                SELECT id, peak_customer_count FROM duke_incident_events
+                SELECT id, peak_customer_count, county FROM duke_incident_events
                 WHERE incident_id = ? AND end_time IS NULL
             ''', (r['incident_id'],))
             open_event = cursor.fetchone()
@@ -4374,13 +4382,17 @@ class OutageDatabase:
                     opened += 1
             else:
                 peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
+                # Same overwrite-guard as sync_teco_incident_events - a
+                # transient reverse-geocode failure on a later poll must
+                # never downgrade an already-known county back to None.
+                county = r.get('county') or open_event['county']
                 cursor.execute('''
                     UPDATE duke_incident_events
                     SET peak_customer_count = ?, utility = ?, county = ?,
                         cause = ?, cause_category = ?, lat = ?, lon = ?
                     WHERE id = ?
                 ''', (
-                    peak, r.get('utility'), r.get('county'),
+                    peak, r.get('utility'), county,
                     r.get('cause'), r.get('cause_category'),
                     r.get('lat'), r.get('lon'), open_event['id'],
                 ))
