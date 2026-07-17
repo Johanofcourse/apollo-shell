@@ -1,8 +1,17 @@
 """
 Tests for alerting.py's check_and_alert_pipeline_health() - the
 state-transition logic that decides when a failing source is worth a
-real email (once, on becoming critical) versus staying quiet (every
-cycle it's still down) versus a follow-up email (once, on recovery).
+real email (once, on becoming currently-failing) versus staying quiet
+(every cycle it's still down) versus a follow-up email (once, on
+recovery).
+
+Real regression covered here (found 2026-07-17, live on the VM): the
+first version of this check used get_pipeline_health()'s "any failure
+in the last hour" window, which fired a false "down" email for a
+source that had already recovered - its last real fetch succeeded, but
+an older failure was still inside the 1-hour lookback. The fix compares
+the source's last failure timestamp against its last success timestamp
+directly ("is the MOST RECENT attempt a failure"), not a window count.
 
 send_alert_email() itself is monkeypatched throughout - these tests
 verify the decision logic, not real SMTP delivery.
@@ -73,26 +82,42 @@ class TestCheckAndAlertPipelineHealth:
 
         assert len(sent) == 1
 
-    def test_sends_recovery_email_once_healthy_again(self, db, monkeypatch):
+    def test_sends_recovery_email_once_a_later_success_is_logged(self, db, monkeypatch):
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
 
-        db.log_pipeline_error("talquin", "a failure over an hour ago", )
-        # Manually push the logged error outside the 1-hour critical
-        # window so get_pipeline_health() reports "healthy" - simulates
-        # time passing without needing to actually wait.
-        conn = db.connect()
-        conn.execute("UPDATE pipeline_errors SET timestamp = datetime('now', '-2 hours') WHERE source = 'talquin'")
-        conn.commit()
-
+        db.log_pipeline_error("talquin", "a failure", timestamp="2026-01-01T00:00:00")
         alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
-        assert sent == []  # already outside the window - never alerted in the first place
-
-        alerting._alerted_sources.add("talquin")  # simulate having alerted while it was still failing
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
-
         assert len(sent) == 1
-        assert "recovered" in sent[0].lower()
+
+        db.log_talquin_outages(
+            [{"county": "Leon", "customers_out": 0, "customers_served": 26350}],
+            timestamp="2026-01-01T00:15:00",
+        )
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        assert len(sent) == 2
+        assert "recovered" in sent[1].lower()
+        assert "talquin" not in alerting._alerted_sources
+
+    def test_no_false_alarm_when_old_failure_precedes_a_newer_success(self, db, monkeypatch):
+        # The real regression: an old failure sitting in pipeline_errors
+        # should NOT trigger a "down" alert if a more recent successful
+        # fetch has already been logged - this is the exact situation a
+        # fresh trackingCode recapture produces (old failures from
+        # before the fix, a real success from right after it).
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("talquin", "an old failure", timestamp="2026-01-01T00:00:00")
+        db.log_talquin_outages(
+            [{"county": "Leon", "customers_out": 0, "customers_served": 26350}],
+            timestamp="2026-01-01T00:30:00",
+        )
+
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        assert sent == []
         assert "talquin" not in alerting._alerted_sources
 
     def test_ignores_sources_outside_alert_worthy_set(self, db, monkeypatch):
