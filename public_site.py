@@ -119,6 +119,12 @@ def _county_map_data(db, all_rows):
     by_county_customers = {}
     by_county_served = {}
     for r in all_rows:
+        # A source's county can legitimately come back missing for a single
+        # event (e.g. Duke's reverse-geocode occasionally can't resolve a
+        # lat/lon) - the event still counts in every other total elsewhere,
+        # it just can't be placed on this per-county map.
+        if not r.get("county"):
+            continue
         county_key = r["county"].upper()
         by_county_customers[county_key] = by_county_customers.get(county_key, 0) + (r.get("customers") or 0)
         if r.get("customers_served"):
@@ -155,6 +161,12 @@ def _narrative_stats(all_rows):
     by_county = {}
     by_utility = {}
     for r in all_rows:
+        # A missing county (e.g. Duke's reverse-geocode occasionally can't
+        # resolve a lat/lon) still counts in total_current above, but must
+        # not become its own fake "county" bucket here - it could otherwise
+        # win "worst county" and print None in the public narrative.
+        if not r.get("county"):
+            continue
         c = by_county.setdefault(r["county"], {"customers": 0, "known_customers": 0, "known_served": 0})
         u = by_utility.setdefault(r["utility"], {"customers": 0, "known_customers": 0, "known_served": 0})
         customers = r.get("customers") or 0

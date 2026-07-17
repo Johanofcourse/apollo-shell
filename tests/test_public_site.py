@@ -95,6 +95,25 @@ class TestCountyMapData:
         by_name = {c["name"]: c for c in counties}
         assert by_name["Alachua"]["customers"] == 500
 
+    def test_missing_county_is_skipped_not_a_crash(self, db_path):
+        # Real incident, 2026-07-17: a live Duke Energy event came through
+        # with county=None (its reverse-geocode couldn't resolve the
+        # lat/lon), which crashed the whole public page with a 500 on
+        # r["county"].upper(). Confirmed on real data - 265 pre-existing
+        # duke_incidents rows already had a null county, this was just the
+        # first time one was still open when a visitor loaded the page.
+        db = OutageDatabase(db_path)
+        rows = [
+            {"utility": "Duke Energy", "county": None, "customers": 1, "customers_served": None},
+            {"utility": "FPL", "county": "Palm Beach", "customers": 50, "customers_served": 100_000},
+        ]
+        counties = public_site._county_map_data(db, rows)
+        db.close()
+
+        assert len(counties) == 67
+        by_name = {c["name"]: c for c in counties}
+        assert by_name["Palm Beach"]["customers"] == 50
+
 
 class TestNarrativeStats:
     def test_clean_database_has_zero_totals(self, db_path):
@@ -139,6 +158,22 @@ class TestNarrativeStats:
 
         assert narrative["worst_pct_county_name"] == "BAKER"
         assert round(narrative["worst_pct_value"], 1) == 10.0
+
+    def test_missing_county_still_counts_toward_total_but_not_as_a_county(self, db_path):
+        # Same 2026-07-17 incident as TestCountyMapData's regression test -
+        # a None county must not become its own fake "county" bucket here,
+        # since it could otherwise win "worst county" and print None in the
+        # public narrative summary.
+        db = OutageDatabase(db_path)
+        rows = [
+            {"utility": "Duke Energy", "county": None, "customers": 1, "customers_served": None},
+            {"utility": "FPL", "county": "Palm Beach", "customers": 50, "customers_served": 100_000},
+        ]
+        narrative = public_site._narrative_stats(rows)
+        db.close()
+
+        assert narrative["total_current"] == 51
+        assert narrative["worst_county_name"] == "Palm Beach"
 
 
 class TestIndexRoute:
