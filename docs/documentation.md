@@ -27,8 +27,8 @@ detective instead. No regrets.
   times for individual outages this project has directly observed,
   distinct from the independently-sourced storm archive), a bold
   hazard-placard visual identity (custom SVG iconography, stenciled
-  display type, diagonal-cut framing), running locally, wired to the
-  same live data as everything else
+  display type, diagonal-cut framing), running on a real always-on
+  server now, wired to the same live data as everything else
 - **Real historical storm data**, not just live-forward collection — 17
   storms, 2018-2025, across every utility per storm, queryable by
   county. Kept off GitHub.
@@ -720,3 +720,54 @@ with real native per-county numbers, no tracking code or gate to work
 around at all. It also exposes a genuinely live per-incident array with
 real start and restoration-estimate times - unlike the fifteenth's, this
 one isn't empty, just out of scope for this pass.
+
+## Off the laptop, onto a real server
+Everything above had been running off a laptop under a desk - fine for
+a hobby project, less fine for something meant to run day and night
+without depending on someone's Wi-Fi staying up. Moving it onto a real,
+always-on server was next.
+
+Landed on Oracle Cloud's free tier - genuinely free, not a trial, with
+enough real headroom (an ARM-based shape, up to four cores and 24GB) to
+run all three real apps - the poller, the internal dashboard, the
+public page - at once. The region choice mattered more than it
+sounds: free-tier resources lock to whichever region gets picked
+first, no changing it later.
+
+Actually getting the instance running was the real fight, not the
+setup - the same popular free-tier shape everyone wants, and the
+region was consistently out of capacity. Seven real attempts across
+all three of the region's independent capacity zones, spread over
+about a day and a half, before one finally landed. Every single
+failure was a genuine capacity shortage, confirmed by the shape of the
+error itself, not a misconfiguration second-guessed after the fact.
+
+Networking had its own real snag: the fast quick-create path didn't
+expose a way to actually assign a public IP - a real, documented
+console limitation, not a mistake made along the way. Built it
+properly instead, through the full networking console: a private
+network, a route out to the real internet, and a subnet - the same
+handful of pieces any real server needs before it's reachable at all.
+
+Migrating the actual project meant treating code and secrets
+differently on purpose. The code came over the normal way - cloned
+straight from the same place this project already lives. The real
+database (already carrying real accumulated data, never started
+fresh) and the real API credentials moved over a direct, private copy
+instead, never through anywhere public.
+
+Getting all three real processes running unattended, restarting
+themselves on their own if they ever crashed, surfaced two genuine,
+unrelated gotchas along the way - both looked identical at first (the
+exact same cryptic failure code), but turned out to have entirely
+different real causes once actually investigated instead of assumed
+to be the same problem twice.
+
+With everything verified running clean - a full automated test suite,
+several complete live cycles, every route actually loading - the last
+step was the real cutover: the laptop's own copy stood down for good,
+and the server became the only live source. Two independent backups
+sit underneath it now: the laptop pulls a fresh copy of the real
+database twice a day, and the server's own disk gets a real, automatic
+snapshot once a day on Oracle's side - both genuinely free, neither
+one depending on the other.
