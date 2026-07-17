@@ -49,12 +49,15 @@ def db(db_path):
 
 @pytest.fixture(autouse=True)
 def reset_alert_state():
-    # _alerted_sources is module-level, shared across tests unless
-    # reset - real behavior in production (persists for the life of
-    # the poller process), but each test needs to start clean.
+    # _alerted_sources/_last_down_alert_time are module-level, shared
+    # across tests unless reset - real behavior in production
+    # (persists for the life of the poller process), but each test
+    # needs to start clean.
     alerting._alerted_sources.clear()
+    alerting._last_down_alert_time.clear()
     yield
     alerting._alerted_sources.clear()
+    alerting._last_down_alert_time.clear()
 
 
 class TestCheckAndAlertPipelineHealth:
@@ -128,6 +131,85 @@ class TestCheckAndAlertPipelineHealth:
         alerting.check_and_alert_pipeline_health(db, display_names={"fpl": "Florida Power and Light"})
 
         assert sent == []
+
+
+class TestDownAlertCooldown:
+    """
+    Talquin/PRECO's credential dying is a known, ongoing vendor issue -
+    without a cooldown, a single chronic day of it flapping down/
+    recovered/down again would send a fresh "down" email every single
+    time, which is technically correct but not useful once you already
+    know it's the same ongoing thing. Recovery emails stay unthrottled -
+    each one is a real, wanted confirmation tied to an actual fix.
+    """
+
+    def test_repeat_down_within_cooldown_is_suppressed(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+        monkeypatch.setattr(alerting, "DOWN_ALERT_COOLDOWN_SECONDS", 3600)
+
+        # First failure -> recovery -> failure again, all within the
+        # same (mocked) hour.
+        db.log_pipeline_error("talquin", "failure 1", timestamp="2026-01-01T00:00:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        assert len(sent) == 1  # the real first "down" email
+
+        db.log_talquin_outages(
+            [{"county": "Leon", "customers_out": 0, "customers_served": 26350}],
+            timestamp="2026-01-01T00:10:00",
+        )
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        assert len(sent) == 2  # recovery email, never throttled
+
+        db.log_pipeline_error("talquin", "failure 2", timestamp="2026-01-01T00:20:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        # Still within the 1-hour cooldown since the first "down" email -
+        # no new "down" email, but the state still correctly shows failing.
+        assert len(sent) == 2
+        assert "talquin" in alerting._alerted_sources
+
+    def test_recovery_email_still_fires_even_during_cooldown(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+        monkeypatch.setattr(alerting, "DOWN_ALERT_COOLDOWN_SECONDS", 3600)
+
+        db.log_pipeline_error("talquin", "failure 1", timestamp="2026-01-01T00:00:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        db.log_pipeline_error("talquin", "failure 2", timestamp="2026-01-01T00:10:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        # Recovers again, still well inside the cooldown window - the
+        # recovery email must still fire, since it's never throttled.
+        db.log_talquin_outages(
+            [{"county": "Leon", "customers_out": 0, "customers_served": 26350}],
+            timestamp="2026-01-01T00:20:00",
+        )
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        assert len(sent) == 2  # one "down" (cooldown suppressed the rest), one "recovered"
+        assert "recovered" in sent[-1].lower()
+
+    def test_new_down_email_after_cooldown_expires(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+        monkeypatch.setattr(alerting, "DOWN_ALERT_COOLDOWN_SECONDS", 3600)
+
+        db.log_pipeline_error("talquin", "failure 1", timestamp="2026-01-01T00:00:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        assert len(sent) == 1
+
+        # Simulate real time having actually passed well beyond the
+        # cooldown (rather than sleeping in the test).
+        alerting._last_down_alert_time["talquin"] -= 7200
+        alerting._alerted_sources.discard("talquin")
+
+        db.log_pipeline_error("talquin", "failure 2", timestamp="2026-01-01T02:00:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        assert len(sent) == 2
+        assert "down" in sent[-1].lower()
 
 
 class TestSendAlertEmail:

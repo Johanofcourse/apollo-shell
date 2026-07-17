@@ -1,5 +1,6 @@
 import os
 import smtplib
+import time
 from email.mime.text import MIMEText
 
 from dotenv import load_dotenv
@@ -32,6 +33,20 @@ ALERT_WORTHY_SOURCES = {"talquin": "talquin_outages", "preco": "preco_outages"}
 # poller restart (worst case: one possible duplicate alert) rather
 # than needing a dedicated persistent-state table for this.
 _alerted_sources = set()
+
+# Talquin/PRECO's credential dying is a known, ongoing vendor-side
+# issue (confirmed 2026-07-17 - a major third-party outage aggregator
+# independently reports the same "unable to get data from Sienatech
+# OMS utilities" problem, unresolved for months on their end too), not
+# a fresh incident each time it happens. Without a cooldown, a single
+# chronic day could flap down/recovered many times, each pair sending
+# a real email - technically correct, but not actually useful signal
+# once you already know it's the same ongoing thing. Recovery emails
+# are NOT throttled (each one is a direct, wanted confirmation tied to
+# a real manual fix), only repeat "down" emails for the same source.
+DOWN_ALERT_COOLDOWN_SECONDS = 4 * 60 * 60
+
+_last_down_alert_time = {}
 
 
 def send_alert_email(subject, body):
@@ -90,6 +105,14 @@ def check_and_alert_pipeline_health(db, display_names):
     time window - see _is_currently_failing()), and one follow-up
     "recovered" email once it succeeds again - not a repeated alert
     every cycle for the whole duration it's down.
+
+    The "down" email itself is additionally cooled down
+    (DOWN_ALERT_COOLDOWN_SECONDS) per source - a source that flaps
+    down/recovered/down again within the cooldown window (a known,
+    ongoing vendor issue, not a series of distinct incidents) only
+    re-sends "down" once that cooldown has elapsed, even though the
+    underlying failure/recovery state is still tracked and reported
+    accurately every cycle. Recovery emails are never throttled.
     """
     for source, success_table in ALERT_WORTHY_SOURCES.items():
         is_failing = _is_currently_failing(db, source, success_table)
@@ -97,6 +120,14 @@ def check_and_alert_pipeline_health(db, display_names):
 
         if is_failing and source not in _alerted_sources:
             _alerted_sources.add(source)
+
+            now = time.time()
+            last_sent = _last_down_alert_time.get(source, 0)
+            if now - last_sent < DOWN_ALERT_COOLDOWN_SECONDS:
+                print(f"{display_name} is down again, but within the cooldown window - skipping repeat email")
+                continue
+            _last_down_alert_time[source] = now
+
             conn = db.connect()
             last_error = conn.execute(
                 "SELECT error_message FROM pipeline_errors WHERE source = ? ORDER BY timestamp DESC LIMIT 1",
