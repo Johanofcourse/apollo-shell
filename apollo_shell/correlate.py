@@ -159,6 +159,61 @@ def weather_match_confidence(event_type, severity):
     return "medium" if severity_score >= 1 else "low"
 
 
+def _match_items_to_alerts(items, alerts, timestamp_key, item_label):
+    """
+    Shared matching core for every find_*_correlations() function below -
+    all 16 turned out to share the exact same nested comparison shape,
+    differing only in which field holds the item's timestamp and what
+    key the output dict uses for the matched item ("outage" vs
+    "incident"). Pulled out into one place 2026-07-17 after a real,
+    measured cold dashboard load costing over a minute of actual CPU
+    time (confirmed directly on the VM, not assumed) - the original
+    per-item, per-alert nested loop reparsed every alert's
+    effective/expires timestamps and re-ran the county substring check
+    on every single pass, which stayed cheap while the live tables were
+    small and got measurably worse as they grew into the tens of
+    thousands of rows.
+
+    Each alert's timestamps are now parsed exactly once here, not once
+    per item compared against it. Which alerts match a given county is
+    also computed once per distinct county actually seen (there are only
+    ever 67 real Florida counties, vastly fewer than the item row
+    count), not once per item row. Everything else - which matches are
+    found, in what order - is identical to the original nested-loop
+    version; this is a pure speed fix, not a behavior change.
+    """
+    parsed_alerts = [
+        (alert, _parse_timestamp(alert.get('effective')), _parse_timestamp(alert.get('expires')))
+        for alert in alerts
+    ]
+
+    alerts_for_county = {}
+    matches = []
+
+    for item in items:
+        county = item.get('county')
+        if not county:
+            continue
+
+        item_time = _parse_timestamp(item.get(timestamp_key))
+        if item_time is None:
+            continue
+
+        if county not in alerts_for_county:
+            alerts_for_county[county] = [
+                (alert, effective, expires)
+                for alert, effective, expires in parsed_alerts
+                if _county_in_alert(county, alert['areas'])
+            ]
+
+        for alert, effective, expires in alerts_for_county[county]:
+            if _alert_covers_time(effective, expires, item_time):
+                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
+                matches.append({item_label: item, "alert": alert, "confidence": confidence})
+
+    return matches
+
+
 def find_correlations(db_path="outages.db", days=None):
     """
     Match outage records to weather alerts active in the same county at the
@@ -196,24 +251,7 @@ def find_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_teco_correlations(db_path="outages.db", days=None):
@@ -245,27 +283,7 @@ def find_teco_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for incident in incidents:
-        if not incident.get('county'):
-            continue
-
-        incident_time = _parse_timestamp(incident.get('update_time'))
-        if incident_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(incident['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, incident_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"incident": incident, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(incidents, alerts, timestamp_key='update_time', item_label='incident')
 
 
 def teco_correlation_summary(matches):
@@ -362,27 +380,7 @@ def find_duke_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for incident in incidents:
-        if not incident.get('county'):
-            continue
-
-        incident_time = _parse_timestamp(incident.get('fetched_at'))
-        if incident_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(incident['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, incident_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"incident": incident, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(incidents, alerts, timestamp_key='fetched_at', item_label='incident')
 
 
 def duke_correlation_summary(matches):
@@ -469,27 +467,7 @@ def find_tallahassee_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for incident in incidents:
-        if not incident.get('county'):
-            continue
-
-        incident_time = _parse_timestamp(incident.get('fetched_at'))
-        if incident_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(incident['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, incident_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"incident": incident, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(incidents, alerts, timestamp_key='fetched_at', item_label='incident')
 
 
 def find_jea_correlations(db_path="outages.db", days=None):
@@ -531,27 +509,7 @@ def find_jea_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_talquin_correlations(db_path="outages.db", days=None):
@@ -590,27 +548,7 @@ def find_talquin_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_preco_correlations(db_path="outages.db", days=None):
@@ -646,27 +584,7 @@ def find_preco_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_fkec_correlations(db_path="outages.db", days=None):
@@ -703,27 +621,7 @@ def find_fkec_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_tcec_correlations(db_path="outages.db", days=None):
@@ -769,27 +667,7 @@ def find_tcec_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_erec_correlations(db_path="outages.db", days=None):
@@ -836,27 +714,7 @@ def find_erec_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_chelco_correlations(db_path="outages.db", days=None):
@@ -904,27 +762,7 @@ def find_chelco_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_gcec_correlations(db_path="outages.db", days=None):
@@ -972,27 +810,7 @@ def find_gcec_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_lwbu_correlations(db_path="outages.db", days=None):
@@ -1037,27 +855,7 @@ def find_lwbu_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_ouc_correlations(db_path="outages.db", days=None):
@@ -1095,27 +893,7 @@ def find_ouc_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_lcec_correlations(db_path="outages.db", days=None):
@@ -1152,27 +930,7 @@ def find_lcec_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for outage in outages:
-        if not outage.get('county'):
-            continue
-
-        outage_time = _parse_timestamp(outage['timestamp'])
-        if outage_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(outage['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, outage_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"outage": outage, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_fpuc_incident_correlations(db_path="outages.db", days=None):
@@ -1217,27 +975,7 @@ def find_fpuc_incident_correlations(db_path="outages.db", days=None):
 
     db.close()
 
-    matches = []
-    for incident in incidents:
-        if not incident.get('county'):
-            continue
-
-        incident_time = _parse_timestamp(incident.get('fetched_at'))
-        if incident_time is None:
-            continue
-
-        for alert in alerts:
-            if not _county_in_alert(incident['county'], alert['areas']):
-                continue
-
-            effective = _parse_timestamp(alert.get('effective'))
-            expires = _parse_timestamp(alert.get('expires'))
-
-            if _alert_covers_time(effective, expires, incident_time):
-                confidence = weather_match_confidence(alert.get('event_type'), alert.get('severity'))
-                matches.append({"incident": incident, "alert": alert, "confidence": confidence})
-
-    return matches
+    return _match_items_to_alerts(incidents, alerts, timestamp_key='fetched_at', item_label='incident')
 
 
 def correlation_summary(matches):
