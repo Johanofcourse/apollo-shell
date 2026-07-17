@@ -114,7 +114,10 @@
     border: 1px solid var(--line);
   }
   .fl-rotate-group { filter: drop-shadow(0 18px 20px rgba(0,0,0,0.6)); }
-  .fl-county { stroke: rgba(0,0,0,0.45); stroke-width: 1; cursor: pointer; }
+  .fl-county {
+    stroke: rgba(0,0,0,0.45); stroke-width: 1; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
   .fl-county:focus-visible { outline: 2px solid var(--white); outline-offset: 1px; }
 
   .fl-tooltip {
