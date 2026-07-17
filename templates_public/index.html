@@ -331,7 +331,7 @@
         </div>
       </div>
       <div class="gauge-caption" id="gaugeCaption">—</div>
-      <div class="gauge-sub mono">67 FLORIDA COUNTIES, REAL CENSUS BOUNDARY DATA. CLICK ANY COUNTY FOR ITS STORM HISTORY.</div>
+      <div class="gauge-sub mono" id="gaugeSub">67 FLORIDA COUNTIES, REAL CENSUS BOUNDARY DATA. CLICK ANY COUNTY FOR ITS STORM HISTORY.</div>
       <div class="map-mode-toggle" role="group" aria-label="Map view mode">
         <button type="button" class="map-mode-btn active" id="mapModeLive">Live Severity</button>
         <button type="button" class="map-mode-btn" id="mapModeHistorical">Historical Pattern</button>
@@ -840,15 +840,18 @@
     flSvg.setAttribute("viewBox", `${(minX - pad).toFixed(1)} ${(minY - pad).toFixed(1)} ${(maxX - minX + pad * 2).toFixed(1)} ${(maxY - minY + pad * 2).toFixed(1)}`);
 
     const captionEl = document.getElementById("gaugeCaption");
+    const subEl = document.getElementById("gaugeSub");
     if (mapMode === "live") {
       const anyCritical = counties.some(c => liveSeverityOf(c).cls === "critical");
       const anyHigh = counties.some(c => liveSeverityOf(c).cls === "high");
       const anyOutage = counties.some(c => (c.customers || 0) > 0);
       captionEl.textContent = anyCritical ? "CRITICAL OUTAGES RIGHT NOW" : anyHigh ? "SIGNIFICANT OUTAGES RIGHT NOW" : anyOutage ? "MINOR OUTAGES RIGHT NOW" : "ALL CLEAR RIGHT NOW";
+      subEl.textContent = "67 FLORIDA COUNTIES, REAL CENSUS BOUNDARY DATA. CLICK ANY COUNTY FOR ITS STORM HISTORY.";
     } else {
       const anyStorm = counties.some(c => verdictOf(c).cls === "storm");
       const anyWatch = counties.some(c => verdictOf(c).cls === "watch");
       captionEl.textContent = anyStorm ? "STORM ACTIVITY IN AT LEAST ONE COUNTY" : anyWatch ? "SOME STORM ACTIVITY" : "MOSTLY ROUTINE";
+      subEl.textContent = "COLOR = HOW OFTEN THIS COUNTY'S PAST OUTAGES LOOK WEATHER-DRIVEN, NOT TODAY'S COUNT. CLICK ANY COUNTY FOR ITS STORM HISTORY.";
     }
 
     renderLegend();
