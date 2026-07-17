@@ -9,22 +9,14 @@ load_dotenv()
 # code (this repo is public), loaded from .env instead of hardcoded as
 # a literal string, same as every other utility here.
 #
-# The trackingCode query param embedded in this URL is NOT a stable,
-# forever-static string, despite what an earlier version of this
-# comment claimed - our original one got blocked at the WAF/CDN layer
-# in front of cache.sienatech.com (real 420 responses, identical ETag
-# regardless of the request), while the live embed at
-# my.talquinelectric.com/outages/maps was serving a different
-# trackingCode the whole time. Diagnosed 2026-07-16 by comparing a real
-# browser capture against our own request - the WAF also requires
-# Origin/Referer/Client headers matching a real browser visit (see
-# TALQUIN_REQUEST_HEADERS below); trackingCode alone or headers alone
-# were each independently insufficient, only the combination worked.
+# The trackingCode query param embedded in this URL is a live, rotating
+# credential tied to a real browser visit, not a permanently-stable
+# string - it needs periodic refreshing (see TALQUIN_API_URL in
+# .env.example for how to obtain a current one), same as
+# TALQUIN_REQUEST_HEADERS below needs to match a real browser visit.
 TALQUIN_API_URL = os.environ.get("TALQUIN_API_URL")
 
-# Required for the request to pass the WAF in front of
-# cache.sienatech.com - without these (confirmed via direct testing)
-# the backend returns a blanket 420 regardless of trackingCode.
+# Required alongside a current trackingCode for the request to succeed.
 TALQUIN_REQUEST_HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Origin": "https://my.talquinelectric.com",

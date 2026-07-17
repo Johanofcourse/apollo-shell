@@ -12,17 +12,13 @@ load_dotenv()
 # Talquin, and exposes the identical endpoint shape - just PRECO's own
 # tracking code in place of Talquin's.
 #
-# Like Talquin's, this trackingCode is NOT forever-static - our
-# original one had been individually blocked at the WAF/CDN layer in
-# front of cache.sienatech.com (real 420s, same root cause as
-# Talquin's, diagnosed 2026-07-16/17). A fresh trackingCode plus
-# Origin/Referer/Client headers matching a real browser visit to
-# outages.preco.coop (see PRECO_REQUEST_HEADERS below) is required.
+# Like Talquin's, this trackingCode is a live, rotating credential tied
+# to a real browser visit, not a permanently-stable string - it needs
+# periodic refreshing, same as PRECO_REQUEST_HEADERS below needs to
+# match a real browser visit to outages.preco.coop.
 PRECO_API_URL = os.environ.get("PRECO_API_URL")
 
-# Required for the request to pass the WAF in front of
-# cache.sienatech.com - same mechanism as Talquin's
-# TALQUIN_REQUEST_HEADERS, just PRECO's own Origin/Referer/Client.
+# Required alongside a current trackingCode for the request to succeed.
 PRECO_REQUEST_HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Origin": "https://outages.preco.coop",

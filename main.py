@@ -6,6 +6,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
 from database import OutageDatabase
+from alerting import check_and_alert_pipeline_health
 from fetch_fpl_outages import get_combined_fpl_records, UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_weather import get_alerts_summary
 from fetch_teco_outages import get_incidents_summary
@@ -52,6 +53,12 @@ from county_status import historical_confidence_tally
 
 
 POLL_INTERVAL_SECONDS = 15 * 60
+
+# Talquin/PRECO's credentials need periodic manual refreshing (see
+# TALQUIN_API_URL/PRECO_API_URL in .env.example) - checking them less
+# often than every other source is a lighter request cadence while
+# that's true.
+TALQUIN_PRECO_INTERVAL_SECONDS = 30 * 60
 
 
 def run_outage_cycle(db):
@@ -702,6 +709,8 @@ def main():
 
     print(f"Apollo Shell poller starting (every {POLL_INTERVAL_SECONDS // 60} min). Ctrl+C to stop.")
 
+    last_talquin_preco_check = 0.0
+
     try:
         while True:
             cycle_start = datetime.now()
@@ -743,11 +752,20 @@ def main():
                 print(f"Tallahassee fetch cycle failed: {e}")
                 db.log_pipeline_error("tallahassee", str(e))
 
-            try:
-                run_talquin_cycle(db)
-            except Exception as e:
-                print(f"Talquin fetch cycle failed: {e}")
-                db.log_pipeline_error("talquin", str(e))
+            check_talquin_preco_this_cycle = (
+                time.time() - last_talquin_preco_check >= TALQUIN_PRECO_INTERVAL_SECONDS
+            )
+            if check_talquin_preco_this_cycle:
+                last_talquin_preco_check = time.time()
+            else:
+                print("Skipping Talquin/PRECO this cycle (30-min interval not yet elapsed)")
+
+            if check_talquin_preco_this_cycle:
+                try:
+                    run_talquin_cycle(db)
+                except Exception as e:
+                    print(f"Talquin fetch cycle failed: {e}")
+                    db.log_pipeline_error("talquin", str(e))
 
             try:
                 run_fpuc_cycle(db)
@@ -755,11 +773,19 @@ def main():
                 print(f"FPUC fetch cycle failed: {e}")
                 db.log_pipeline_error("fpuc", str(e))
 
-            try:
-                run_preco_cycle(db)
-            except Exception as e:
-                print(f"PRECO fetch cycle failed: {e}")
-                db.log_pipeline_error("preco", str(e))
+            if check_talquin_preco_this_cycle:
+                try:
+                    run_preco_cycle(db)
+                except Exception as e:
+                    print(f"PRECO fetch cycle failed: {e}")
+                    db.log_pipeline_error("preco", str(e))
+
+                try:
+                    check_and_alert_pipeline_health(
+                        db, display_names={"talquin": "Talquin Electric Cooperative", "preco": "Peace River Electric Cooperative"}
+                    )
+                except Exception as e:
+                    print(f"Pipeline health alert check failed: {e}")
 
             try:
                 run_fkec_cycle(db)
