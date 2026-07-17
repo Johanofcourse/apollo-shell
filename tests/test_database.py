@@ -520,6 +520,29 @@ class TestIncidentDetailLookup:
 
         assert detail is None
 
+    def test_lcec_outage_detail_returns_event_and_bounded_history(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_lcec_outages([_fpl_row("Lee", 4, 227335)], timestamp="2026-01-01T00:00:00")
+        db.sync_lcec_outage_events([_fpl_row("Lee", 4, 227335)], timestamp="2026-01-01T00:00:00")
+        db.log_lcec_outages([_fpl_row("Lee", 0, 227335)], timestamp="2026-01-01T00:15:00")
+        db.sync_lcec_outage_events([_fpl_row("Lee", 0, 227335)], timestamp="2026-01-01T00:15:00")
+
+        detail = db.get_lcec_outage_detail("Lee County Electric Cooperative", "Lee", "2026-01-01T00:00:00")
+        db.close()
+
+        assert detail is not None
+        assert detail["event"]["end_time"] == "2026-01-01T00:15:00"
+        assert len(detail["history"]) == 2
+        assert detail["history"][0]["customers_out"] == 4
+        assert detail["history"][-1]["customers_out"] == 0
+
+    def test_lcec_outage_detail_none_for_unknown_occurrence(self, db_path):
+        db = OutageDatabase(db_path)
+        detail = db.get_lcec_outage_detail("Lee County Electric Cooperative", "Lee", "2026-01-01T00:00:00")
+        db.close()
+
+        assert detail is None
+
     def test_lwbu_incident_detail_has_one_episode_and_raw_history(self, db_path):
         db = OutageDatabase(db_path)
         db.log_lwbu_incidents([_lwbu_incident("2026-07-14-0099")])
@@ -892,6 +915,22 @@ class TestOpenEventsCurrentVsPeak:
         assert len(open_events) == 1
         assert open_events[0]["peak_customers_out"] == 5000
         assert open_events[0]["current_customers_out"] == 300
+
+    def test_lcec_open_event_reports_current_alongside_peak(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_lcec_outages([_fpl_row("Lee", 4, 227335)], timestamp="2026-01-01T00:00:00")
+        db.sync_lcec_outage_events([_fpl_row("Lee", 4, 227335)], timestamp="2026-01-01T00:00:00")
+        db.log_lcec_outages([_fpl_row("Lee", 500, 227335)], timestamp="2026-01-01T00:15:00")
+        db.sync_lcec_outage_events([_fpl_row("Lee", 500, 227335)], timestamp="2026-01-01T00:15:00")
+        db.log_lcec_outages([_fpl_row("Lee", 50, 227335)], timestamp="2026-01-01T00:30:00")
+        db.sync_lcec_outage_events([_fpl_row("Lee", 50, 227335)], timestamp="2026-01-01T00:30:00")
+
+        open_events = db.get_lcec_open_events()
+        db.close()
+
+        assert len(open_events) == 1
+        assert open_events[0]["peak_customers_out"] == 500
+        assert open_events[0]["current_customers_out"] == 50
 
 
 class TestPipelineErrorHistory:

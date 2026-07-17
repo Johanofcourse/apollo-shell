@@ -4,7 +4,7 @@ Started as a "shell." Somewhere along the way it became an outage
 detective instead. No regrets.
 
 ## Done
-- Live outage data flows in continuously from fifteen independent
+- Live outage data flows in continuously from sixteen independent
   Florida utilities, alongside National Weather Service alerts, now
   covering every one of Florida's 67 counties with a real, verified
   live source
@@ -75,7 +75,7 @@ and ruling out a few dead-end or fabricated sources — to confirm as
 real and usable.
 
 ## Live right now
-- The poller runs unattended from fifteen independent Florida
+- The poller runs unattended from sixteen independent Florida
   utilities now, up from the original one, with a real live source
   covering every one of Florida's 67 counties
 - Real weather alerts are correlating with real outages statewide, each
@@ -710,3 +710,13 @@ shape from an empty response, only the real, confirmed part shipped -
 a real city-wide percentage for a county that already had some
 coverage, just never a clean customer-base denominator to trust before
 now.
+
+## The sixteenth, the same ranking's runner-up
+Once the fifteenth was live, the same historical-storm ranking's #2
+candidate was the obvious next move - a large real cooperative, edged
+out only narrowly the first time around. Its live feed turned out to be
+the simplest integration yet: a fully public, unauthenticated data file
+with real native per-county numbers, no tracking code or gate to work
+around at all. It also exposes a genuinely live per-incident array with
+real start and restoration-estimate times - unlike the fifteenth's, this
+one isn't empty, just out of scope for this pass.

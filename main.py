@@ -29,6 +29,7 @@ from fetch_lwbu_outages import (
     get_incidents_summary as get_lwbu_incidents_summary,
 )
 from fetch_ouc_outages import get_ouc_records, OUC_INSTANCE_ID
+from fetch_lcec_outages import get_lcec_records, LCEC_API_URL
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -45,6 +46,7 @@ from correlate import (
     find_gcec_correlations,
     find_lwbu_correlations,
     find_ouc_correlations,
+    find_lcec_correlations,
 )
 from county_status import historical_confidence_tally
 
@@ -399,6 +401,33 @@ def run_ouc_cycle(db):
     db.sync_ouc_outage_events(records, timestamp=timestamp)
 
 
+def run_lcec_cycle(db):
+    """
+    Fetch Lee County Electric Cooperative's live outage data, save the
+    raw snapshot, and update lcec_outage_events lifecycle tracking
+    (start/end) - a real per-county rollup source (Charlotte, Broward,
+    Collier, Hendry, Lee), same shape as FKEC/OUC, not an incident
+    list. LCEC's own real per-incident array (outages[], with real
+    start/estimated-restoration times) is confirmed to exist and
+    genuinely has live data - not integrated here yet, same honest
+    disclosure as OUC's cluster layer.
+
+    Raises only when LCEC_API_URL is actually configured but the fetch
+    still came back empty - same reasoning/config-check pattern as
+    run_fkec_cycle() above.
+    """
+    records = get_lcec_records()
+    if not records:
+        if LCEC_API_URL:
+            raise RuntimeError("LCEC fetch returned no records - see the poller's own log for the underlying request error")
+        print("Skipping LCEC save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_lcec_outages(records, timestamp=timestamp)
+    db.sync_lcec_outage_events(records, timestamp=timestamp)
+
+
 def run_fpuc_cycle(db):
     """
     Fetch FPUC's live outage data once, then update both trackers from
@@ -633,6 +662,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    lcec_matches = find_lcec_correlations()
+    if not lcec_matches:
+        print("LCEC correlation: no matches this cycle")
+    else:
+        lcec_summary = correlation_summary(lcec_matches)
+        print(f"LCEC correlation: {len(lcec_matches)} matches across {len(lcec_summary)} counties")
+        for county, stats in lcec_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def run_historical_tally_cycle(db):
     """
@@ -760,6 +802,12 @@ def main():
             except Exception as e:
                 print(f"OUC fetch cycle failed: {e}")
                 db.log_pipeline_error("ouc", str(e))
+
+            try:
+                run_lcec_cycle(db)
+            except Exception as e:
+                print(f"LCEC fetch cycle failed: {e}")
+                db.log_pipeline_error("lcec", str(e))
 
             try:
                 run_correlation_cycle()

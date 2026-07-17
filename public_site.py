@@ -48,7 +48,7 @@ OUTAGE_HISTORY_DISPLAY_LIMIT = 15
 # deliberately not imported from dashboard.py's own
 # PIPELINE_SOURCE_DISPLAY_NAMES, since the two apps share only the
 # read-only apollo_shell/ data layer, never each other's code.
-TRACKED_UTILITY_COUNT = 15
+TRACKED_UTILITY_COUNT = 16
 
 # Genuinely separate from dashboard.py's app - its own Flask instance,
 # its own template folder, its own port when run directly. Reads the

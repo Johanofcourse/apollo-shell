@@ -303,7 +303,7 @@ and don't substitute for everyday-outage volume.
       and the test/prod split above first, not something to start now.
 
 ## Utility coverage
-Grew from one utility (FPL) to fifteen live sources across this
+Grew from one utility (FPL) to sixteen live sources across this
 project's life, each one closing a real, verified county-coverage gap
 rather than being added for its own sake. In rough order: a second and
 third utility added genuinely richer per-incident detail (real cause,
@@ -339,7 +339,10 @@ source with no clean customer-base denominator - found the same honest
 way as GCEC, by ranking every utility that's ever shown up in this
 project's own historical storm data and confirming a real live feed
 existed before building anything. Runs on the same shared vendor
-platform JEA's feed does.
+platform JEA's feed does. A sixteenth (Lee County Electric Cooperative)
+was the same ranking's #2 candidate, added once OUC was done - a real
+per-county source (five counties) on a fully public, unauthenticated
+data platform, no tracking code or WAF gate required.
 
 Every combined-territory source (where one number covers multiple real
 counties rather than a true per-county breakdown) is disclosed as such

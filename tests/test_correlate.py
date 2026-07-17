@@ -21,6 +21,7 @@ from correlate import (
     find_erec_correlations, find_chelco_correlations, find_gcec_correlations,
     find_lwbu_correlations,
     find_ouc_correlations,
+    find_lcec_correlations,
 )
 from database import OutageDatabase
 
@@ -669,3 +670,38 @@ class TestFindOucCorrelations:
         db.close()
 
         assert find_ouc_correlations(db_path, days=None) == []
+
+
+class TestFindLcecCorrelations:
+    """
+    find_lcec_correlations() reuses the exact same matching helpers
+    already proven via find_correlations()/find_fkec_correlations()
+    above - a real per-county rollup source (Charlotte/Broward/
+    Collier/Hendry/Lee), not a combined-territory label.
+    """
+
+    def test_matches_an_lcec_outage_to_an_overlapping_alert(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Lee"))
+        db.log_lcec_outages(
+            [{"county": "Lee", "customers_out": 4, "customers_served": 227335}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        matches = find_lcec_correlations(db_path, days=None)
+        assert len(matches) == 1
+
+        summary = correlation_summary(matches)
+        assert summary["Lee"]["outage_count"] == 1
+
+    def test_zero_customer_snapshots_are_not_matched(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Lee"))
+        db.log_lcec_outages(
+            [{"county": "Lee", "customers_out": 0, "customers_served": 227335}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_lcec_correlations(db_path, days=None) == []
