@@ -60,6 +60,18 @@
       record was a line in a growing log file nobody was watching. Now
       every failure lands in a real health-status table, surfaced as a
       strip at the top of the dashboard (healthy / warning / critical).
+- [x] **Real email alerting** for the two sources known not to
+      self-heal - fires the moment either has a single failure (more
+      sensitive than the standard threshold), one follow-up email on
+      recovery, not a repeat every cycle for the whole outage.
+- [ ] **Extend real email alerting to every other real source** -
+      currently scoped to just the two known-fragile ones. The other
+      real sources occasionally hit an ordinary transient blip that
+      resolves on its own next cycle, so this needs a sustained-failure
+      threshold (still failing next cycle too, not just once) rather
+      than the single-failure trigger the two fragile sources use -
+      otherwise routine self-healing blips would generate noise. Not
+      started.
 - [x] **Real bug hunt following an earlier data-gap fix, plus a first
       real test suite.** Asking "what else might be quietly wrong"
       turned up a couple more small, real issues, both fixed. Also
