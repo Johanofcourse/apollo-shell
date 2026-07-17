@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Apollo Sentinel — Florida Outage &amp; Weather Watch</title>
+<title>Apollo's Florida Outage &amp; Weather Watch</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -55,15 +55,15 @@
     color: var(--white);
     padding: 1.1rem 1.5rem;
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
     border-bottom: 3px solid var(--cyan);
   }
   .bezel h1 {
-    margin: 0; font-size: 1.7rem; font-weight: 900; letter-spacing: 0.03em;
+    margin: 0; font-size: 1.4rem; font-weight: 900; letter-spacing: 0.02em;
     font-family: "Big Shoulders Stencil Display", "Helvetica Neue", sans-serif;
+    text-wrap: balance;
   }
   .bezel .tagline { color: #9fb0bd; font-size: 0.82rem; }
 
@@ -300,8 +300,8 @@
 </svg>
 
 <div class="bezel">
-  <h1>APOLLO SENTINEL</h1>
-  <div class="tagline mono">FLORIDA OUTAGE &amp; WEATHER WATCH</div>
+  <h1>APOLLO'S FLORIDA OUTAGE &amp; WEATHER WATCH</h1>
+  <div class="tagline mono">SENTINEL VERSION {{ sentinel_version }}</div>
 </div>
 
 <div class="page">

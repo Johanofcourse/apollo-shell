@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 
 from flask import Flask, render_template, request
@@ -49,6 +50,29 @@ OUTAGE_HISTORY_DISPLAY_LIMIT = 15
 # PIPELINE_SOURCE_DISPLAY_NAMES, since the two apps share only the
 # read-only apollo_shell/ data layer, never each other's code.
 TRACKED_UTILITY_COUNT = 16
+
+
+def _get_sentinel_version():
+    """
+    Real build identifier for the page footer/header - the total commit
+    count on this checkout, computed once at process start (not per
+    request, since it only changes on a fresh deploy, which already
+    requires a restart). Falls back to "dev" if git isn't available
+    (e.g. a stripped deployment with no .git directory), rather than
+    showing a fabricated number.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            capture_output=True, text=True, timeout=5, check=True,
+        )
+        return result.stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return "dev"
+
+
+SENTINEL_VERSION = _get_sentinel_version()
 
 # Genuinely separate from dashboard.py's app - its own Flask instance,
 # its own template folder, its own port when run directly. Reads the
@@ -262,6 +286,7 @@ def index():
         county_rings_json=json.dumps(county_map.FLORIDA_COUNTY_RINGS),
         narrative=narrative,
         tracked_utility_count=TRACKED_UTILITY_COUNT,
+        sentinel_version=SENTINEL_VERSION,
         heat_summary=heat_summary,
         active_alerts=all_active_alerts,
         available_counties=COUNTY_PICKER_CHOICES,
