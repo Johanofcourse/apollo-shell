@@ -851,7 +851,7 @@
       const anyStorm = counties.some(c => verdictOf(c).cls === "storm");
       const anyWatch = counties.some(c => verdictOf(c).cls === "watch");
       captionEl.textContent = anyStorm ? "STORM ACTIVITY IN AT LEAST ONE COUNTY" : anyWatch ? "SOME STORM ACTIVITY" : "MOSTLY ROUTINE";
-      subEl.textContent = "COLOR = HOW OFTEN THIS COUNTY'S PAST OUTAGES LOOK WEATHER-DRIVEN, NOT TODAY'S COUNT. CLICK ANY COUNTY FOR ITS STORM HISTORY.";
+      subEl.textContent = "COLOR REFLECTS THIS COUNTY'S OWN TRACKED RECORD SINCE APRIL 2026. CLICK ANY COUNTY FOR ITS FULL STORM HISTORY, BACK TO 2018.";
     }
 
     renderLegend();
