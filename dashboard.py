@@ -1106,6 +1106,30 @@ def _split_chronic_errors(errors, chronic_sources, limit):
     return chronic, other
 
 
+def _summarize_chronic_errors(chronic_errors):
+    """
+    One compact line per known-chronic source (total streak count, most
+    recent streak's own timing/status) - even a handful of individual
+    streak cards reads as clutter for a source everyone already knows
+    is a recurring, understood issue. chronic_errors is assumed already
+    sorted most-recent-first (same order _group_pipeline_errors
+    produces), so the first streak seen per source is its latest.
+    """
+    summaries = []
+    seen_sources = set()
+    for e in chronic_errors:
+        if e["source"] in seen_sources:
+            continue
+        seen_sources.add(e["source"])
+        streak_count = sum(1 for other in chronic_errors if other["source"] == e["source"])
+        summaries.append({
+            "display_name": e["display_name"],
+            "streak_count": streak_count,
+            "latest": e,
+        })
+    return summaries
+
+
 @app.route("/pipeline-errors")
 def pipeline_errors():
     """
@@ -1159,6 +1183,7 @@ def pipeline_errors():
     chronic_errors = []
     if not selected_source:
         chronic_errors, errors = _split_chronic_errors(errors, ALERT_WORTHY_SOURCES, CHRONIC_ISSUE_DISPLAY_LIMIT)
+    chronic_summaries = _summarize_chronic_errors(chronic_errors)
 
     pagination = _paginate(errors, page, PIPELINE_ERRORS_PER_PAGE)
 
@@ -1166,6 +1191,7 @@ def pipeline_errors():
         "pipeline_errors.html",
         errors=pagination["items"],
         chronic_errors=chronic_errors,
+        chronic_summaries=chronic_summaries,
         page=pagination["page"],
         total_pages=pagination["total_pages"],
         total_errors=pagination["total"],

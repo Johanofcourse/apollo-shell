@@ -12,7 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dashboard import (
     _incident_label, _explain_pipeline_error, _group_pipeline_errors,
     _is_pipeline_error_ongoing, _normalize_open_events, _rows_for_county,
-    _paginate, _split_chronic_errors, COUNTY_PICKER_CHOICES,
+    _paginate, _split_chronic_errors, _summarize_chronic_errors,
+    COUNTY_PICKER_CHOICES,
 )
 
 
@@ -263,6 +264,20 @@ class TestPaginate:
         assert result["page"] == 3
         assert result["items"] == list(range(20, 25))
 
+    def test_page_number_below_one_clamps_to_first_page(self):
+        items = list(range(25))
+        result = _paginate(items, page=0, per_page=10)
+        assert result["page"] == 1
+        assert result["items"] == list(range(10))
+
+    def test_empty_list_returns_one_empty_page_not_zero_pages(self):
+        result = _paginate([], page=1, per_page=10)
+        assert result["items"] == []
+        assert result["total_pages"] == 1
+        assert result["page"] == 1
+        assert result["has_prev"] is False
+        assert result["has_next"] is False
+
 
 class TestSplitChronicErrors:
     """
@@ -303,19 +318,64 @@ class TestSplitChronicErrors:
         assert chronic == [self._err("talquin"), self._err("preco")]
         assert other == [self._err("fpl"), self._err("duke")]
 
-    def test_page_number_below_one_clamps_to_first_page(self):
-        items = list(range(25))
-        result = _paginate(items, page=0, per_page=10)
-        assert result["page"] == 1
-        assert result["items"] == list(range(10))
 
-    def test_empty_list_returns_one_empty_page_not_zero_pages(self):
-        result = _paginate([], page=1, per_page=10)
-        assert result["items"] == []
-        assert result["total_pages"] == 1
-        assert result["page"] == 1
-        assert result["has_prev"] is False
-        assert result["has_next"] is False
+class TestSummarizeChronicErrors:
+    """
+    _summarize_chronic_errors() - collapses a chronic source's full streak
+    list down to one compact line (count + latest streak) for the
+    collapsed-by-default /pipeline-errors summary, added 2026-07-17.
+    """
+
+    def _err(self, source, display_name, is_ongoing=False, last_timestamp="2026-07-17T12:00:00"):
+        return {
+            "source": source,
+            "display_name": display_name,
+            "is_ongoing": is_ongoing,
+            "last_timestamp": last_timestamp,
+        }
+
+    def test_empty_input_returns_empty_list(self):
+        assert _summarize_chronic_errors([]) == []
+
+    def test_single_source_single_streak(self):
+        errors = [self._err("talquin", "Talquin Electric Cooperative")]
+        result = _summarize_chronic_errors(errors)
+
+        assert len(result) == 1
+        assert result[0]["display_name"] == "Talquin Electric Cooperative"
+        assert result[0]["streak_count"] == 1
+        assert result[0]["latest"] == errors[0]
+
+    def test_counts_all_streaks_for_the_same_source(self):
+        errors = [
+            self._err("talquin", "Talquin Electric Cooperative"),
+            self._err("talquin", "Talquin Electric Cooperative"),
+            self._err("talquin", "Talquin Electric Cooperative"),
+        ]
+        result = _summarize_chronic_errors(errors)
+
+        assert len(result) == 1
+        assert result[0]["streak_count"] == 3
+
+    def test_first_occurrence_per_source_is_treated_as_latest(self):
+        newest = self._err("talquin", "Talquin Electric Cooperative", is_ongoing=True, last_timestamp="2026-07-17T18:00:00")
+        older = self._err("talquin", "Talquin Electric Cooperative", is_ongoing=False, last_timestamp="2026-07-17T06:00:00")
+        result = _summarize_chronic_errors([newest, older])
+
+        assert result[0]["latest"] == newest
+
+    def test_multiple_sources_each_get_their_own_summary(self):
+        errors = [
+            self._err("talquin", "Talquin Electric Cooperative"),
+            self._err("preco", "Peace River Electric Cooperative"),
+            self._err("talquin", "Talquin Electric Cooperative"),
+        ]
+        result = _summarize_chronic_errors(errors)
+
+        by_source = {e["latest"]["source"]: e for e in result}
+        assert len(result) == 2
+        assert by_source["talquin"]["streak_count"] == 2
+        assert by_source["preco"]["streak_count"] == 1
 
 
 class TestCountyPickerChoices:
