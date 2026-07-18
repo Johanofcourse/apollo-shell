@@ -13,8 +13,65 @@ from dashboard import (
     _incident_label, _explain_pipeline_error, _group_pipeline_errors,
     _is_pipeline_error_ongoing, _normalize_open_events, _rows_for_county,
     _paginate, _split_chronic_errors, _summarize_chronic_errors,
-    COUNTY_PICKER_CHOICES,
+    _build_unified_view, COUNTY_PICKER_CHOICES,
 )
+
+
+class TestBuildUnifiedView:
+    """
+    _build_unified_view() - added 2026-07-18 after finding it had no
+    direct test at all, only indirect coverage via the "/" route. Real
+    regression covered here: fpuc_open_incidents (FPUC's real per-
+    incident view, distinct from its combined-territory total) was
+    never passed into this function at all, so it never contributed to
+    the dashboard's own "Customers Out Right Now"/"Open Incidents" KPIs
+    - found by comparing this page's total against the public site's
+    own total on the same live moment and getting different numbers.
+    Silent until then only because FPUC's incident-level view happened
+    to have zero open incidents every time this was checked before.
+    """
+
+    def _row(self, utility="FPL", county="Alachua", customers=10, peak=20,
+              customers_key="current_customers_out", peak_key="peak_customers_out"):
+        return {
+            "utility": utility, "county": county,
+            customers_key: customers, peak_key: peak,
+            "start_time": "2026-01-01T00:00:00", "duration": "1h",
+        }
+
+    def test_fpuc_open_incidents_are_included_in_the_unified_total(self):
+        fpuc_incident_row = self._row(
+            utility="Florida Public Utilities Corporation", county="Nassau",
+            customers=15, peak=15,
+            customers_key="current_customer_count", peak_key="peak_customer_count",
+        )
+        unified = _build_unified_view(
+            [], [], [], [], [], [], [], [fpuc_incident_row], [], [], [], [], [], [], [], [], [],
+        )
+
+        assert len(unified) == 1
+        assert unified[0]["utility"] == "Florida Public Utilities Corporation"
+        assert unified[0]["county"] == "Nassau"
+        assert unified[0]["customers"] == 15
+        assert unified[0]["peak_customers"] == 15
+
+    def test_fpuc_incidents_and_combined_events_both_count_independently(self):
+        combined_row = self._row(utility="Florida Public Utilities Corporation", county="Multiple Counties (NW FL & Nassau)", customers=5, peak=5)
+        incident_row = self._row(
+            utility="Florida Public Utilities Corporation", county="Nassau",
+            customers=15, peak=15,
+            customers_key="current_customer_count", peak_key="peak_customer_count",
+        )
+        unified = _build_unified_view(
+            [], [], [], [], [], [], [combined_row], [incident_row], [], [], [], [], [], [], [], [], [],
+        )
+
+        assert len(unified) == 2
+        assert sum(row["customers"] for row in unified) == 20
+
+    def test_empty_everything_returns_empty_list(self):
+        unified = _build_unified_view([], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [])
+        assert unified == []
 
 
 class TestIncidentLabel:

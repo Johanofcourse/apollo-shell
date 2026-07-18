@@ -316,7 +316,7 @@ def _combine_confidence_breakdowns(*match_lists):
 # _percentage_tier now lives in county_status.py (imported above).
 
 
-def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events, lwbu_open_events, ouc_open_events, lcec_open_events):
+def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, fpuc_open_incidents, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events, lwbu_open_events, ouc_open_events, lcec_open_events):
     """
     Normalize FPL's/JEA's county-level outage_events-shaped tables and
     TECO's/Duke's incident-level *_incident_events into one common shape
@@ -402,6 +402,25 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
             "county": e["county"],
             "customers": e["current_customers_out"],
             "peak_customers": e["peak_customers_out"],
+            "start_time": e["start_time"],
+            "duration": e["duration"],
+        })
+
+    # Real regression, found 2026-07-18 by comparing this page's own
+    # "Customers Out Right Now" KPI against the public site's - FPUC's
+    # real per-incident view (distinct from its combined-territory total
+    # just above) was never folded into this statewide total, even
+    # though county_status._real_per_county_open_events() (which the
+    # public site and this same dashboard's own /county page both use)
+    # already counts it as real per-county data. Silent until now only
+    # because FPUC's incident-level view happened to have zero open
+    # incidents every time this was checked before.
+    for e in fpuc_open_incidents:
+        unified.append({
+            "utility": e["utility"],
+            "county": e["county"],
+            "customers": e["current_customer_count"],
+            "peak_customers": e["peak_customer_count"],
             "start_time": e["start_time"],
             "duration": e["duration"],
         })
@@ -734,7 +753,7 @@ def index():
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
         stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
-    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events, lwbu_open_events, ouc_open_events, lcec_open_events)
+    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, fpuc_open_incidents, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events, lwbu_open_events, ouc_open_events, lcec_open_events)
 
     for event in open_events:
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
