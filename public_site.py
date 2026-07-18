@@ -14,6 +14,7 @@ from county_status import (
     _combined_territory_open_events, _real_per_county_closed_events,
     _combined_territory_closed_events, _rows_for_county, humanize_timestamp,
     _row_tier, fpl_ordinary_restoration_stats,
+    teco_etr_accuracy, TECO_UTILITY_NAME,
 )
 from storm_history import (
     available_history_counties, load_history_for_county,
@@ -275,6 +276,15 @@ def index():
         major_storm_precedent = fpl_restoration_precedent(selected_county) if fpl_open_now else None
         everyday_precedent = fpl_ordinary_restoration_stats(selected_county, db) if fpl_open_now else None
 
+        # A genuinely different Phase 3 signal for TECO - it already
+        # reports a real per-incident ETR (unlike FPL, which has no
+        # per-incident data at all), so instead of inventing a precedent
+        # range, this checks how trustworthy TECO's own existing number
+        # has actually been. Same "only when directly relevant right
+        # now" gating - see county_status.teco_etr_accuracy().
+        teco_open_now = any(r["utility"] == TECO_UTILITY_NAME for r in real_events)
+        teco_accuracy = teco_etr_accuracy(selected_county, db) if teco_open_now else None
+
         # This project's own directly-observed outage history for this
         # county (real start/end pairs from the live poller, running
         # since 2026-04) - a genuinely different dataset from Storm
@@ -307,6 +317,7 @@ def index():
             "storms_with_data_count": storms_with_data_count,
             "major_storm_precedent": major_storm_precedent,
             "everyday_precedent": everyday_precedent,
+            "teco_accuracy": teco_accuracy,
         }
 
     db.close()

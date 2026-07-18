@@ -540,3 +540,77 @@ def fpl_ordinary_restoration_stats(county, db):
         "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
         "excluded_count": excluded_count,
     }
+
+
+TECO_UTILITY_NAME = "Tampa Electric Company"
+
+
+def teco_etr_accuracy(county, db):
+    """
+    Real accuracy check of TECO's own stated restoration estimates
+    against what actually happened, for one county - a genuinely
+    different kind of Phase 3 signal than FPL's historical-precedent
+    approach. TECO already reports a real per-incident ETR on 3,776 of
+    3,776 real closed incidents checked 2026-07-18, so instead of
+    inventing a range from scratch (FPL's problem - no per-incident data
+    at all), this checks how trustworthy TECO's own existing number has
+    actually been: "when TECO tells you when your power will be back,
+    how close does that number usually land?"
+
+    Confirmed 2026-07-18 this is TECO-specific, not a Duke/JEA feature
+    too: Duke's raw feed has no restoration-estimate field at all, and
+    JEA has no per-incident data at all (county-rollup only, like FPL).
+    FPUC's real incident view and LWBU both technically have an ETR
+    field, but only 3 and 8 real closed incidents respectively right
+    now - too thin to mean anything yet, revisit once they accumulate
+    more.
+
+    For each resolved incident, compares its FIRST reported ETR (the
+    earliest raw snapshot with one) against when it actually closed - no
+    outlier filtering needed here the way fpl_ordinary_restoration_stats
+    needs one, since TECO's incidents are already individually tracked
+    with a real incident_id, not a blurred county-wide aggregate.
+
+    Returns None if there's no usable data for this county. Otherwise a
+    dict: n, median_error_hours (positive = resolved later than first
+    promised, negative = resolved earlier), on_time_pct (share resolved
+    at or before their first stated ETR), limited (n too small to mean
+    much).
+    """
+    conn = db.connect()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT oe.end_time,
+               (SELECT ti.estimated_restoration FROM teco_incidents ti
+                WHERE ti.incident_id = oe.incident_id AND ti.estimated_restoration IS NOT NULL
+                ORDER BY ti.fetched_at ASC LIMIT 1) AS first_etr
+        FROM teco_incident_events oe
+        WHERE UPPER(oe.county) = UPPER(?) AND oe.end_time IS NOT NULL
+    ''', (county,))
+    rows = cursor.fetchall()
+
+    errors = []
+    for end_time, first_etr in rows:
+        if not first_etr:
+            continue
+        try:
+            error_hours = (datetime.fromisoformat(end_time) - datetime.fromisoformat(first_etr)).total_seconds() / 3600
+        except (TypeError, ValueError):
+            continue
+        errors.append(error_hours)
+
+    if not errors:
+        return None
+
+    errors.sort()
+    n = len(errors)
+    mid = n // 2
+    median = errors[mid] if n % 2 == 1 else (errors[mid - 1] + errors[mid]) / 2
+    on_time = sum(1 for e in errors if e <= 0)
+
+    return {
+        "n": n,
+        "median_error_hours": median,
+        "on_time_pct": on_time / n * 100,
+        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
+    }

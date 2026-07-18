@@ -469,6 +469,30 @@
             (2018&ndash;2025), not this project's own live tracking.</div>
         </div>
         {% endif %}
+        {% if county_detail.teco_accuracy %}
+        {% set ta = county_detail.teco_accuracy %}
+        <div class="outage-card historical">
+          <div class="outage-top">
+            <span class="outage-utility">Restoration Estimate Accuracy (TECO)</span>
+            <span class="outage-figure mono">{{ "%.0f"|format(ta.on_time_pct) }}% on time</span>
+          </div>
+          {% if ta.limited %}
+          <div class="outage-sub">Only {{ ta.n }} real incident{{ "s" if ta.n != 1 }} on file for this county —
+            not enough precedent yet to call this a reliable pattern.</div>
+          {% endif %}
+          <div class="outage-sub">Based on {{ ta.n }} real TECO incidents resolved here, {{ "%.0f"|format(ta.on_time_pct) }}%
+            were fixed at or before TECO's own first stated estimate
+            {% if ta.median_error_hours <= 0 %}
+              (typically {{ "%.1f"|format(-ta.median_error_hours) }} hours earlier than promised).
+            {% else %}
+              (typically {{ "%.1f"|format(ta.median_error_hours) }} hours later than promised).
+            {% endif %}
+          </div>
+          <div class="outage-note">Unlike FPL, TECO already reports a real per-incident restoration estimate — this
+            checks how trustworthy that existing number has actually been, not a live estimate for this specific
+            outage. From this project's own live tracking since April 2026.</div>
+        </div>
+        {% endif %}
         {% for e in county_detail.combined_events %}
         {% set tier = e | row_tier %}
         <div class="outage-card combined{% if tier == 'critical' %} hz-stripe{% endif %}">

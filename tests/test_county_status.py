@@ -543,3 +543,128 @@ class TestFplOrdinaryRestorationStats:
         db.close()
 
         assert result is None
+
+
+def _teco_incident(incident_id, county="Hillsborough", customer_count=10, estimated_restoration="2026-01-01T06:00:00", update_time="2026-01-01T00:00:00"):
+    return {
+        "incident_id": incident_id, "utility": "Tampa Electric Company",
+        "status": "On our way", "status_category": "investigating",
+        "reason": "Tree down", "reason_category": "vegetation",
+        "customer_count": customer_count, "lat": 27.9, "lon": -82.4, "county": county,
+        "update_time": update_time, "estimated_restoration": estimated_restoration,
+    }
+
+
+def _open_and_close_teco_incident(db, incident_id, county, first_etr, actual_end, open_at="2026-01-01T00:00:00"):
+    db.log_teco_incidents([_teco_incident(incident_id, county=county, estimated_restoration=first_etr, update_time=open_at)])
+    db.sync_teco_incident_events([_teco_incident(incident_id, county=county, estimated_restoration=first_etr)], timestamp=open_at)
+    db.sync_teco_incident_events([], timestamp=actual_end)
+
+
+class TestTecoEtrAccuracy:
+    """
+    teco_etr_accuracy() - added 2026-07-18, a genuinely different Phase
+    3 signal than the FPL restoration-precedent pair: TECO already
+    reports a real per-incident ETR, so instead of inventing a
+    precedent range, this checks how trustworthy TECO's own existing
+    number has actually been - "when TECO tells you when your power
+    will be back, how close does that number usually land?"
+    """
+
+    def test_no_data_for_county_returns_none(self, db_path):
+        db = OutageDatabase(db_path)
+        result = cs.teco_etr_accuracy("Hillsborough", db)
+        db.close()
+
+        assert result is None
+
+    def test_resolved_earlier_than_etr_is_a_negative_error(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_teco_incident(
+            db, "T1", "Hillsborough",
+            first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T03:00:00",
+        )
+
+        result = cs.teco_etr_accuracy("Hillsborough", db)
+        db.close()
+
+        assert result["n"] == 1
+        assert result["median_error_hours"] == -3.0
+        assert result["on_time_pct"] == 100.0
+        assert result["limited"] is True
+
+    def test_resolved_later_than_etr_is_a_positive_error(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_teco_incident(
+            db, "T1", "Hillsborough",
+            first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T09:00:00",
+        )
+
+        result = cs.teco_etr_accuracy("Hillsborough", db)
+        db.close()
+
+        assert result["median_error_hours"] == 3.0
+        assert result["on_time_pct"] == 0.0
+
+    def test_on_time_pct_reflects_a_real_mix(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_teco_incident(db, "T1", "Polk", first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T03:00:00", open_at="2026-01-01T00:00:00")
+        _open_and_close_teco_incident(db, "T2", "Polk", first_etr="2026-01-02T06:00:00", actual_end="2026-01-02T09:00:00", open_at="2026-01-02T00:00:00")
+        _open_and_close_teco_incident(db, "T3", "Polk", first_etr="2026-01-03T06:00:00", actual_end="2026-01-03T06:00:00", open_at="2026-01-03T00:00:00")
+
+        result = cs.teco_etr_accuracy("Polk", db)
+        db.close()
+
+        assert result["n"] == 3
+        assert round(result["on_time_pct"], 2) == round(2 / 3 * 100, 2)
+
+    def test_county_name_match_is_case_insensitive(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_teco_incident(db, "T1", "PINELLAS", first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T03:00:00")
+
+        result = cs.teco_etr_accuracy("Pinellas", db)
+        db.close()
+
+        assert result is not None
+
+    def test_reaching_the_confident_threshold_clears_the_limited_flag(self, db_path):
+        db = OutageDatabase(db_path)
+        for i in range(cs.MIN_EVENTS_FOR_CONFIDENT_RANGE):
+            _open_and_close_teco_incident(
+                db, f"T{i}", "Hillsborough",
+                first_etr=f"2026-01-0{i + 1}T06:00:00", actual_end=f"2026-01-0{i + 1}T05:00:00",
+                open_at=f"2026-01-0{i + 1}T00:00:00",
+            )
+
+        result = cs.teco_etr_accuracy("Hillsborough", db)
+        db.close()
+
+        assert result["n"] == cs.MIN_EVENTS_FOR_CONFIDENT_RANGE
+        assert result["limited"] is False
+
+    def test_incidents_with_no_etr_ever_reported_are_excluded(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_teco_incidents([_teco_incident("T1", county="Hillsborough", estimated_restoration=None)])
+        db.sync_teco_incident_events(
+            [_teco_incident("T1", county="Hillsborough", estimated_restoration=None)],
+            timestamp="2026-01-01T00:00:00",
+        )
+        db.sync_teco_incident_events([], timestamp="2026-01-01T03:00:00")
+
+        result = cs.teco_etr_accuracy("Hillsborough", db)
+        db.close()
+
+        assert result is None
+
+    def test_other_utilities_in_the_same_county_are_ignored(self, db_path):
+        db = OutageDatabase(db_path)
+        db.sync_duke_incident_events(
+            [{"incident_id": "D1", "utility": "Duke Energy", "county": "Hillsborough", "customer_count": 50,
+              "lat": 27.9, "lon": -82.4, "cause": "Tree down", "cause_category": "vegetation"}],
+            timestamp="2026-01-01T00:00:00",
+        )
+
+        result = cs.teco_etr_accuracy("Hillsborough", db)
+        db.close()
+
+        assert result is None

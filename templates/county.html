@@ -231,6 +231,38 @@
     </div>
     {% endif %}
 
+    {% if teco_accuracy %}
+    <h2>Restoration Estimate Accuracy (TECO)</h2>
+    <p class="section-note">
+      Only shown while a real TECO outage is currently open in this county. Unlike FPL, TECO already reports a
+      real per-incident restoration estimate - so instead of inventing a precedent range, this checks how
+      trustworthy that existing number has actually been: comparing each resolved incident's first stated ETR
+      against when it actually closed.
+    </p>
+    <div class="wrap">
+      {% if teco_accuracy.limited %}
+        <div class="empty">
+          Only {{ teco_accuracy.n }} real incident{{ "s" if teco_accuracy.n != 1 }} on file for this county - not
+          enough precedent yet to call this a reliable pattern.
+        </div>
+      {% endif %}
+      <table>
+        <tr><th>Real Incidents On File</th><th>Resolved On Time Or Early</th><th>Median Difference</th></tr>
+        <tr>
+          <td>{{ teco_accuracy.n }}</td>
+          <td>{{ "%.0f"|format(teco_accuracy.on_time_pct) }}%</td>
+          <td>
+            {% if teco_accuracy.median_error_hours <= 0 %}
+              {{ "%.1f"|format(-teco_accuracy.median_error_hours) }}h earlier than first estimated
+            {% else %}
+              {{ "%.1f"|format(teco_accuracy.median_error_hours) }}h later than first estimated
+            {% endif %}
+          </td>
+        </tr>
+      </table>
+    </div>
+    {% endif %}
+
     <h2>Combined-Territory Sources Also Covering This Area{{ ' (' ~ combined_events|length ~ ')' if combined_events else '' }}</h2>
     <p class="section-note">
       These utilities report one combined total across several counties at once, not a number specific to
