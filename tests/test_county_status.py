@@ -441,3 +441,105 @@ class TestCombinedTerritoryClosedEvents:
         db.close()
 
         assert len(calhoun_rows) == 1
+
+
+def _open_and_close_fpl_event(db, county, start, end, customers=50):
+    db.sync_outage_events(
+        cs.FPL_UTILITY_NAME, [{"county": county, "customers_out": customers, "customers_served": 100_000}],
+        timestamp=start,
+    )
+    db.sync_outage_events(
+        cs.FPL_UTILITY_NAME, [{"county": county, "customers_out": 0, "customers_served": 100_000}],
+        timestamp=end,
+    )
+
+
+class TestFplOrdinaryRestorationStats:
+    """
+    fpl_ordinary_restoration_stats() - added 2026-07-18 alongside
+    fpl_restoration_precedent() (the major-storm archive version), but
+    reading this project's OWN live outage_events instead - "how long
+    does an ordinary FPL outage actually take here," a genuinely
+    different question from the storm one, deliberately never merged
+    into it.
+    """
+
+    def test_no_data_for_county_returns_none(self, db_path):
+        db = OutageDatabase(db_path)
+        result = cs.fpl_ordinary_restoration_stats("Alachua", db)
+        db.close()
+
+        assert result is None
+
+    def test_single_event_computes_stats_and_is_flagged_limited(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_fpl_event(db, "Alachua", "2026-01-01T00:00:00", "2026-01-01T03:00:00")
+
+        result = cs.fpl_ordinary_restoration_stats("Alachua", db)
+        db.close()
+
+        assert result["n"] == 1
+        assert result["min_hours"] == 3.0
+        assert result["median_hours"] == 3.0
+        assert result["max_hours"] == 3.0
+        assert result["limited"] is True
+        assert result["excluded_count"] == 0
+
+    def test_reaching_the_confident_threshold_clears_the_limited_flag(self, db_path):
+        db = OutageDatabase(db_path)
+        for i in range(cs.MIN_EVENTS_FOR_CONFIDENT_RANGE):
+            _open_and_close_fpl_event(db, "Duval", f"2026-01-0{i + 1}T00:00:00", f"2026-01-0{i + 1}T05:00:00")
+
+        result = cs.fpl_ordinary_restoration_stats("Duval", db)
+        db.close()
+
+        assert result["n"] == cs.MIN_EVENTS_FOR_CONFIDENT_RANGE
+        assert result["limited"] is False
+
+    def test_county_name_match_is_case_insensitive(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_fpl_event(db, "MIAMI-DADE", "2026-01-01T00:00:00", "2026-01-01T02:00:00")
+
+        result = cs.fpl_ordinary_restoration_stats("Miami-Dade", db)
+        db.close()
+
+        assert result is not None
+
+    def test_events_beyond_the_plausible_cutoff_are_excluded_not_averaged_in(self, db_path):
+        # The real reason this function exists: FPL's live feed only
+        # ever reports a county-wide total, and a busy county's
+        # aggregate can run non-zero for many real days straight without
+        # representing one actual repair job - this is that exact case,
+        # reproduced directly rather than assumed.
+        db = OutageDatabase(db_path)
+        _open_and_close_fpl_event(db, "Palm Beach", "2026-01-01T00:00:00", "2026-01-01T03:00:00")  # 3h, real
+        _open_and_close_fpl_event(db, "Palm Beach", "2026-02-01T00:00:00", "2026-02-11T14:00:00")  # 254h, blurred
+
+        result = cs.fpl_ordinary_restoration_stats("Palm Beach", db)
+        db.close()
+
+        assert result["n"] == 1
+        assert result["median_hours"] == 3.0
+        assert result["excluded_count"] == 1
+
+    def test_every_event_excluded_returns_none_not_a_crash(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_fpl_event(db, "Brevard", "2026-01-01T00:00:00", "2026-01-10T00:00:00")  # 216h
+
+        result = cs.fpl_ordinary_restoration_stats("Brevard", db)
+        db.close()
+
+        assert result is None
+
+    def test_other_utilities_in_the_same_county_are_ignored(self, db_path):
+        db = OutageDatabase(db_path)
+        db.sync_duke_incident_events(
+            [{"incident_id": "D1", "utility": "Duke Energy", "county": "Leon", "customer_count": 50,
+              "lat": 30.44, "lon": -84.28, "cause": "Tree down", "cause_category": "vegetation"}],
+            timestamp="2026-01-01T00:00:00",
+        )
+
+        result = cs.fpl_ordinary_restoration_stats("Leon", db)
+        db.close()
+
+        assert result is None

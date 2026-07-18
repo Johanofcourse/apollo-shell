@@ -13,7 +13,7 @@ from county_status import (
     COUNTY_PICKER_CHOICES, _real_per_county_open_events,
     _combined_territory_open_events, _real_per_county_closed_events,
     _combined_territory_closed_events, _rows_for_county, humanize_timestamp,
-    _row_tier,
+    _row_tier, fpl_ordinary_restoration_stats,
 )
 from storm_history import (
     available_history_counties, load_history_for_county,
@@ -261,15 +261,19 @@ def index():
         real_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
         combined_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
 
-        # Historical restoration precedent (Phase 3) - only shown when
-        # there's a real, currently-open FPL outage in this county right
-        # now, not as a standalone historical curiosity. FPL's live feed
-        # can never support real incident-level restoration modeling, so
-        # this is the honest substitute: "storms like this have
-        # historically taken about this long here," from the 17-storm
-        # PSC archive - see storm_history.fpl_restoration_precedent().
+        # Restoration precedent (Phase 3) - two deliberately separate,
+        # distinctly-labeled numbers, only shown when there's a real,
+        # currently-open FPL outage in this county right now, not as a
+        # standalone historical curiosity. FPL's live feed can never
+        # support real incident-level restoration modeling, so these are
+        # the honest substitute - "Major Storms" from the 17-storm PSC
+        # archive (see storm_history.fpl_restoration_precedent()) and
+        # "Everyday Outages" from this project's own live tracking (see
+        # county_status.fpl_ordinary_restoration_stats()). Never merged
+        # into one number - they honestly answer different questions.
         fpl_open_now = any(r["utility"] == FPL_UTILITY_NAME for r in real_events)
-        restoration_precedent = fpl_restoration_precedent(selected_county) if fpl_open_now else None
+        major_storm_precedent = fpl_restoration_precedent(selected_county) if fpl_open_now else None
+        everyday_precedent = fpl_ordinary_restoration_stats(selected_county, db) if fpl_open_now else None
 
         # This project's own directly-observed outage history for this
         # county (real start/end pairs from the live poller, running
@@ -301,7 +305,8 @@ def index():
             "combined_closed_events_total": combined_closed_events_total,
             "storms": storms,
             "storms_with_data_count": storms_with_data_count,
-            "restoration_precedent": restoration_precedent,
+            "major_storm_precedent": major_storm_precedent,
+            "everyday_precedent": everyday_precedent,
         }
 
     db.close()

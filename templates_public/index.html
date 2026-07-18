@@ -423,25 +423,50 @@
           <div class="outage-sub">{{ "{:,}".format(e.customers or 0) }} customers out &middot; ongoing {{ e.duration }}</div>
         </div>
         {% endfor %}
-        {% if county_detail.restoration_precedent %}
-        {% set rp = county_detail.restoration_precedent %}
+        {% if county_detail.everyday_precedent %}
+        {% set ep = county_detail.everyday_precedent %}
         <div class="outage-card historical">
           <div class="outage-top">
-            <span class="outage-utility">Historical Restoration Precedent</span>
-            <span class="outage-figure mono">{{ "%.0f"|format(rp.median_hours) }}h median</span>
+            <span class="outage-utility">Everyday Outages</span>
+            <span class="outage-figure mono">{{ "%.0f"|format(ep.median_hours) }}h median</span>
           </div>
-          {% if rp.limited %}
-          <div class="outage-sub">Only 1 real storm on file for this county — not enough precedent yet to call
-            this a real range. That single storm's FPL outage here took about
-            {{ "%.0f"|format(rp.median_hours) }} hours to restore.</div>
+          {% if ep.limited %}
+          <div class="outage-sub">Only {{ ep.n }} real outage{{ "s" if ep.n != 1 }} on file for this county — not
+            enough precedent yet to call this a real range.</div>
           {% else %}
-          <div class="outage-sub">Based on {{ rp.n }} real storms on file, FPL outages here have historically taken
-            between {{ "%.0f"|format(rp.min_hours) }} and {{ "%.0f"|format(rp.max_hours) }} hours to restore,
-            a median of {{ "%.0f"|format(rp.median_hours) }} hours.</div>
+          <div class="outage-sub">Based on {{ ep.n }} real FPL outages this project has directly tracked here since
+            April 2026, they've historically taken between {{ "%.0f"|format(ep.min_hours) }} and
+            {{ "%.0f"|format(ep.max_hours) }} hours to restore, a median of {{ "%.0f"|format(ep.median_hours) }}
+            hours.</div>
           {% endif %}
           <div class="outage-note">Historical precedent, not a live estimate for this specific outage — real
-            restoration time can differ. From 17 real storm reports (2018&ndash;2025), not this project's own live
-            tracking.</div>
+            restoration time can differ. From this project's own live tracking, not the storm archive below -
+            ordinary outages, not major storms.{% if ep.excluded_count %} {{ ep.excluded_count }} unusually long
+            reading{{ "s" if ep.excluded_count != 1 }} excluded as likely several real outages blurred into one
+            county-wide reading, not one real repair job.{% endif %}</div>
+        </div>
+        {% endif %}
+        {% if county_detail.major_storm_precedent %}
+        {% set sp = county_detail.major_storm_precedent %}
+        <div class="outage-card historical">
+          <div class="outage-top">
+            <span class="outage-utility">Major Storms</span>
+            <span class="outage-figure mono">{{ "%.0f"|format(sp.median_hours) }}h median</span>
+          </div>
+          {% if sp.limited %}
+          <div class="outage-sub">Only 1 major storm on file for this county — not enough precedent yet to call
+            this a real range. That single storm's FPL outage here took about
+            {{ "%.0f"|format(sp.median_hours) }} hours to restore.</div>
+          {% else %}
+          <div class="outage-sub">Based on {{ sp.n }} major storms on file, FPL outages here have historically taken
+            between {{ "%.0f"|format(sp.min_hours) }} and {{ "%.0f"|format(sp.max_hours) }} hours to restore,
+            a median of {{ "%.0f"|format(sp.median_hours) }} hours.</div>
+          {% endif %}
+          <div class="outage-note">Historical precedent, not a live estimate for this specific outage — real
+            restoration time can differ. "Major storm" here means a real event serious enough that the Florida
+            Public Service Commission required a formal utility restoration report for it - mostly named hurricanes
+            and tropical storms, plus a few severe non-tropical outbreaks. From 17 real PSC reports
+            (2018&ndash;2025), not this project's own live tracking.</div>
         </div>
         {% endif %}
         {% for e in county_detail.combined_events %}

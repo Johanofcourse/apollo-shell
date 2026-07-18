@@ -165,28 +165,66 @@
       {% endif %}
     </div>
 
-    {% if restoration_precedent %}
-    <h2>Historical Restoration Precedent (FPL)</h2>
+    {% if everyday_precedent or major_storm_precedent %}
+    <h2>Restoration Precedent (FPL)</h2>
     <p class="section-note">
       Only shown while a real FPL outage is currently open in this county. FPL's live feed can never support real
-      incident-level restoration modeling (county-wide total only, events blur together) - this is historical
-      precedent from the 17-storm PSC archive (2018&ndash;2025), not a live estimate for this specific outage.
+      incident-level restoration modeling (county-wide total only, events blur together) - these are two
+      deliberately separate historical precedents, never merged into one number, since they honestly answer
+      different questions.
+    </p>
+    {% endif %}
+
+    {% if everyday_precedent %}
+    <h3>Everyday Outages</h3>
+    <p class="section-note">
+      From this project's own live tracking since April 2026 - not the storm archive below.
+      {% if everyday_precedent.excluded_count %}{{ everyday_precedent.excluded_count }} unusually long
+      reading{{ "s" if everyday_precedent.excluded_count != 1 }} excluded as likely several real outages blurred
+      into one county-wide reading, not one real repair job.{% endif %}
     </p>
     <div class="wrap">
-      {% if restoration_precedent.limited %}
+      {% if everyday_precedent.limited %}
         <div class="empty">
-          Only 1 real storm on file for this county - not enough precedent yet to call this a real range. That
-          single storm's FPL outage here took about {{ "%.0f"|format(restoration_precedent.median_hours) }} hours
+          Only {{ everyday_precedent.n }} real outage{{ "s" if everyday_precedent.n != 1 }} on file for this
+          county - not enough precedent yet to call this a real range.
+        </div>
+      {% else %}
+        <table>
+          <tr><th>Real Outages On File</th><th>Min</th><th>Median</th><th>Max</th></tr>
+          <tr>
+            <td>{{ everyday_precedent.n }}</td>
+            <td>{{ "%.0f"|format(everyday_precedent.min_hours) }}h</td>
+            <td>{{ "%.0f"|format(everyday_precedent.median_hours) }}h</td>
+            <td>{{ "%.0f"|format(everyday_precedent.max_hours) }}h</td>
+          </tr>
+        </table>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if major_storm_precedent %}
+    <h3>Major Storms</h3>
+    <p class="section-note">
+      From 17 real Florida PSC (Public Service Commission) situation reports, 2018&ndash;2025 - filed only for
+      events serious enough to require formal utility restoration reporting, mostly named hurricanes and tropical
+      storms plus a few severe non-tropical outbreaks. Not this project's own live tracking.
+    </p>
+    <div class="wrap">
+      {% if major_storm_precedent.limited %}
+        <div class="empty">
+          Only 1 major storm on file for this county - not enough precedent yet to call this a real range. That
+          single storm's FPL outage here took about {{ "%.0f"|format(major_storm_precedent.median_hours) }} hours
           to restore.
         </div>
       {% else %}
         <table>
-          <tr><th>Real Storms On File</th><th>Min</th><th>Median</th><th>Max</th></tr>
+          <tr><th>Major Storms On File</th><th>Min</th><th>Median</th><th>Max</th></tr>
           <tr>
-            <td>{{ restoration_precedent.n }}</td>
-            <td>{{ "%.0f"|format(restoration_precedent.min_hours) }}h</td>
-            <td>{{ "%.0f"|format(restoration_precedent.median_hours) }}h</td>
-            <td>{{ "%.0f"|format(restoration_precedent.max_hours) }}h</td>
+            <td>{{ major_storm_precedent.n }}</td>
+            <td>{{ "%.0f"|format(major_storm_precedent.min_hours) }}h</td>
+            <td>{{ "%.0f"|format(major_storm_precedent.median_hours) }}h</td>
+            <td>{{ "%.0f"|format(major_storm_precedent.max_hours) }}h</td>
           </tr>
         </table>
       {% endif %}

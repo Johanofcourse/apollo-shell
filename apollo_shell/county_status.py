@@ -456,3 +456,87 @@ def explain_missing_historical_data(county, db):
         return {"reason": "combined_only", "utilities": sorted({e["utility"] for e in combined_events})}
 
     return {"reason": "no_live_source", "utilities": []}
+
+
+FPL_UTILITY_NAME = "Florida Power and Light Company"
+
+# A real single restoration job plausibly taking longer than this is
+# rare enough to distrust - FPL's live feed only ever reports a county-
+# wide customer-out total, and a busy county's aggregate often never
+# fully returns to zero between separate real outages, so one
+# continuous "event" here can actually be several real repair jobs
+# blurred together (confirmed directly, 2026-07-18: checking this
+# project's own 484 closed FPL live events statewide, 95% run under 41
+# hours and the p99 is ~90 hours, then a sharp jump straight to 217 and
+# 254 hours for two counties - a real, identifiable break in the data,
+# not an arbitrary guess).
+MAX_PLAUSIBLE_SINGLE_OUTAGE_HOURS = 96
+
+# Below this many usable events, a "range" is really just a couple of
+# data points wearing a range's clothing - same reasoning as
+# storm_history.MIN_STORMS_FOR_CONFIDENT_RANGE, mirrored here since this
+# counts live everyday events instead of storms.
+MIN_EVENTS_FOR_CONFIDENT_RANGE = 3
+
+
+def fpl_ordinary_restoration_stats(county, db):
+    """
+    Real restoration-duration precedent for one FPL county from this
+    project's OWN live tracking (since 2026-04) - deliberately a
+    separate, distinctly-labeled number from
+    storm_history.fpl_restoration_precedent()'s major-storm archive, not
+    merged into it. The two honestly answer different questions: "how
+    long does an ordinary outage take here" vs. "how long does a major
+    storm's damage take to fix here" - blending them would misrepresent
+    both. This one has vastly more real data (hundreds of events per
+    county vs. a handful of storms) but needs one honest filter: any
+    single event longer than MAX_PLAUSIBLE_SINGLE_OUTAGE_HOURS is
+    excluded as a likely blurred multi-outage reading rather than one
+    real repair job (see that constant's own comment for the real
+    numbers behind the cutoff).
+
+    Returns None if there's no usable data for this county at all
+    (either no real FPL events ever, or every one of them got excluded
+    as an outlier). Otherwise a dict: n (usable event count), min_hours/
+    median_hours/max_hours (real durations), limited=True once n is too
+    small for a range to mean much, and excluded_count (how many
+    outlier events were left out, for transparency).
+    """
+    conn = db.connect()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT start_time, end_time FROM outage_events
+        WHERE UPPER(county) = UPPER(?) AND utility = ? AND end_time IS NOT NULL
+    ''', (county, FPL_UTILITY_NAME))
+    rows = cursor.fetchall()
+
+    durations = []
+    excluded_count = 0
+    for start_time, end_time in rows:
+        try:
+            hours = (datetime.fromisoformat(end_time) - datetime.fromisoformat(start_time)).total_seconds() / 3600
+        except (TypeError, ValueError):
+            continue
+        if hours <= 0:
+            continue
+        if hours > MAX_PLAUSIBLE_SINGLE_OUTAGE_HOURS:
+            excluded_count += 1
+            continue
+        durations.append(hours)
+
+    if not durations:
+        return None
+
+    durations.sort()
+    n = len(durations)
+    mid = n // 2
+    median = durations[mid] if n % 2 == 1 else (durations[mid - 1] + durations[mid]) / 2
+
+    return {
+        "n": n,
+        "min_hours": durations[0],
+        "median_hours": median,
+        "max_hours": durations[-1],
+        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
+        "excluded_count": excluded_count,
+    }

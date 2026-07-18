@@ -28,7 +28,7 @@ from county_status import (
     _normalize_open_events, _real_per_county_open_events,
     _combined_territory_open_events, _rows_for_county,
     humanize_timestamp as _humanize_timestamp,
-    explain_missing_historical_data,
+    explain_missing_historical_data, fpl_ordinary_restoration_stats,
 )
 from storm_history import (
     HISTORICAL_DB_PATH,
@@ -961,7 +961,8 @@ def county_detail():
     active_alerts = []
     historical_confidence = None
     historical_gap_reason = None
-    restoration_precedent = None
+    major_storm_precedent = None
+    everyday_precedent = None
 
     if selected_county:
         db = OutageDatabase()
@@ -976,22 +977,29 @@ def county_detail():
         if historical_confidence is None:
             historical_gap_reason = explain_missing_historical_data(selected_county, db)
 
+        real_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
+        combined_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
+
+        # Restoration precedent (Phase 3) - two deliberately separate,
+        # distinctly-labeled numbers, only shown when there's a real,
+        # currently-open FPL outage in this county right now, same
+        # gating as the public site. FPL's live feed can never support
+        # real incident-level restoration modeling, so these are the
+        # honest substitute - "Major Storms" from the 17-storm PSC
+        # archive (see storm_history.fpl_restoration_precedent()) and
+        # "Everyday Outages" from this project's own live tracking (see
+        # county_status.fpl_ordinary_restoration_stats()). Computed
+        # before db.close() below - the everyday version needs the live
+        # connection, unlike the storm one's own separate archive db.
+        fpl_open_now = any(r["utility"] == FPL_UTILITY_NAME for r in real_events)
+        major_storm_precedent = _fpl_restoration_precedent(selected_county) if fpl_open_now else None
+        everyday_precedent = fpl_ordinary_restoration_stats(selected_county, db) if fpl_open_now else None
+
         db.close()
 
         active_alerts = [a for a in all_active_alerts if _county_in_alert(selected_county, a["areas"])]
         for a in active_alerts:
             a["is_heat"] = a["event_type"] in ("Heat Advisory", "Excessive Heat Warning")
-
-        real_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
-        combined_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
-
-        # Historical restoration precedent (Phase 3) - only shown when
-        # there's a real, currently-open FPL outage in this county right
-        # now, same gating as the public site - see
-        # storm_history.fpl_restoration_precedent() for why this is the
-        # only honest restoration signal FPL counties can get.
-        fpl_open_now = any(r["utility"] == FPL_UTILITY_NAME for r in real_events)
-        restoration_precedent = _fpl_restoration_precedent(selected_county) if fpl_open_now else None
 
     return render_template(
         "county.html",
@@ -1002,7 +1010,8 @@ def county_detail():
         active_alerts=active_alerts,
         historical_confidence=historical_confidence,
         historical_gap_reason=historical_gap_reason,
-        restoration_precedent=restoration_precedent,
+        major_storm_precedent=major_storm_precedent,
+        everyday_precedent=everyday_precedent,
     )
 
 
