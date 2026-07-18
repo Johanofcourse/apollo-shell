@@ -45,7 +45,9 @@ detective instead. No regrets.
   gets a historical-precedent pair (major storms vs. everyday outages,
   kept as two separate numbers on purpose, never blended), TECO gets an
   accuracy check on its own existing restoration estimate instead,
-  since it already has one FPL doesn't.
+  since it already has one FPL doesn't, and Duke gets a third, simpler
+  shape - a plain duration precedent, real and individually-tracked
+  like TECO's but with no estimate of its own to check.
 
 ## The plot twist
 Same night, different rabbit hole: went looking at whether other
@@ -101,16 +103,18 @@ real and usable.
 - A real FPL outage open right now gets two honest restoration numbers
   on its county's page (major-storm precedent, everyday-outage
   precedent); a real TECO outage gets an accuracy read on TECO's own
-  stated estimate instead - both only appear when actually relevant,
-  never as a standalone historical curiosity
+  stated estimate instead; a real Duke outage gets a plain duration
+  precedent, the simplest of the three - all three only appear when
+  actually relevant, never as a standalone historical curiosity
 
 ## The honest gaps
-- Real restoration guidance now exists for FPL and TECO specifically -
-  a historical-precedent pair for FPL, an accuracy check on TECO's own
-  existing estimate. Duke and JEA still don't get either, for two
-  different real reasons, not just "needs more time": Duke's raw feed
-  has no restoration-estimate field at all to check, and JEA has no
-  per-incident data at all, county-rollup only, like FPL
+- Real restoration guidance now exists for FPL, TECO, and Duke - a
+  historical-precedent pair for FPL, an accuracy check on TECO's own
+  existing estimate, a plain duration precedent for Duke. JEA still
+  doesn't get any version, for a real reason, not just "needs more
+  time": it has no per-incident data at all, county-rollup only, like
+  FPL - if it ever gets a restoration signal, it'll need FPL's shape,
+  not Duke's or TECO's
 - *Historical* storms are the strong suit: 17 of them, 2018-2025, real
   multi-day restoration data, cross-checked severity context
 - The original plan — AI input parser, command history, an actual
@@ -850,10 +854,18 @@ Turns out TECO's own number is a good one - a statewide median of about
 three hours *earlier* than promised, on-time-or-early five times out of
 six.
 
-Duke and JEA still don't get either version, and not for a vague
-"needs more data" reason this time - two different real, checked
-limits. Duke's own feed simply has no restoration-estimate field at
-all, so there's nothing to check for TECO's version. JEA has no
-per-incident data at all, county-rollup only like FPL - so if it ever
-gets a restoration signal, it'll be FPL's shape, not TECO's, and that's
-real, honest, still-open work, not something this session got to.
+Duke got a third shape the same day, once its own real limits were
+actually checked instead of assumed. Its own feed has no restoration-
+estimate field at all, so there's nothing to check the way TECO's
+number gets checked - but Duke already reports real, individually-
+tracked incidents, not a blurred county-wide aggregate the way FPL
+does, so it never needed FPL's outlier filter either. The simplest of
+the three in the end: a plain duration precedent, real min/median/max
+from 7,195 real closed incidents statewide, only one of them over 48
+hours the whole time. Real number: about an hour and twenty minutes,
+typically, statewide.
+
+JEA still doesn't get any version - real per-incident data doesn't
+exist for it at all, county-rollup only like FPL, so whatever it
+eventually gets has to be FPL's shape, not Duke's or TECO's. Real,
+honest, still-open work, not something this session got to.

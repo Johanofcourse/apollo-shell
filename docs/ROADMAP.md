@@ -149,7 +149,7 @@
       Not scoped yet, deliberately - revisit once the desktop version
       is actually settled and ported.
 
-## Phase 3: Predictive (Restoration signal shipped for FPL and TECO; the at-risk-counties idea and Duke/JEA's own version are the real remaining work)
+## Phase 3: Predictive (Restoration signal shipped for FPL, TECO, and Duke; the at-risk-counties idea and JEA's own version are the real remaining work)
 - [ ] **Weather-based "at-risk counties" signal - a real idea, not yet
       built, and NOT blocked the way the rest of this phase is.**
       Everything else here needs data that only accumulates with time;
@@ -217,19 +217,28 @@
       real incident_id) - statewide, TECO's incidents resolve a median
       of ~3 hours *before* their own first estimate, on-time-or-early
       83% of the time. Same live-outage gating as FPL's pair.
-- [ ] **Duke and JEA still don't get either version, for real structural
-      reasons confirmed 2026-07-18, not just "needs more time."** Duke's
-      raw feed has no restoration-estimate field at all, so the
-      TECO-style accuracy check is permanently off the table for it.
-      JEA has no per-incident data at all - county-rollup only, same
-      shape as FPL - so an FPL-style "Everyday Outages" precedent is the
-      only version that could ever apply to it, and hasn't been checked
-      yet (real per-incident start/end data exists for Duke too, just
-      without an ETR to check accuracy against - Duke could plausibly
-      get its own "Everyday Outages"-style precedent the same way FPL
-      did, just not the accuracy-check version). Real, schedulable work
-      once picked up, not blocked on data the way this section used to
-      claim - just not done yet.
+- [x] **Duke restoration-time precedent - shipped 2026-07-18, the
+      simplest of the three Phase 3 shapes.** Duke's raw feed has no
+      restoration-estimate field at all, so TECO's accuracy-check
+      approach is permanently off the table for it - but Duke already
+      reports real, individually-tracked incidents (like TECO, not a
+      blurred county-wide aggregate like FPL), so it gets a plain
+      duration precedent instead, `county_status.
+      duke_restoration_precedent()`. No outlier-exclusion filter needed
+      at all (checked directly: 7,195 real closed incidents statewide,
+      only 1 over 48 hours, none over 96 - genuinely clean, unlike
+      FPL's aggregate-blur problem), and no "Major Storms" sibling
+      either, since Duke has no storm-archive counterpart the way FPL
+      does. Real finding: Duke's incidents statewide resolve in a
+      median of about 1.3 hours. Same live-outage gating as the other
+      two.
+- [ ] **JEA still doesn't get any version, for a real structural reason
+      confirmed 2026-07-18.** It has no per-incident data at all -
+      county-rollup only, same shape as FPL - so if it ever gets a
+      restoration signal, it has to be FPL's shape (a live-tracking
+      precedent off its own outage_events), not Duke's or TECO's. Real,
+      schedulable work once picked up, not blocked on data - just not
+      done yet.
 - [ ] FPUC's real per-incident view and LWBU both technically have an
       ETR field like TECO's, confirmed 2026-07-18 - but only 3 and 8
       real closed incidents respectively right now, too thin for
