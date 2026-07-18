@@ -166,6 +166,12 @@
   .section-explain summary { font-size: 0.78rem; }
   .section-explain p { max-width: 42rem; }
 
+  .lede-explain { margin-bottom: 1.75rem; }
+  .lede-explain .lede {
+    font-size: 1.02rem; line-height: 1.65; color: var(--ink-soft); margin: 0.9rem 0 0;
+  }
+  .lede-explain .lede strong { color: var(--ink); font-weight: 600; }
+
   @media (max-width: 760px) {
     .hero { grid-template-columns: 1fr; }
     .hero > * + * { border-left: none; border-top: 1px solid var(--line); }
@@ -336,12 +342,15 @@
 
 <div class="page">
 
-  <p class="lede">
-    A running, county-by-county look at how Florida's power grid and weather actually relate — built from
-    <strong>real historical storm reports (2018–2025)</strong>, an <strong>independent National Weather Service
-    feed</strong>, and a live read on current outage activity. Pick your county below to see how it's fared in
-    past storms, or check whether today's heat is anything out of the ordinary.
-  </p>
+  <details class="tele-explain section-explain lede-explain">
+    <summary>What is this app?</summary>
+    <p class="lede">
+      A running, county-by-county look at how Florida's power grid and weather actually relate — built from
+      <strong>real historical storm reports (2018–2025)</strong>, an <strong>independent National Weather Service
+      feed</strong>, and a live read on current outage activity. Pick your county below to see how it's fared in
+      past storms, or check whether today's heat is anything out of the ordinary.
+    </p>
+  </details>
 
   <div class="hero">
     <div class="hero-cell gauge-cell">
@@ -463,11 +472,14 @@
 
   <section id="alertsSection">
     <h2 class="section-title">Current Weather Alerts</h2>
-    <p class="section-sub">
-      Real, active National Weather Service alerts for Florida, updated as NWS issues them — not just heat, every
-      alert type. This is the same independent public feed the map's Historical Pattern view is partly built from,
-      shown here directly rather than only as a color.
-    </p>
+    <details class="tele-explain section-explain">
+      <summary>What is this section?</summary>
+      <p>
+        Real, active National Weather Service alerts for Florida, updated as NWS issues them — not just heat, every
+        alert type. This is the same independent public feed the map's Historical Pattern view is partly built from,
+        shown here directly rather than only as a color.
+      </p>
+    </details>
     {% if active_alerts %}
       {% for a in active_alerts %}
       {% set icon = a.severity | severity_icon %}
@@ -491,10 +503,13 @@
 
   <section id="countyStatusSection">
     <h2 class="section-title">County Status</h2>
-    <p class="section-sub">
-      Real current outages and active weather alerts for whichever county you click on the map above, or search
-      in Storm History below &mdash; not a substitute for your utility's own live outage map, just our own read of it.
-    </p>
+    <details class="tele-explain section-explain">
+      <summary>What is this section?</summary>
+      <p>
+        Real current outages and active weather alerts for whichever county you click on the map above, or search
+        in Storm History below &mdash; not a substitute for your utility's own live outage map, just our own read of it.
+      </p>
+    </details>
     {% if not selected_county %}
       <div class="history-empty">Click a county on the map above, or search one in Storm History below, to see its current status.</div>
     {% else %}
@@ -656,11 +671,14 @@
 
   <section id="outageHistorySection">
     <h2 class="section-title">Outage History</h2>
-    <p class="section-sub">
-      Real, individual outages this project has directly observed for your county since live tracking began
-      (2026-04) &mdash; when each one started and ended. Different from Storm History below, which is
-      independently-sourced storm-severity data going back to 2018, not our own live observations.
-    </p>
+    <details class="tele-explain section-explain">
+      <summary>What is this section?</summary>
+      <p>
+        Real, individual outages this project has directly observed for your county since live tracking began
+        (2026-04) &mdash; when each one started and ended. Different from Storm History below, which is
+        independently-sourced storm-severity data going back to 2018, not our own live observations.
+      </p>
+    </details>
     {% if not selected_county %}
       <div class="history-empty">Click a county on the map above, or search one in Storm History below, to see its real outage history.</div>
     {% elif not county_detail.closed_events and not county_detail.combined_closed_events %}
@@ -704,11 +722,14 @@
 
   <section id="historySection">
     <h2 class="section-title">Storm History</h2>
-    <p class="section-sub">
-      Real reports from 17 storms, 2018&ndash;2025. Search your county below &mdash; every storm we have data for
-      shows up here, including the ones where we don't have a report for your county, so you can see the real
-      gaps instead of assuming "no data" means "not affected."
-    </p>
+    <details class="tele-explain section-explain">
+      <summary>What is this section?</summary>
+      <p>
+        Real reports from 17 storms, 2018&ndash;2025. Search your county below &mdash; every storm we have data for
+        shows up here, including the ones where we don't have a report for your county, so you can see the real
+        gaps instead of assuming "no data" means "not affected."
+      </p>
+    </details>
     <form class="history-search" action="/#historySection" method="get" autocomplete="off">
       <div class="county-combobox" id="countyCombobox">
         <input type="text" name="county" id="countyInput" placeholder="Type your county&hellip;" value="{{ selected_county }}" autocomplete="off">
