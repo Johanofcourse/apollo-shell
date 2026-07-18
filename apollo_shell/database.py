@@ -3511,7 +3511,8 @@ class OutageDatabase:
 
         cursor.execute('''
             SELECT oe.*,
-                   cur.customer_count AS current_customer_count
+                   cur.customer_count AS current_customer_count,
+                   cur.estimated_restoration AS current_estimated_restoration
             FROM lwbu_incident_events oe
             LEFT JOIN lwbu_incidents cur
                 ON cur.incident_id = oe.incident_id
@@ -3603,7 +3604,8 @@ class OutageDatabase:
 
         cursor.execute('''
             SELECT oe.*,
-                   cur.customer_count AS current_customer_count
+                   cur.customer_count AS current_customer_count,
+                   cur.estimated_restoration AS current_estimated_restoration
             FROM fpuc_incident_events oe
             LEFT JOIN fpuc_incidents cur
                 ON cur.incident_id = oe.incident_id

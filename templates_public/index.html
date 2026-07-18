@@ -483,7 +483,7 @@
           </div>
           <div class="outage-sub">{{ "{:,}".format(e.customers or 0) }} customers out &middot; ongoing {{ e.duration }}</div>
           {% if e.estimated_restoration %}
-          <div class="outage-sub">TECO estimates restoration by {{ e.estimated_restoration | humanize }}</div>
+          <div class="outage-sub">{{ e.utility }} estimates restoration by {{ e.estimated_restoration | humanize }}</div>
           {% endif %}
         </div>
         {% endfor %}

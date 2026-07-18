@@ -663,7 +663,7 @@
   <div class="wrap">
   {% if fpuc_open_incidents %}
     <table>
-      <tr><th>Incident</th><th>County</th><th>Substation / Feeder</th><th>Current</th><th>Peak</th><th>Started</th><th>Ongoing</th></tr>
+      <tr><th>Incident</th><th>County</th><th>Substation / Feeder</th><th>Current</th><th>Peak</th><th>Started</th><th>Ongoing</th><th>Estimate</th></tr>
       {% for e in fpuc_open_incidents %}
       <tr>
         <td><a href="/incident?source=fpuc_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
@@ -673,6 +673,7 @@
         <td class="pct-bad">{{ e.peak_customer_count }}</td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.duration }}</td>
+        <td>{{ e.current_estimated_restoration | humanize if e.current_estimated_restoration else "—" }}</td>
       </tr>
       {% endfor %}
     </table>
@@ -879,7 +880,7 @@
   <div class="wrap">
   {% if lwbu_open_incidents %}
     <table>
-      <tr><th>Incident</th><th>Streets</th><th>Cause</th><th>Crew</th><th>Status</th><th>Current</th><th>Peak</th><th>Started</th><th>Ongoing</th></tr>
+      <tr><th>Incident</th><th>Streets</th><th>Cause</th><th>Crew</th><th>Status</th><th>Current</th><th>Peak</th><th>Started</th><th>Ongoing</th><th>Estimate</th></tr>
       {% for e in lwbu_open_incidents %}
       <tr>
         <td><a href="/incident?source=lwbu_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
@@ -891,6 +892,7 @@
         <td class="pct-bad">{{ e.peak_customer_count }}</td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.duration }}</td>
+        <td>{{ e.current_estimated_restoration | humanize if e.current_estimated_restoration else "—" }}</td>
       </tr>
       {% endfor %}
     </table>

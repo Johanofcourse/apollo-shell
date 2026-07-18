@@ -780,6 +780,17 @@ class TestOpenEventsCurrentVsPeak:
 
         assert open_incidents[0]["county"] == "Liberty"
 
+    def test_fpuc_open_incident_includes_current_estimated_restoration(self, db_path):
+        record = dict(_fpuc_incident("F1"), estimated_restoration="2026-01-01T06:00:00")
+        db = OutageDatabase(db_path)
+        db.log_fpuc_incidents([record])
+        db.sync_fpuc_incident_events([record], timestamp="2026-01-01T00:00:00")
+
+        open_incidents = db.get_fpuc_open_incidents()
+        db.close()
+
+        assert open_incidents[0]["current_estimated_restoration"] == "2026-01-01T06:00:00"
+
     def test_tallahassee_open_event_reports_current_alongside_peak(self, db_path):
         db = OutageDatabase(db_path)
         db.log_tallahassee_outages([_tallahassee_row("Leon", 15)], timestamp="2026-01-01T00:00:00")
@@ -976,6 +987,17 @@ class TestOpenEventsCurrentVsPeak:
         assert len(open_events) == 1
         assert open_events[0]["peak_customer_count"] == 40
         assert open_events[0]["current_customer_count"] == 6
+
+    def test_lwbu_open_incident_includes_current_estimated_restoration(self, db_path):
+        record = dict(_lwbu_incident("I1"), estimated_restoration="2026-01-01T06:00:00")
+        db = OutageDatabase(db_path)
+        db.log_lwbu_incidents([record])
+        db.sync_lwbu_incident_events([record], timestamp="2026-01-01T00:00:00")
+
+        open_events = db.get_lwbu_open_incidents()
+        db.close()
+
+        assert open_events[0]["current_estimated_restoration"] == "2026-01-01T06:00:00"
 
     def test_ouc_open_event_reports_current_alongside_peak(self, db_path):
         db = OutageDatabase(db_path)
