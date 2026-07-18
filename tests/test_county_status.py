@@ -98,6 +98,34 @@ class TestAllCountyVerdicts:
         assert verdicts == {"Alachua": "clear", "Baker": "clear"}
 
 
+class TestCanonicalizeCountyName:
+    """
+    _canonicalize_county_name() - added 2026-07-18 after finding that
+    FPL's own "De Soto"/"St Johns"/"St Lucie" (space, no period) never
+    matched this project's canonical "DeSoto"/"St. Johns"/"St. Lucie"
+    anywhere downstream.
+    """
+
+    def test_exact_canonical_name_passes_through(self):
+        assert cs._canonicalize_county_name("DeSoto") == "DeSoto"
+
+    def test_space_variant_resolves_to_canonical(self):
+        assert cs._canonicalize_county_name("De Soto") == "DeSoto"
+
+    def test_missing_period_variant_resolves_to_canonical(self):
+        assert cs._canonicalize_county_name("St Lucie") == "St. Lucie"
+        assert cs._canonicalize_county_name("St Johns") == "St. Johns"
+
+    def test_all_caps_variant_resolves_to_canonical(self):
+        assert cs._canonicalize_county_name("MIAMI-DADE") == "Miami-Dade"
+
+    def test_unrecognized_name_falls_back_unchanged(self):
+        # A genuine data problem (e.g. FPL's real "Undefined" county
+        # rows) should stay visible, not get silently mapped to
+        # something real-looking.
+        assert cs._canonicalize_county_name("Undefined") == "Undefined"
+
+
 class TestHistoricalConfidenceTally:
     """
     historical_confidence_tally() - added 2026-07-14 to power the
@@ -129,12 +157,11 @@ class TestHistoricalConfidenceTally:
 
         tally = cs.historical_confidence_tally(db_path)
 
-        # correlation_summary() groups by whatever raw county string is
-        # stored (no casing normalization) - real live FPL data happens
-        # to already be properly cased, but this test seeds the same
-        # ALL-CAPS convention the rest of the suite uses for FPL rows.
-        assert "ALACHUA" in tally
-        assert sum(tally["ALACHUA"].values()) == 1
+        # Canonicalized to COUNTY_PICKER_CHOICES's real casing ("Alachua"),
+        # not left as whatever raw casing the source happened to store
+        # ("ALACHUA") - see _canonicalize_county_name, added 2026-07-18.
+        assert "Alachua" in tally
+        assert sum(tally["Alachua"].values()) == 1
 
     def test_real_incident_shaped_source_does_not_crash_the_whole_tally(self, db_path):
         # Real regression (found 2026-07-16 during the Oracle Cloud
@@ -176,6 +203,31 @@ class TestHistoricalConfidenceTally:
         tally = cs.historical_confidence_tally(db_path)
         assert "Leon" in tally
         assert sum(tally["Leon"].values()) == 1
+
+    def test_spelling_variant_gets_canonicalized_not_a_separate_key(self, db_path):
+        # Real bug found 2026-07-18: FPL stores "De Soto" (with a space)
+        # against this project's own canonical "DeSoto" - without
+        # canonicalizing, a real match here would be stored under "De
+        # Soto" and be permanently invisible to the map's lookup by
+        # "DESOTO" (see _county_map_data in public_site.py), since that
+        # lookup only .upper()s, it doesn't strip spaces.
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([{
+            "id": "test-alert-1", "event": "Tornado Warning", "severity": "Severe",
+            "urgency": "Expected", "areas": "De Soto",
+            "effective": "2026-01-01T00:00:00", "expires": "2026-01-01T23:59:59",
+            "headline": "test", "description": "test",
+        }])
+        db.log_multiple_outages("FPL", [
+            {"county": "De Soto", "customers_out": 50, "customers_served": 1000},
+        ], timestamp="2026-01-01T12:00:00")
+        db.close()
+
+        tally = cs.historical_confidence_tally(db_path)
+
+        assert "DeSoto" in tally
+        assert "De Soto" not in tally
+        assert sum(tally["DeSoto"].values()) == 1
 
     def test_counties_with_no_history_are_absent_not_zero(self, db_path):
         db = OutageDatabase(db_path)

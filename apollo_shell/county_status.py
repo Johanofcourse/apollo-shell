@@ -348,6 +348,36 @@ _REAL_CORRELATION_SOURCES = [
 ]
 
 
+# Real regression found 2026-07-18: a live source's own raw county
+# spelling can differ from COUNTY_PICKER_CHOICES's canonical name by
+# more than just casing/periods - FPL itself stores "De Soto"/"St
+# Johns"/"St Lucie" (with a space) against this project's own canonical
+# "DeSoto"/"St. Johns"/"St. Lucie". historical_confidence_tally()'s own
+# docstring already claimed it matched COUNTY_PICKER_CHOICES casing "where
+# possible", but nothing actually enforced that - a real weather-match
+# for one of these three would have been silently invisible on the map
+# (stored under "De Soto", looked up as "DESOTO", never found) the
+# moment it happened. Confirmed via a real correlation test before
+# fixing, not assumed.
+_CANONICAL_COUNTY_BY_NORMALIZED = {
+    c.lower().replace(".", "").replace(" ", ""): c for c in COUNTY_PICKER_CHOICES
+}
+
+
+def _canonicalize_county_name(raw_name):
+    """
+    Map a raw county string - whatever casing/spacing/punctuation a
+    live source's own feed happens to use - to this project's one
+    canonical spelling (COUNTY_PICKER_CHOICES), so a real match never
+    ends up filed under a name the map's own county list will never
+    recognize. Falls back to the raw name unchanged if it doesn't
+    normalize-match any real county - keeps a genuine data problem
+    visible instead of silently swallowing it.
+    """
+    key = raw_name.lower().replace(".", "").replace(" ", "")
+    return _CANONICAL_COUNTY_BY_NORMALIZED.get(key, raw_name)
+
+
 def historical_confidence_tally(db_path="outages.db"):
     """
     All-time weather-match confidence tally per county, combined across
@@ -359,11 +389,12 @@ def historical_confidence_tally(db_path="outages.db"):
     track record look weather-driven," not "is anything open right
     now."
 
-    Returns a dict keyed by county name (matching COUNTY_PICKER_CHOICES
-    casing where possible) to {"high": n, "medium": n, "low": n} -
-    counties with no correlation history at all simply don't appear as
-    a key, left to the caller to treat as "no data yet" rather than
-    zero.
+    Returns a dict keyed by county name (canonicalized to
+    COUNTY_PICKER_CHOICES via _canonicalize_county_name - see its
+    docstring for why this matters) to {"high": n, "medium": n,
+    "low": n} - counties with no correlation history at all simply
+    don't appear as a key, left to the caller to treat as "no data yet"
+    rather than zero.
     """
     tally = {}
     for find_fn, summary_fn in _REAL_CORRELATION_SOURCES:
@@ -372,7 +403,8 @@ def historical_confidence_tally(db_path="outages.db"):
             continue
         summary = summary_fn(matches)
         for county, stats in summary.items():
-            bucket = tally.setdefault(county, {"high": 0, "medium": 0, "low": 0})
+            canonical = _canonicalize_county_name(county)
+            bucket = tally.setdefault(canonical, {"high": 0, "medium": 0, "low": 0})
             for tier, count in stats.get("confidence_breakdown", {}).items():
                 if tier in bucket:
                     bucket[tier] += count
