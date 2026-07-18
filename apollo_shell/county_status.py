@@ -614,3 +614,65 @@ def teco_etr_accuracy(county, db):
         "on_time_pct": on_time / n * 100,
         "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
     }
+
+
+DUKE_UTILITY_NAME = "Duke Energy"
+
+
+def duke_restoration_precedent(county, db):
+    """
+    Real restoration-duration precedent for one Duke county from this
+    project's own live tracking - the same underlying question as
+    fpl_ordinary_restoration_stats(), but Duke doesn't need that
+    function's outlier-exclusion filter, and isn't paired with a
+    "Major Storms" sibling the way FPL's "Everyday Outages" is.
+
+    Checked directly before building, 2026-07-18: unlike FPL (a county-
+    wide aggregate that often never resets to zero, blurring several
+    real outages into one reading), Duke already reports real,
+    individually-tracked incidents with their own incident_id - the
+    same shape as TECO. 7,195 real closed incidents statewide, median
+    1.3 hours, only 1 single incident over 48 hours, none over 96 -
+    genuinely clean data, no blurring problem to filter for. Duke has
+    no restoration-estimate field at all (unlike TECO), so there's
+    nothing to check accuracy against either - this is the only honest
+    restoration signal available for it, a plain duration precedent
+    like FPL's, just without FPL's contamination risk or its separate
+    storm archive.
+
+    Returns None if there's no usable data for this county. Otherwise a
+    dict: n, min_hours/median_hours/max_hours, limited (n too small to
+    mean much).
+    """
+    conn = db.connect()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT start_time, end_time FROM duke_incident_events
+        WHERE UPPER(county) = UPPER(?) AND utility = ? AND end_time IS NOT NULL
+    ''', (county, DUKE_UTILITY_NAME))
+    rows = cursor.fetchall()
+
+    durations = []
+    for start_time, end_time in rows:
+        try:
+            hours = (datetime.fromisoformat(end_time) - datetime.fromisoformat(start_time)).total_seconds() / 3600
+        except (TypeError, ValueError):
+            continue
+        if hours > 0:
+            durations.append(hours)
+
+    if not durations:
+        return None
+
+    durations.sort()
+    n = len(durations)
+    mid = n // 2
+    median = durations[mid] if n % 2 == 1 else (durations[mid - 1] + durations[mid]) / 2
+
+    return {
+        "n": n,
+        "min_hours": durations[0],
+        "median_hours": median,
+        "max_hours": durations[-1],
+        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
+    }

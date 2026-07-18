@@ -668,3 +668,98 @@ class TestTecoEtrAccuracy:
         db.close()
 
         assert result is None
+
+
+def _open_and_close_duke_incident(db, incident_id, county, start, end, customers=50):
+    record = {
+        "incident_id": incident_id, "utility": "Duke Energy", "county": county,
+        "customer_count": customers, "lat": 28.5, "lon": -81.4,
+        "cause": "Equipment", "cause_category": "equipment",
+    }
+    db.sync_duke_incident_events([record], timestamp=start)
+    db.sync_duke_incident_events([], timestamp=end)
+
+
+class TestDukeRestorationPrecedent:
+    """
+    duke_restoration_precedent() - added 2026-07-18, the same underlying
+    idea as fpl_ordinary_restoration_stats() but for Duke, which - unlike
+    FPL - already reports real, individually-tracked incidents, so it
+    doesn't need FPL's outlier-exclusion filter (confirmed against real
+    data before building: 7,195 real closed incidents statewide, only 1
+    over 48 hours, none over 96).
+    """
+
+    def test_no_data_for_county_returns_none(self, db_path):
+        db = OutageDatabase(db_path)
+        result = cs.duke_restoration_precedent("Orange", db)
+        db.close()
+
+        assert result is None
+
+    def test_single_incident_computes_stats_and_is_flagged_limited(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_duke_incident(db, "D1", "Orange", "2026-01-01T00:00:00", "2026-01-01T03:00:00")
+
+        result = cs.duke_restoration_precedent("Orange", db)
+        db.close()
+
+        assert result["n"] == 1
+        assert result["min_hours"] == 3.0
+        assert result["median_hours"] == 3.0
+        assert result["max_hours"] == 3.0
+        assert result["limited"] is True
+
+    def test_reaching_the_confident_threshold_clears_the_limited_flag(self, db_path):
+        db = OutageDatabase(db_path)
+        for i in range(cs.MIN_EVENTS_FOR_CONFIDENT_RANGE):
+            _open_and_close_duke_incident(db, f"D{i}", "Pinellas", f"2026-01-0{i + 1}T00:00:00", f"2026-01-0{i + 1}T02:00:00")
+
+        result = cs.duke_restoration_precedent("Pinellas", db)
+        db.close()
+
+        assert result["n"] == cs.MIN_EVENTS_FOR_CONFIDENT_RANGE
+        assert result["limited"] is False
+
+    def test_multiple_incidents_compute_real_min_median_max(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_duke_incident(db, "D1", "Pinellas", "2026-01-01T00:00:00", "2026-01-01T01:00:00")
+        _open_and_close_duke_incident(db, "D2", "Pinellas", "2026-01-02T00:00:00", "2026-01-02T03:00:00")
+        _open_and_close_duke_incident(db, "D3", "Pinellas", "2026-01-03T00:00:00", "2026-01-04T00:00:00")
+
+        result = cs.duke_restoration_precedent("Pinellas", db)
+        db.close()
+
+        assert result["n"] == 3
+        assert result["min_hours"] == 1.0
+        assert result["median_hours"] == 3.0
+        assert result["max_hours"] == 24.0
+
+    def test_county_name_match_is_case_insensitive(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_duke_incident(db, "D1", "PINELLAS", "2026-01-01T00:00:00", "2026-01-01T03:00:00")
+
+        result = cs.duke_restoration_precedent("Pinellas", db)
+        db.close()
+
+        assert result is not None
+
+    def test_other_utilities_in_the_same_county_are_ignored(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_teco_incidents([{
+            "incident_id": "T1", "utility": "Tampa Electric Company", "status": "On our way",
+            "status_category": "investigating", "reason": "Tree down", "reason_category": "vegetation",
+            "customer_count": 50, "lat": 27.9, "lon": -82.4, "county": "Orange",
+            "update_time": "2026-01-01T00:00:00", "estimated_restoration": "2026-01-01T06:00:00",
+        }])
+        db.sync_teco_incident_events([{
+            "incident_id": "T1", "utility": "Tampa Electric Company", "status": "On our way",
+            "status_category": "investigating", "reason": "Tree down", "reason_category": "vegetation",
+            "customer_count": 50, "lat": 27.9, "lon": -82.4, "county": "Orange",
+            "update_time": "2026-01-01T00:00:00", "estimated_restoration": "2026-01-01T06:00:00",
+        }], timestamp="2026-01-01T00:00:00")
+
+        result = cs.duke_restoration_precedent("Orange", db)
+        db.close()
+
+        assert result is None

@@ -554,6 +554,28 @@
             outage. From this project's own live tracking since April 2026.</div>
         </div>
         {% endif %}
+        {% if county_detail.duke_precedent %}
+        {% set dp = county_detail.duke_precedent %}
+        <div class="outage-card historical">
+          <div class="outage-top">
+            <span class="outage-utility">Typical Restoration Time (Duke)</span>
+            <span class="outage-figure mono">{{ "%.1f"|format(dp.median_hours) }}h median</span>
+          </div>
+          {% if dp.limited %}
+          <div class="outage-sub">Only {{ dp.n }} real incident{{ "s" if dp.n != 1 }} on file for this county —
+            not enough precedent yet to call this a real range.</div>
+          {% else %}
+          <div class="outage-sub">Based on {{ dp.n }} real Duke incidents this project has directly tracked here,
+            they've historically taken between {{ "%.1f"|format(dp.min_hours) }} and
+            {{ "%.1f"|format(dp.max_hours) }} hours to restore, a median of {{ "%.1f"|format(dp.median_hours) }}
+            hours.</div>
+          {% endif %}
+          <div class="outage-note">Duke already reports real, individually-tracked incidents (like TECO), but has
+            no restoration-estimate field to check accuracy against — so this is a plain duration precedent, like
+            FPL's "Everyday Outages," from this project's own live tracking since April 2026. Not a live estimate
+            for this specific outage.</div>
+        </div>
+        {% endif %}
         {% for e in county_detail.combined_events %}
         {% set tier = e | row_tier %}
         <div class="outage-card combined{% if tier == 'critical' %} hz-stripe{% endif %}">

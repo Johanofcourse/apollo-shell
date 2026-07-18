@@ -263,6 +263,34 @@
     </div>
     {% endif %}
 
+    {% if duke_precedent %}
+    <h2>Typical Restoration Time (Duke)</h2>
+    <p class="section-note">
+      Only shown while a real Duke outage is currently open in this county. Duke already reports real,
+      individually-tracked incidents (like TECO), but has no restoration-estimate field to check accuracy
+      against - so this is a plain duration precedent from this project's own live tracking, like FPL's
+      "Everyday Outages," minus FPL's blurred-aggregate risk and without a "Major Storms" archive counterpart.
+    </p>
+    <div class="wrap">
+      {% if duke_precedent.limited %}
+        <div class="empty">
+          Only {{ duke_precedent.n }} real incident{{ "s" if duke_precedent.n != 1 }} on file for this county - not
+          enough precedent yet to call this a real range.
+        </div>
+      {% else %}
+        <table>
+          <tr><th>Real Incidents On File</th><th>Min</th><th>Median</th><th>Max</th></tr>
+          <tr>
+            <td>{{ duke_precedent.n }}</td>
+            <td>{{ "%.1f"|format(duke_precedent.min_hours) }}h</td>
+            <td>{{ "%.1f"|format(duke_precedent.median_hours) }}h</td>
+            <td>{{ "%.1f"|format(duke_precedent.max_hours) }}h</td>
+          </tr>
+        </table>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <h2>Combined-Territory Sources Also Covering This Area{{ ' (' ~ combined_events|length ~ ')' if combined_events else '' }}</h2>
     <p class="section-note">
       These utilities report one combined total across several counties at once, not a number specific to

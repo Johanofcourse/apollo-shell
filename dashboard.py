@@ -30,6 +30,7 @@ from county_status import (
     humanize_timestamp as _humanize_timestamp,
     explain_missing_historical_data, fpl_ordinary_restoration_stats,
     teco_etr_accuracy, TECO_UTILITY_NAME,
+    duke_restoration_precedent, DUKE_UTILITY_NAME,
 )
 from storm_history import (
     HISTORICAL_DB_PATH,
@@ -965,6 +966,7 @@ def county_detail():
     major_storm_precedent = None
     everyday_precedent = None
     teco_accuracy = None
+    duke_precedent = None
 
     if selected_county:
         db = OutageDatabase()
@@ -1006,6 +1008,16 @@ def county_detail():
         teco_open_now = any(r["utility"] == TECO_UTILITY_NAME for r in real_events)
         teco_accuracy = teco_etr_accuracy(selected_county, db) if teco_open_now else None
 
+        # A third Phase 3 shape for Duke - real, individually-tracked
+        # incidents like TECO's, but no restoration-estimate field to
+        # check accuracy against, so it gets a plain duration precedent
+        # like FPL's "Everyday Outages" instead, without FPL's outlier
+        # filter (Duke's incidents are already real and individually
+        # clean) and without a "Major Storms" sibling (no storm archive
+        # counterpart for Duke). See county_status.duke_restoration_precedent().
+        duke_open_now = any(r["utility"] == DUKE_UTILITY_NAME for r in real_events)
+        duke_precedent = duke_restoration_precedent(selected_county, db) if duke_open_now else None
+
         db.close()
 
         active_alerts = [a for a in all_active_alerts if _county_in_alert(selected_county, a["areas"])]
@@ -1024,6 +1036,7 @@ def county_detail():
         major_storm_precedent=major_storm_precedent,
         everyday_precedent=everyday_precedent,
         teco_accuracy=teco_accuracy,
+        duke_precedent=duke_precedent,
     )
 
 
