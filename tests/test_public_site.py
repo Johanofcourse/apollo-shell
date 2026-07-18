@@ -38,6 +38,34 @@ def _fpl_row(county, customers_out, customers_served=100_000):
     return {"county": county, "customers_out": customers_out, "customers_served": customers_served}
 
 
+class TestGetSentinelVersion:
+    """
+    _get_sentinel_version() - real semver, not decorative. 0.x means
+    "pre-1.0, no stability contract yet" (see SENTINEL_VERSION_PREFIX's
+    own comment for why that's honestly true right now), with the patch
+    number auto-derived from the real commit count so it can never drift
+    or need hand-bumping - only the prefix is a deliberate, manual
+    change, made once, the day this project actually goes live.
+    """
+
+    def test_version_starts_with_the_current_prefix(self):
+        assert public_site._get_sentinel_version().startswith(f"{public_site.SENTINEL_VERSION_PREFIX}.")
+
+    def test_patch_number_is_a_real_non_negative_integer(self):
+        version = public_site._get_sentinel_version()
+        patch = version.split(".")[-1]
+        assert patch.isdigit()
+        assert int(patch) >= 0
+
+    def test_falls_back_to_dev_when_git_is_unavailable(self, monkeypatch):
+        def _boom(*args, **kwargs):
+            raise FileNotFoundError("git not found")
+
+        monkeypatch.setattr(public_site.subprocess, "run", _boom)
+
+        assert public_site._get_sentinel_version() == "dev"
+
+
 class TestCountyMapData:
     def test_clean_database_has_zero_customers_everywhere(self, db_path):
         db = OutageDatabase(db_path)

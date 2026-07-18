@@ -56,14 +56,25 @@ OUTAGE_HISTORY_DISPLAY_LIMIT = 15
 TRACKED_UTILITY_COUNT = 16
 
 
+# Real semver, not decorative - 0.x specifically means "pre-1.0, no
+# stability contract yet," which is honestly true right now (no domain,
+# no HTTPS, dashboard is SSH-tunnel-only, no real prod/test split - see
+# Phase 6 in docs/ROADMAP.md). The patch number below stays fully
+# automatic forever; this prefix is the one piece meant to be bumped by
+# hand, once, deliberately, the day this project actually goes live -
+# semver's 0.x -> 1.0 jump is supposed to be a real decision everywhere,
+# never an automatic one, so this isn't a limitation of the scheme.
+SENTINEL_VERSION_PREFIX = "0.1"
+
+
 def _get_sentinel_version():
     """
-    Real build identifier for the page footer/header - the total commit
-    count on this checkout, computed once at process start (not per
-    request, since it only changes on a fresh deploy, which already
-    requires a restart). Falls back to "dev" if git isn't available
-    (e.g. a stripped deployment with no .git directory), rather than
-    showing a fabricated number.
+    Real build identifier for the page footer/header - SENTINEL_VERSION_PREFIX
+    plus the total commit count on this checkout as the patch number,
+    computed once at process start (not per request, since it only
+    changes on a fresh deploy, which already requires a restart). Falls
+    back to "dev" if git isn't available (e.g. a stripped deployment
+    with no .git directory), rather than showing a fabricated number.
     """
     try:
         result = subprocess.run(
@@ -71,7 +82,7 @@ def _get_sentinel_version():
             cwd=os.path.dirname(os.path.abspath(__file__)),
             capture_output=True, text=True, timeout=5, check=True,
         )
-        return result.stdout.strip()
+        return f"{SENTINEL_VERSION_PREFIX}.{result.stdout.strip()}"
     except (subprocess.SubprocessError, OSError):
         return "dev"
 
