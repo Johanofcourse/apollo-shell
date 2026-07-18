@@ -161,6 +161,10 @@
   .tele-explain summary::-webkit-details-marker { display: none; }
   .tele-explain p { font-size: 0.8rem; line-height: 1.55; color: var(--ink-soft); margin: 0.6rem 0 0; }
 
+  .section-explain { margin-top: 0; padding-top: 0; border-top: none; margin-bottom: 1.25rem; }
+  .section-explain summary { font-size: 0.78rem; }
+  .section-explain p { max-width: 42rem; }
+
   @media (max-width: 760px) {
     .hero { grid-template-columns: 1fr; }
     .hero > * + * { border-left: none; border-top: 1px solid var(--line); }
@@ -399,12 +403,15 @@
 
   <section id="heatSection">
     <h2 class="section-title">Heat This Month</h2>
-    <p class="section-sub">
-      Heat Advisories and Excessive Heat Warnings are ordinary National Weather Service alerts — the same public
-      feed used for hurricane and tornado warnings — just for sustained extreme heat instead of storms. They're not
-      per-county, either: a single county can get split into multiple independent NWS zones, each with its own
-      advisory.
-    </p>
+    <details class="tele-explain section-explain">
+      <summary>What is this section?</summary>
+      <p>
+        Heat Advisories and Excessive Heat Warnings are ordinary National Weather Service alerts — the same public
+        feed used for hurricane and tornado warnings — just for sustained extreme heat instead of storms. They're not
+        per-county, either: a single county can get split into multiple independent NWS zones, each with its own
+        advisory.
+      </p>
+    </details>
     <div class="heat-panel">
       <div class="heat-stat">
         <div class="label">Days With An Advisory</div>
