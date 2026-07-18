@@ -15,6 +15,7 @@ test_county_status.py). _county_map_data()/_narrative_stats() are the
 new pieces of real logic here.
 """
 import os
+import re
 import tempfile
 
 import pytest
@@ -182,6 +183,30 @@ class TestIndexRoute:
         client = public_site.app.test_client()
         r = client.get("/")
         assert r.status_code == 200
+
+    def test_kpi_customers_matches_narrative_total_not_just_the_map_sum(self):
+        # Real bug found 2026-07-18: kpiCustomers used to be recomputed
+        # client-side by summing the map's per-county array (counties_json),
+        # which is keyed by the 67 real single-county names - a combined-
+        # territory source (FPUC/TCEC/EREC/CHELCO/GCEC, whose "county" is a
+        # shared multi-name label) can never match one of those 67 names,
+        # so its customers silently never contributed to that sum. The
+        # narrative paragraph a few lines below computes the same total
+        # correctly from all_rows directly, so the two numbers could (and
+        # in real production data, did) disagree on the same live page.
+        # kpiCustomers must now be server-rendered from narrative.total_current
+        # directly, so the two always match by construction.
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+        assert r.status_code == 200
+
+        body = r.data.decode()
+        kpi_match = re.search(r'id="kpiCustomers">([\d,]+)<', body)
+        narrative_match = re.search(r'Right now, <strong[^>]*>([\d,]+)</strong> customers', body)
+        assert kpi_match is not None
+        assert narrative_match is not None
+        assert kpi_match.group(1) == narrative_match.group(1)
 
     def test_county_query_param_renders_history_section(self):
         public_site.app.testing = True

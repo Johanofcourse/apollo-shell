@@ -340,7 +340,7 @@
       <div class="gauge-hint">&darr; click a county, or search below</div>
     </div>
     <div class="hero-cell stat-cell">
-      <div class="stat-num c-magenta mono" id="kpiCustomers">0</div>
+      <div class="stat-num c-magenta mono" id="kpiCustomers">{{ "{:,}".format(narrative.total_current) }}</div>
       <div class="stat-label">CUSTOMERS WITHOUT POWER RIGHT NOW</div>
       <details class="tele-explain">
         <summary>WHAT COUNTS AS A CUSTOMER?</summary>
@@ -652,7 +652,15 @@
   const COUNTY_RINGS = {{ county_rings_json | safe }};
   const countyByName = Object.fromEntries(counties.map(c => [c.name, c]));
 
-  document.getElementById("kpiCustomers").textContent = counties.reduce((s, c) => s + (c.customers || 0), 0).toLocaleString();
+  // kpiCustomers is rendered server-side from narrative.total_current (see
+  // above) - NOT recomputed here by summing the map's per-county array.
+  // Real bug found 2026-07-18: that array is keyed by the 67 real single-
+  // county names, so a combined-territory source (FPUC's/TCEC's/EREC's/
+  // CHELCO's/GCEC's shared multi-county label never matches one of those
+  // 67 names) silently never contributed to this sum, undercounting the
+  // hero KPI by however much those sources currently have open - a real,
+  // live gap between this number and the narrative paragraph's own total
+  // a few lines below it on the same page.
   document.getElementById("kpiCounties").textContent = counties.filter(c => (c.customers || 0) > 0).length.toLocaleString();
 
   function verdictOf(c) {
