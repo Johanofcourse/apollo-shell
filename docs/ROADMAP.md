@@ -211,12 +211,13 @@
       which has none at all), so instead of inventing a precedent range,
       `county_status.teco_etr_accuracy()` checks how trustworthy that
       existing number has actually been - each resolved incident's first
-      stated ETR vs. when it actually closed. Real, clean data (3,776
-      closed incidents statewide, all with a usable ETR, no blurring
-      problem to filter since each is already individually tracked by a
-      real incident_id) - statewide, TECO's incidents resolve a median
-      of ~3 hours *before* their own first estimate, on-time-or-early
-      83% of the time. Same live-outage gating as FPL's pair.
+      stated ETR vs. when it actually closed. Real, clean data (every
+      closed incident statewide has a usable ETR, no blurring problem to
+      filter since each is already individually tracked by a real
+      incident_id) - statewide, TECO's incidents resolve a median of
+      ~2.5 hours *before* their own first estimate, on-time-or-early
+      roughly two-thirds of the time. Same live-outage gating as FPL's
+      pair.
 - [x] **Duke restoration-time precedent - shipped 2026-07-18, the
       simplest of the three Phase 3 shapes.** Duke's raw feed has no
       restoration-estimate field at all, so TECO's accuracy-check

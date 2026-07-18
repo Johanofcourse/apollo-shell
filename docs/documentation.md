@@ -848,11 +848,11 @@ names.
 TECO got something else entirely, because it already has something FPL
 doesn't - a real per-incident restoration estimate on every ticket.
 Instead of inventing a range, the honest question there is whether
-that number can already be trusted: comparing 3,776 real resolved
-incidents' first stated estimate against when they actually closed.
+that number can already be trusted: comparing every real resolved
+incident's first stated estimate against when it actually closed.
 Turns out TECO's own number is a good one - a statewide median of about
-three hours *earlier* than promised, on-time-or-early five times out of
-six.
+two and a half hours *earlier* than promised, on-time-or-early roughly
+two times out of three.
 
 Duke got a third shape the same day, once its own real limits were
 actually checked instead of assumed. Its own feed has no restoration-

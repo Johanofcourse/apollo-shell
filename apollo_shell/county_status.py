@@ -550,12 +550,12 @@ def teco_etr_accuracy(county, db):
     Real accuracy check of TECO's own stated restoration estimates
     against what actually happened, for one county - a genuinely
     different kind of Phase 3 signal than FPL's historical-precedent
-    approach. TECO already reports a real per-incident ETR on 3,776 of
-    3,776 real closed incidents checked 2026-07-18, so instead of
-    inventing a range from scratch (FPL's problem - no per-incident data
-    at all), this checks how trustworthy TECO's own existing number has
-    actually been: "when TECO tells you when your power will be back,
-    how close does that number usually land?"
+    approach. TECO already reports a real per-incident ETR on every real
+    closed incident checked (100% coverage, confirmed 2026-07-18), so
+    instead of inventing a range from scratch (FPL's problem - no
+    per-incident data at all), this checks how trustworthy TECO's own
+    existing number has actually been: "when TECO tells you when your
+    power will be back, how close does that number usually land?"
 
     Confirmed 2026-07-18 this is TECO-specific, not a Duke/JEA feature
     too: Duke's raw feed has no restoration-estimate field at all, and
