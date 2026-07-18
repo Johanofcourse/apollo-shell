@@ -236,15 +236,33 @@
   .legend-item { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
   .legend-label { color: var(--ink-soft); }
 
-  .history-search { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; max-width: 28rem; }
+  .history-search { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; max-width: 28rem; align-items: flex-start; }
+  .county-combobox { position: relative; flex: 1; }
   .history-search input {
-    flex: 1; background: var(--void); border: 1px solid var(--line); color: var(--ink);
+    width: 100%; background: var(--void); border: 1px solid var(--line); color: var(--ink);
     padding: 0.6rem 0.8rem; font-size: 0.9rem; font-family: inherit;
   }
   .history-search button {
     background: var(--cyan); color: var(--void); border: none; font-weight: 700; font-size: 0.75rem;
     letter-spacing: 0.06em; text-transform: uppercase; padding: 0 1.2rem; cursor: pointer;
+    align-self: stretch;
   }
+  .county-suggestions {
+    position: absolute; top: calc(100% + 0.3rem); left: 0; right: 0; z-index: 30;
+    list-style: none; margin: 0; padding: 0;
+    background: var(--surface); border: 1px solid var(--line);
+    max-height: 13.75rem; overflow-y: auto;
+  }
+  .county-suggestions li {
+    padding: 0.7rem 0.9rem; min-height: 2.75rem; display: flex; align-items: center;
+    font-size: 0.9rem; cursor: pointer; border-bottom: 1px solid var(--line);
+  }
+  .county-suggestions li:last-child { border-bottom: none; }
+  .county-suggestions li:hover, .county-suggestions li.active {
+    background: var(--cyan); color: var(--void);
+  }
+  .county-suggestions li.no-match { cursor: default; color: var(--ink-soft); }
+  .county-suggestions li.no-match:hover { background: none; color: var(--ink-soft); }
   .history-empty { color: var(--ink-soft); font-size: 0.9rem; padding: 0.5rem 0 1rem; }
   .history-county-title {
     font-family: "Big Shoulders Stencil Text", "Helvetica Neue", sans-serif;
@@ -686,13 +704,11 @@
       shows up here, including the ones where we don't have a report for your county, so you can see the real
       gaps instead of assuming "no data" means "not affected."
     </p>
-    <form class="history-search" action="/" method="get">
-      <input type="text" name="county" list="county-list" placeholder="Type your county&hellip;" value="{{ selected_county }}" autocomplete="off">
-      <datalist id="county-list">
-        {% for c in available_counties %}
-          <option value="{{ c }}">
-        {% endfor %}
-      </datalist>
+    <form class="history-search" action="/#historySection" method="get" autocomplete="off">
+      <div class="county-combobox" id="countyCombobox">
+        <input type="text" name="county" id="countyInput" placeholder="Type your county&hellip;" value="{{ selected_county }}" autocomplete="off">
+        <ul class="county-suggestions" id="countySuggestions" hidden></ul>
+      </div>
       <button type="submit">Show History</button>
     </form>
 
@@ -1002,6 +1018,100 @@
   function selectCounty(name) {
     window.location.href = "/?county=" + encodeURIComponent(name) + "#countyStatusSection";
   }
+
+  // County-search combobox for Storm History - a plain <input list> +
+  // <datalist> used to handle this, but datalist's browser-native dropdown
+  // can't be sized/styled (no forcing "show 5 rows"), and iOS Safari's
+  // datalist support is spotty at best. This is a small hand-built
+  // combobox instead: real substring matching (so "Dade" finds
+  // "Miami-Dade", not just names starting with "Dade"), a fixed-height
+  // scrollable list sized for ~5 rows with real touch-target sizing, and
+  // both tap and keyboard selection.
+  (function () {
+    const allCounties = {{ available_counties_json | safe }};
+    const input = document.getElementById("countyInput");
+    const list = document.getElementById("countySuggestions");
+    const combobox = document.getElementById("countyCombobox");
+    let activeIndex = -1;
+
+    function goToCountyHistory(name) {
+      window.location.href = "/?county=" + encodeURIComponent(name) + "#historySection";
+    }
+
+    function renderSuggestions() {
+      const query = input.value.trim().toLowerCase();
+      const matches = query
+        ? allCounties.filter((c) => c.toLowerCase().includes(query))
+        : allCounties;
+
+      list.innerHTML = "";
+      activeIndex = -1;
+
+      if (matches.length === 0) {
+        const li = document.createElement("li");
+        li.className = "no-match";
+        li.textContent = "No county matches \"" + input.value.trim() + "\"";
+        list.appendChild(li);
+        list.hidden = false;
+        return;
+      }
+
+      matches.forEach((name) => {
+        const li = document.createElement("li");
+        li.textContent = name;
+        li.setAttribute("role", "option");
+        // mousedown (not click) fires before the input's blur, so the
+        // list is still in the DOM when this handler runs - a plain
+        // click handler here would lose the race to blur hiding the list.
+        li.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          goToCountyHistory(name);
+        });
+        list.appendChild(li);
+      });
+      list.hidden = false;
+    }
+
+    function setActive(index) {
+      const items = list.querySelectorAll("li:not(.no-match)");
+      items.forEach((el) => el.classList.remove("active"));
+      if (index >= 0 && index < items.length) {
+        items[index].classList.add("active");
+        items[index].scrollIntoView({ block: "nearest" });
+      }
+      activeIndex = index;
+    }
+
+    input.addEventListener("input", renderSuggestions);
+    input.addEventListener("focus", renderSuggestions);
+    input.addEventListener("blur", () => {
+      // Delayed so a suggestion's mousedown handler above still gets to
+      // run before the list disappears.
+      setTimeout(() => { list.hidden = true; }, 150);
+    });
+
+    input.addEventListener("keydown", (e) => {
+      const items = list.querySelectorAll("li:not(.no-match)");
+      if (list.hidden || items.length === 0) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActive(Math.min(activeIndex + 1, items.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActive(Math.max(activeIndex - 1, 0));
+      } else if (e.key === "Enter" && activeIndex >= 0) {
+        e.preventDefault();
+        goToCountyHistory(items[activeIndex].textContent);
+      } else if (e.key === "Escape") {
+        list.hidden = true;
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!combobox.contains(e.target)) list.hidden = true;
+    });
+  })();
 </script>
 </body>
 </html>

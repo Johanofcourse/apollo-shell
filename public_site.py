@@ -359,6 +359,7 @@ def index():
         heat_summary=heat_summary,
         active_alerts=all_active_alerts,
         available_counties=COUNTY_PICKER_CHOICES,
+        available_counties_json=json.dumps(COUNTY_PICKER_CHOICES),
         selected_county=selected_county,
         county_detail=county_detail,
     )
