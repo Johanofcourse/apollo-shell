@@ -149,7 +149,7 @@
       Not scoped yet, deliberately - revisit once the desktop version
       is actually settled and ported.
 
-## Phase 3: Predictive (Blocked on data, not code)
+## Phase 3: Predictive (Restoration signal shipped for FPL and TECO; the at-risk-counties idea and Duke/JEA's own version are the real remaining work)
 - [ ] **Weather-based "at-risk counties" signal - a real idea, not yet
       built, and NOT blocked the way the rest of this phase is.**
       Everything else here needs data that only accumulates with time;
@@ -176,52 +176,66 @@
       later - real storm-track/forecast-cone data (e.g. NOAA's National
       Hurricane Center advisories) instead of just "is an alert active
       right now" - not needed to ship a first pass.
-- [ ] **Restoration-time estimation with its own confidence** ("roughly
-      a 50% chance this outage is fixed within a day," e.g.) - a
-      different thing from Phase 2's weather-match confidence: that one
-      asks "was this outage really caused by weather," this one asks
-      "how long will it take." A real answer needs both eventually, but
-      they're separate pieces built at separate times.
-- [ ] Connect live data to the historical storm dataset for TECO/Duke/JEA
-      territory — e.g. "current live conditions resemble what we saw in
-      this county during a past storm, which took about this long to
-      restore." Explicitly deferred, not just unstarted - needs both the
-      right analysis approach and a lot more live volume than exists
-      today for these utilities specifically.
-- [ ] **FPL historical-precedent restoration model - re-checked
-      2026-07-17, confirmed ready to build now, not blocked on more data
-      after all.** FPL can never get a live incident-level model (its
-      feed only reports a county-wide total, and events blur together -
-      see Phase 2's county-history findings), but a historical-precedent
-      version doesn't need that: the 17-storm backfill is already
-      consolidated into 498 real FPL outage events across 40 counties
-      and 15 storms (`historical_consolidated.db`), each with a real
-      start/end window, so per-county historical duration stats are
-      computable today with zero new data collection. Two real build
-      steps left: (1) a per-county stats function (median/range
-      duration, N storms) off the already-consolidated table; (2) wiring
-      it into the live side so an open FPL county event shows "outages
-      this severe have historically taken X-Y hours here, based on N
-      storms" instead of a fake live ETA. One honest caveat carried over
-      from the source data itself, not a new one: these historical
-      durations come from the same periodic county-wide PSC situation
-      reports FPL's live feed uses, so a single reported "event" can
-      still blur multiple real repair jobs together the same way live
-      data can - the output is a rough, honest precedent, not
-      incident-level precision, even historically. This is a **county-
-      level** range, not a per-customer ETA - see the product-review
-      doc-worthy distinction the moment this actually gets scoped.
+- [x] **Restoration-time signal for FPL - shipped 2026-07-18, as two
+      deliberately separate, distinctly-labeled numbers, never merged
+      into one.** FPL can never get a live incident-level model (its
+      feed only ever reports a county-wide total, and events blur
+      together - see Phase 2's county-history findings), so both
+      versions here are honest substitutes, not predictions:
+      - **"Major Storms"** - `storm_history.fpl_restoration_precedent()`,
+        real min/median/max duration from the 17-storm PSC archive
+        (`historical_consolidated.db`, 498 FPL events across 40 counties).
+        "Major storm" means a real event serious enough that the Florida
+        PSC required a formal restoration report - mostly named
+        hurricanes/tropical storms, plus a few severe non-tropical
+        outbreaks (checked directly: 3 of the 17 aren't officially named
+        storms at all).
+      - **"Everyday Outages"** - `county_status.
+        fpl_ordinary_restoration_stats()`, the same idea from this
+        project's own live tracking instead (484 real closed FPL events
+        statewide) - a genuinely different, richer question ("how long
+        does an ordinary outage take here") the storm archive alone
+        can't answer. Needed one real filter: events longer than 96
+        hours are excluded as likely several real outages blurred into
+        one never-resets-to-zero county aggregate, not one real repair
+        job - the cutoff came from the live data's own natural break
+        (p99 ~90h, then a sharp jump straight to 217h/254h), not a
+        guess.
 
-The TECO/Duke/JEA restoration-time items above (not the at-risk-counties
-or FPL-historical-precedent items, both real schedulable work already)
-are **not a normal engineering task with a schedulable timeline.** They
-require enough accumulated real outage-duration data
-before an estimate would mean anything — no amount of additional code
-shortens that. Rough sense of scale: "enough for a first rough look" is
-more like weeks of live data, "enough to trust" is more like a month or
-two, and that's still only one season's worth of conditions. The 17
-historical storms cover a different, rarer category of outage entirely
-and don't substitute for everyday-outage volume for these utilities.
+      Both gated the same way: only shown on a county's live page while
+      a real FPL outage is currently open there, not as a standalone
+      historical curiosity.
+- [x] **TECO restoration-estimate accuracy - shipped 2026-07-18, a
+      genuinely different kind of signal from FPL's pair.** TECO already
+      reports a real per-incident restoration estimate (unlike FPL,
+      which has none at all), so instead of inventing a precedent range,
+      `county_status.teco_etr_accuracy()` checks how trustworthy that
+      existing number has actually been - each resolved incident's first
+      stated ETR vs. when it actually closed. Real, clean data (3,776
+      closed incidents statewide, all with a usable ETR, no blurring
+      problem to filter since each is already individually tracked by a
+      real incident_id) - statewide, TECO's incidents resolve a median
+      of ~3 hours *before* their own first estimate, on-time-or-early
+      83% of the time. Same live-outage gating as FPL's pair.
+- [ ] **Duke and JEA still don't get either version, for real structural
+      reasons confirmed 2026-07-18, not just "needs more time."** Duke's
+      raw feed has no restoration-estimate field at all, so the
+      TECO-style accuracy check is permanently off the table for it.
+      JEA has no per-incident data at all - county-rollup only, same
+      shape as FPL - so an FPL-style "Everyday Outages" precedent is the
+      only version that could ever apply to it, and hasn't been checked
+      yet (real per-incident start/end data exists for Duke too, just
+      without an ETR to check accuracy against - Duke could plausibly
+      get its own "Everyday Outages"-style precedent the same way FPL
+      did, just not the accuracy-check version). Real, schedulable work
+      once picked up, not blocked on data the way this section used to
+      claim - just not done yet.
+- [ ] FPUC's real per-incident view and LWBU both technically have an
+      ETR field like TECO's, confirmed 2026-07-18 - but only 3 and 8
+      real closed incidents respectively right now, too thin for
+      `teco_etr_accuracy()`'s approach to mean anything yet. Revisit once
+      they accumulate more real incident history - no code change
+      needed, the function would just need reusing.
 
 ## Phase 4: Public-Facing Query Layer (Future consideration, not started)
 - [ ] Let people query the **derived/aggregated** data (historical

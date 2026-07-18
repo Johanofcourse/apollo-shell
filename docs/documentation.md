@@ -40,6 +40,12 @@ detective instead. No regrets.
 - A real idempotency bug, found early on and fixed for good: re-running
   a historical import used to silently duplicate every event. Guarded
   at the database level now, not just "remember not to do that."
+- Real restoration-time guidance, honestly scoped to what each utility
+  actually supports rather than one invented model for everyone: FPL
+  gets a historical-precedent pair (major storms vs. everyday outages,
+  kept as two separate numbers on purpose, never blended), TECO gets an
+  accuracy check on its own existing restoration estimate instead,
+  since it already has one FPL doesn't.
 
 ## The plot twist
 Same night, different rabbit hole: went looking at whether other
@@ -92,15 +98,21 @@ real and usable.
   precomputed once per poll cycle now, not recalculated per visitor -
   a real load-time bug (up to 44s) fixed at the source, not papered
   over with a longer cache
+- A real FPL outage open right now gets two honest restoration numbers
+  on its county's page (major-storm precedent, everyday-outage
+  precedent); a real TECO outage gets an accuracy read on TECO's own
+  stated estimate instead - both only appear when actually relevant,
+  never as a standalone historical curiosity
 
 ## The honest gaps
-- Guessing when the lights come back on for a *live* outage is still
-  hit or miss - most feeds don't carry a real restoration estimate, and
-  the ones that do are undocumented and could change without warning
+- Real restoration guidance now exists for FPL and TECO specifically -
+  a historical-precedent pair for FPL, an accuracy check on TECO's own
+  existing estimate. Duke and JEA still don't get either, for two
+  different real reasons, not just "needs more time": Duke's raw feed
+  has no restoration-estimate field at all to check, and JEA has no
+  per-incident data at all, county-rollup only, like FPL
 - *Historical* storms are the strong suit: 17 of them, 2018-2025, real
   multi-day restoration data, cross-checked severity context
-- A genuine restoration-confidence model is still blocked on more live
-  data, not code - one season's worth isn't enough yet
 - The original plan — AI input parser, command history, an actual
   interactive shell — is still benched. "Map power outages against
   weather" turned out to be the more interesting rabbit hole.
@@ -771,3 +783,77 @@ sit underneath it now: the laptop pulls a fresh copy of the real
 database twice a day, and the server's own disk gets a real, automatic
 snapshot once a day on Oracle's side - both genuinely free, neither
 one depending on the other.
+
+## A long day of real bugs, not one big feature
+Started by comparing the internal dashboard against the public page and
+finding they didn't quite agree - the beginning of a real bug-fixing
+run, not a planned sprint.
+
+A live Duke incident with no reverse-geocoded location crashed the
+whole public page - the actual bug turned out one layer deeper: TECO
+and Duke's own incident-tracking code overwrote an already-known-good
+county with `None` the moment a single later lookup failed, instead of
+keeping the last real value. Fixed, then backfilled every incident
+already sitting in that bad state (34 of 40 recovered on retry once
+the fix went in). Nearby, a real county-name mismatch: FPL stores "De
+Soto" and "St Lucie" with a plain space, this project's own canonical
+names use a period or none at all - confirmed with a real test before
+fixing that a genuine match would've been silently invisible on the
+live map the moment it ever happened.
+
+City of Tallahassee turned out to have never actually worked - the
+live feed's own ticket field, the whole basis this project used to
+track one incident across polls, was empty on every single real
+incident checked, every time. A hundred percent silent data loss since
+the day it was integrated, caught while investigating why one of its
+tables sat at zero rows. Redesigned as a county-rollup source instead
+(the same shape FPL and Talquin already use), since there's no
+reliable per-incident identity in that feed to hang tracking off of at
+all.
+
+Also: the repeat "still down" email for the two chronic sources got
+throttled down to nothing (the one-time "it's back" email stays, since
+that's still real, wanted news), and two separate real number
+mismatches between the dashboard and the public page got run down and
+fixed - one where the public page's own headline customer count
+silently couldn't include a combined-territory source's number at all,
+one where the dashboard's own statewide total was missing an entire
+real utility's incident view.
+
+## Restoration confidence, for real this time
+The long-deferred idea finally got a real, honest shape - not one
+model for every utility, two genuinely different ones for the two
+utilities that can actually support them.
+
+FPL can never get a live incident-level model (its feed only ever
+reports a county-wide total, and a busy county's number often never
+resets cleanly to zero between real, separate outages), so it gets a
+historical-precedent pair instead, kept as two distinct numbers on
+purpose: "Major Storms," a real min/median/max restoration range from
+the 17-storm archive, and "Everyday Outages," the same idea from this
+project's own live tracking - a genuinely different, more common
+question the storm archive alone can't answer. The everyday version
+needed one real filter (anything over 96 hours excluded as a likely
+blurred multi-outage reading, a cutoff read straight off a real, sharp
+break in the live data, not guessed), the major-storm side needed a
+real correction instead: the working definition of "major storm" had
+assumed a wind-speed threshold that turned out not to describe three
+of the real seventeen at all, once actually checked against their real
+names.
+
+TECO got something else entirely, because it already has something FPL
+doesn't - a real per-incident restoration estimate on every ticket.
+Instead of inventing a range, the honest question there is whether
+that number can already be trusted: comparing 3,776 real resolved
+incidents' first stated estimate against when they actually closed.
+Turns out TECO's own number is a good one - a statewide median of about
+three hours *earlier* than promised, on-time-or-early five times out of
+six.
+
+Duke and JEA still don't get either version, and not for a vague
+"needs more data" reason this time - two different real, checked
+limits. Duke's own feed simply has no restoration-estimate field at
+all, so there's nothing to check for TECO's version. JEA has no
+per-incident data at all, county-rollup only like FPL - so if it ever
+gets a restoration signal, it'll be FPL's shape, not TECO's, and that's
+real, honest, still-open work, not something this session got to.
