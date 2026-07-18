@@ -238,7 +238,7 @@
 
   .history-search { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; max-width: 28rem; align-items: flex-start; }
   .county-combobox { position: relative; flex: 1; }
-  .history-search input {
+  .county-combobox input {
     width: 100%; background: var(--void); border: 1px solid var(--line); color: var(--ink);
     padding: 0.6rem 0.8rem; font-size: 0.9rem; font-family: inherit;
   }
@@ -247,6 +247,7 @@
     letter-spacing: 0.06em; text-transform: uppercase; padding: 0 1.2rem; cursor: pointer;
     align-self: stretch;
   }
+  .hero-county-combobox { max-width: 20rem; margin-top: 0.7rem; }
   .county-suggestions {
     position: absolute; top: calc(100% + 0.3rem); left: 0; right: 0; z-index: 30;
     list-style: none; margin: 0; padding: 0;
@@ -363,6 +364,10 @@
       </div>
       <div class="map-legend" id="mapLegend"></div>
       <div class="gauge-hint">&darr; click a county, or search below</div>
+      <div class="county-combobox hero-county-combobox" id="heroCountyCombobox">
+        <input type="text" id="heroCountyInput" placeholder="Type your county&hellip;" autocomplete="off">
+        <ul class="county-suggestions" id="heroCountySuggestions" hidden></ul>
+      </div>
     </div>
     <div class="hero-cell stat-cell">
       <div class="stat-num c-magenta mono" id="kpiCustomers">{{ "{:,}".format(narrative.total_current) }}</div>
@@ -1019,24 +1024,22 @@
     window.location.href = "/?county=" + encodeURIComponent(name) + "#countyStatusSection";
   }
 
-  // County-search combobox for Storm History - a plain <input list> +
-  // <datalist> used to handle this, but datalist's browser-native dropdown
-  // can't be sized/styled (no forcing "show 5 rows"), and iOS Safari's
-  // datalist support is spotty at best. This is a small hand-built
-  // combobox instead: real substring matching (so "Dade" finds
-  // "Miami-Dade", not just names starting with "Dade"), a fixed-height
-  // scrollable list sized for ~5 rows with real touch-target sizing, and
-  // both tap and keyboard selection.
-  (function () {
+  // County-search combobox, used in two places (the hero map card and
+  // Storm History) - a plain <input list> + <datalist> used to handle
+  // this, but datalist's browser-native dropdown can't be sized/styled
+  // (no forcing "show 5 rows"), and iOS Safari's datalist support is
+  // spotty at best. This is a small hand-built combobox instead: real
+  // substring matching (so "Dade" finds "Miami-Dade", not just names
+  // starting with "Dade"), a fixed-height scrollable list sized for ~5
+  // rows with real touch-target sizing, and both tap and keyboard
+  // selection. onSelect decides where each instance actually navigates -
+  // the two spots land on different sections, see call sites below.
+  function setupCountyCombobox(inputId, suggestionsId, comboboxId, onSelect) {
     const allCounties = {{ available_counties_json | safe }};
-    const input = document.getElementById("countyInput");
-    const list = document.getElementById("countySuggestions");
-    const combobox = document.getElementById("countyCombobox");
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(suggestionsId);
+    const combobox = document.getElementById(comboboxId);
     let activeIndex = -1;
-
-    function goToCountyHistory(name) {
-      window.location.href = "/?county=" + encodeURIComponent(name) + "#historySection";
-    }
 
     function renderSuggestions() {
       const query = input.value.trim().toLowerCase();
@@ -1065,7 +1068,7 @@
         // click handler here would lose the race to blur hiding the list.
         li.addEventListener("mousedown", (e) => {
           e.preventDefault();
-          goToCountyHistory(name);
+          onSelect(name);
         });
         list.appendChild(li);
       });
@@ -1100,9 +1103,12 @@
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setActive(Math.max(activeIndex - 1, 0));
-      } else if (e.key === "Enter" && activeIndex >= 0) {
+      } else if (e.key === "Enter") {
         e.preventDefault();
-        goToCountyHistory(items[activeIndex].textContent);
+        // No arrow-key selection yet (activeIndex still -1) shouldn't be
+        // a dead end - typing a full name and hitting Enter straight away
+        // is a real, common path, so fall back to the top match.
+        onSelect(items[activeIndex >= 0 ? activeIndex : 0].textContent);
       } else if (e.key === "Escape") {
         list.hidden = true;
       }
@@ -1111,7 +1117,12 @@
     document.addEventListener("click", (e) => {
       if (!combobox.contains(e.target)) list.hidden = true;
     });
-  })();
+  }
+
+  setupCountyCombobox("heroCountyInput", "heroCountySuggestions", "heroCountyCombobox", selectCounty);
+  setupCountyCombobox("countyInput", "countySuggestions", "countyCombobox", (name) => {
+    window.location.href = "/?county=" + encodeURIComponent(name) + "#historySection";
+  });
 </script>
 </body>
 </html>
