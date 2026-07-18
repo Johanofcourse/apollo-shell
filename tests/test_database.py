@@ -163,15 +163,8 @@ def _duke_incident(incident_id, county="Orange", customer_count=20, cause="Equip
     }
 
 
-def _tallahassee_incident(incident_id, county="Leon", customer_count=30, cause="Tree down",
-                           region_name="East", status="Investigating"):
-    return {
-        "incident_id": incident_id, "utility": "City of Tallahassee",
-        "customer_count": customer_count, "lat": 30.44, "lon": -84.28, "county": county,
-        "region_name": region_name, "status": status, "status_category": "investigating",
-        "cause": cause, "cause_category": "vegetation", "outage_type": "Unplanned",
-        "reported_start_time": "2026-01-01T00:00:00+00:00", "estimated_restoration": None,
-    }
+def _tallahassee_row(county="Leon", customers_out=30):
+    return {"county": county, "customers_out": customers_out}
 
 
 def _fpuc_incident(incident_id, county="Liberty", customer_count=56, substation="5", feeder="9882"):
@@ -241,20 +234,25 @@ class TestIncidentDetailLookup:
         assert len(detail["history"]) == 1
         assert detail["history"][0]["cause"] == "Equipment"
 
-    def test_tallahassee_incident_detail_has_one_episode_and_raw_history(self, db_path):
+    def test_tallahassee_outage_detail_returns_event_and_bounded_history(self, db_path):
+        # Redesigned 2026-07-18 - Tallahassee moved from an incident-
+        # level lookup (keyed by an unreliable "ticket" field, always
+        # None in real data) to a county-rollup lookup like Talquin's,
+        # keyed by (utility, county, start_time).
         db = OutageDatabase(db_path)
-        db.log_tallahassee_incidents([_tallahassee_incident("555")])
-        db.sync_tallahassee_incident_events([_tallahassee_incident("555")], timestamp="2026-01-01T00:00:00")
-        db.sync_tallahassee_incident_events([], timestamp="2026-01-01T02:00:00")
+        db.log_tallahassee_outages([_tallahassee_row("Leon", 30)], timestamp="2026-01-01T00:00:00")
+        db.sync_tallahassee_outage_events([_tallahassee_row("Leon", 30)], timestamp="2026-01-01T00:00:00")
+        db.log_tallahassee_outages([_tallahassee_row("Leon", 0)], timestamp="2026-01-01T00:15:00")
+        db.sync_tallahassee_outage_events([_tallahassee_row("Leon", 0)], timestamp="2026-01-01T00:15:00")
 
-        detail = db.get_tallahassee_incident_detail("555")
+        detail = db.get_tallahassee_outage_detail("City of Tallahassee", "Leon", "2026-01-01T00:00:00")
         db.close()
 
-        assert len(detail["events"]) == 1
-        assert detail["events"][0]["end_time"] == "2026-01-01T02:00:00"
-        assert detail["events"][0]["region_name"] == "East"
-        assert len(detail["history"]) == 1
-        assert detail["history"][0]["cause"] == "Tree down"
+        assert detail is not None
+        assert detail["event"]["end_time"] == "2026-01-01T00:15:00"
+        assert len(detail["history"]) == 2
+        assert detail["history"][0]["customers_out"] == 30
+        assert detail["history"][-1]["customers_out"] == 0
 
     def test_fpl_outage_detail_returns_event_and_bounded_history(self, db_path):
         db = OutageDatabase(db_path)
@@ -757,19 +755,19 @@ class TestOpenEventsCurrentVsPeak:
 
     def test_tallahassee_open_event_reports_current_alongside_peak(self, db_path):
         db = OutageDatabase(db_path)
-        db.log_tallahassee_incidents([_tallahassee_incident("T1", customer_count=15)])
-        db.sync_tallahassee_incident_events([_tallahassee_incident("T1", customer_count=15)], timestamp="2026-01-01T00:00:00")
-        db.log_tallahassee_incidents([_tallahassee_incident("T1", customer_count=200)])
-        db.sync_tallahassee_incident_events([_tallahassee_incident("T1", customer_count=200)], timestamp="2026-01-01T00:15:00")
-        db.log_tallahassee_incidents([_tallahassee_incident("T1", customer_count=40)])
-        db.sync_tallahassee_incident_events([_tallahassee_incident("T1", customer_count=40)], timestamp="2026-01-01T00:30:00")
+        db.log_tallahassee_outages([_tallahassee_row("Leon", 15)], timestamp="2026-01-01T00:00:00")
+        db.sync_tallahassee_outage_events([_tallahassee_row("Leon", 15)], timestamp="2026-01-01T00:00:00")
+        db.log_tallahassee_outages([_tallahassee_row("Leon", 200)], timestamp="2026-01-01T00:15:00")
+        db.sync_tallahassee_outage_events([_tallahassee_row("Leon", 200)], timestamp="2026-01-01T00:15:00")
+        db.log_tallahassee_outages([_tallahassee_row("Leon", 40)], timestamp="2026-01-01T00:30:00")
+        db.sync_tallahassee_outage_events([_tallahassee_row("Leon", 40)], timestamp="2026-01-01T00:30:00")
 
         open_events = db.get_tallahassee_open_events()
         db.close()
 
         assert len(open_events) == 1
-        assert open_events[0]["peak_customer_count"] == 200
-        assert open_events[0]["current_customer_count"] == 40
+        assert open_events[0]["peak_customers_out"] == 200
+        assert open_events[0]["current_customers_out"] == 40
 
     def test_talquin_open_event_reports_current_alongside_peak(self, db_path):
         db = OutageDatabase(db_path)

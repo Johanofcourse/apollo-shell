@@ -134,7 +134,7 @@ def _real_per_county_open_events(db):
         + _normalize_open_events(db.get_teco_open_events(), "current_customer_count", "peak_customer_count")
         + _normalize_open_events(db.get_duke_open_events(), "current_customer_count", "peak_customer_count")
         + _normalize_open_events(db.get_jea_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_tallahassee_open_events(), "current_customer_count", "peak_customer_count")
+        + _normalize_open_events(db.get_tallahassee_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_talquin_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_preco_open_events(), "current_customers_out", "peak_customers_out")
         + _normalize_open_events(db.get_fkec_open_events(), "current_customers_out", "peak_customers_out")
@@ -218,7 +218,7 @@ def _real_per_county_closed_events(db):
         + _normalize_closed_events(db.get_teco_recent_closed_events(limit=limit), "peak_customer_count")
         + _normalize_closed_events(db.get_duke_recent_closed_events(limit=limit), "peak_customer_count")
         + _normalize_closed_events(db.get_jea_recent_closed_events(limit=limit), "peak_customers_out")
-        + _normalize_closed_events(db.get_tallahassee_recent_closed_events(limit=limit), "peak_customer_count")
+        + _normalize_closed_events(db.get_tallahassee_recent_closed_events(limit=limit), "peak_customers_out")
         + _normalize_closed_events(db.get_talquin_recent_closed_events(limit=limit), "peak_customers_out")
         + _normalize_closed_events(db.get_preco_recent_closed_events(limit=limit), "peak_customers_out")
         + _normalize_closed_events(db.get_fkec_recent_closed_events(limit=limit), "peak_customers_out")
@@ -333,7 +333,7 @@ _REAL_CORRELATION_SOURCES = [
     (find_teco_correlations, teco_correlation_summary),
     (find_duke_correlations, duke_correlation_summary),
     (find_jea_correlations, correlation_summary),
-    (find_tallahassee_correlations, duke_correlation_summary),
+    (find_tallahassee_correlations, correlation_summary),
     (find_talquin_correlations, correlation_summary),
     (find_fpuc_incident_correlations, duke_correlation_summary),
     (find_preco_correlations, correlation_summary),

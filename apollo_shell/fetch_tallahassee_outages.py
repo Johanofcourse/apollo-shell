@@ -1,10 +1,7 @@
 import os
-from datetime import datetime, timezone
 
 import requests
 from dotenv import load_dotenv
-
-from fetch_teco_outages import categorize_reason, categorize_status
 
 load_dotenv()
 
@@ -18,13 +15,10 @@ load_dotenv()
 # originally captured used /1/query and happened to return the right
 # field schema (lat/lon/region/status/cause/customers/off/etr/ticket)
 # with zero matching features that day, which looked identical to a
-# real empty Outages response; once a real request came back from that
-# same URL, it turned out to be the boundary polygon instead (fields
-# OBJECTID/SHAPE_Length/SHAPE_Area only). Caught before shipping by
-# re-querying the layer list and layer 0 directly, not by a crash -
-# every "ticket" read from a boundary feature is None, and
-# get_incidents_summary() silently drops anything without one, so this
-# would have reported zero incidents forever without ever erroring.
+# real empty Outages response; once real requests came back from that
+# same URL, they turned out to have real incidents but every one had a
+# null "ticket" field - not a wrong-layer symptom after all (see
+# get_rollup_summary() below for what that turned out to mean).
 TALLAHASSEE_API_URL = os.environ.get("TALLAHASSEE_API_URL")
 
 # The canonical utility name, matching the exact string this same real
@@ -32,17 +26,19 @@ TALLAHASSEE_API_URL = os.environ.get("TALLAHASSEE_API_URL")
 # ("City of Tallahassee").
 UTILITY_NAME = "City of Tallahassee"
 
-# Tallahassee's outage map has a real "region" field (an integer 1-5)
-# but the layer that names those regions numbers its rows by internal
-# id, not by the region number itself - internal id 2 is named
-# "4 West", internal id 4 is "3 South". Joining naively on that
-# internal id would silently mislabel outages (region 2 would resolve
-# to "West" instead of "East"). The real key is the leading digit baked
-# into each region's own name ("2 East" -> 2, "5 Outside" -> 5) -
-# confirmed by fetching that layer directly and comparing it by hand,
-# same class of silent join bug as the county-name mismatches caught
-# earlier in this project (Miami-Dade, St Lucie, DeSoto).
-REGION_NAMES = {1: "North", 2: "East", 3: "South", 4: "West", 5: "Outside"}
+# Tallahassee's outage map has a real "region" field (an integer) but
+# the layer that names those regions numbers its rows by internal id,
+# not by the region number itself - internal id 2 is named "4 West",
+# internal id 4 is "3 South". Joining naively on that internal id would
+# silently mislabel outages (region 2 would resolve to "West" instead
+# of "East"). The real key is the leading digit baked into each
+# region's own name ("2 East" -> 2, "5 Outside" -> 5) - confirmed by
+# fetching that layer directly and comparing it by hand, same class of
+# silent join bug as the county-name mismatches caught earlier in this
+# project (Miami-Dade, St Lucie, DeSoto). Region 0 shows up in real
+# live data too (confirmed 2026-07-18) - not one of the five named
+# zones, so labeled plainly rather than guessed at.
+REGION_NAMES = {0: "Unknown", 1: "North", 2: "East", 3: "South", 4: "West", 5: "Outside"}
 
 # Confirmed against real historical PSC storm reports (2026-07-13): City
 # of Tallahassee's outages have only ever been reported under Leon
@@ -75,64 +71,35 @@ def fetch_tallahassee_outages():
         return []
 
 
-def _epoch_to_iso(millis):
+def get_rollup_summary():
     """
-    This feed's date fields are documented as epoch milliseconds (UTC) - not yet
-    confirmed against a real populated value here, since the feed had
-    zero active incidents (features: []) the day this was written.
-    Worth double-checking the first time a real outage populates
-    'off'/'etr'.
-    """
-    if millis is None:
-        return None
-    return datetime.fromtimestamp(millis / 1000, tz=timezone.utc).isoformat()
+    Fetch City of Tallahassee's current outage features and collapse
+    them into one county-wide total for Leon County.
 
+    Replaced the original incident-level design 2026-07-18 after
+    finding every real feature this feed has ever returned came back
+    with attrs["ticket"] = None - checked directly against 9 real,
+    concurrent live incidents, not an occasional gap. incident_id was
+    this project's whole basis for tracking a specific incident across
+    polls (same as TECO/Duke), so every real Tallahassee incident was
+    silently dropped by the old get_incidents_summary()'s "no ticket, no
+    track" rule - this table had logged zero rows in this project's
+    entire life despite real, ongoing outages the whole time. No other
+    field in this feed is a reliable stable identity for a specific
+    incident across polls (OBJECTID reflects query row order, not a
+    persistent id).
 
-def parse_incidents(raw_features):
+    Tallahassee's whole territory is Leon County only (see COUNTY), so
+    collapsing to one county-wide total isn't a granularity loss the
+    way it would be for a multi-county source - it gives up per-
+    incident cause/region/crew-status detail this feed can't reliably
+    let us track the identity of anyway. Same shape as
+    fetch_talquin_outages.get_talquin_records(): a list of one dict per
+    county (here, always exactly one).
     """
-    Convert raw Tallahassee outage features into a flat list of
-    dicts, matching the same incident shape TECO/Duke use (utility,
-    incident_id, customer_count, lat, lon, county, cause/cause_category)
-    plus two fields unique to this source: region_name (the sub-county
-    zone) and status_category (reusing TECO's own free-text categorizer,
-    since Tallahassee's "status" field is the same kind of free text).
-    """
-    records = []
-    for feature in raw_features:
-        attrs = feature.get("attributes", {})
-        region = attrs.get("region")
-        status = attrs.get("status")
-        cause = attrs.get("cause")
-        ticket = attrs.get("ticket")
-
-        records.append({
-            "utility": UTILITY_NAME,
-            "incident_id": str(ticket) if ticket is not None else None,
-            "customer_count": attrs.get("customers"),
-            "lat": attrs.get("lat"),
-            "lon": attrs.get("lon"),
-            "county": COUNTY,
-            "region_name": REGION_NAMES.get(region, str(region) if region is not None else None),
-            "status": status,
-            "status_category": categorize_status(status),
-            "cause": cause,
-            "cause_category": categorize_reason(cause),
-            "outage_type": attrs.get("outagetype"),
-            "reported_start_time": _epoch_to_iso(attrs.get("off")),
-            "estimated_restoration": _epoch_to_iso(attrs.get("etr")),
-        })
-    return records
-
-
-def get_incidents_summary():
-    """
-    Fetch and parse current City of Tallahassee outage incidents in one
-    call. Incidents missing a ticket number are dropped - incident_id is
-    the whole basis for lifecycle tracking (see
-    OutageDatabase.sync_tallahassee_incident_events), same as an
-    unidentifiable TECO/Duke incident would be.
-    """
-    return [r for r in parse_incidents(fetch_tallahassee_outages()) if r["incident_id"]]
+    features = fetch_tallahassee_outages()
+    customers_out = sum((f.get("attributes", {}).get("customers") or 0) for f in features)
+    return [{"county": COUNTY, "customers_out": customers_out}]
 
 
 def main():
@@ -143,18 +110,8 @@ def main():
     print("CITY OF TALLAHASSEE LIVE OUTAGE DATA")
     print("=" * 70)
 
-    incidents = get_incidents_summary()
-    if not incidents:
-        print("\nNo active Tallahassee outage incidents.")
-    else:
-        total = sum(i["customer_count"] or 0 for i in incidents)
-        print(f"\n{len(incidents)} active incidents, {total} customers affected\n")
-        for incident in incidents:
-            print(f"  Ticket {incident['incident_id']}: {incident['customer_count']} customers")
-            print(f"    Region: {incident['region_name']} | Cause: {incident['cause']} ({incident['cause_category']})")
-            print(f"    Status: {incident['status']} ({incident['status_category']}) | ETR: {incident['estimated_restoration']}")
-            print()
-
+    summary = get_rollup_summary()
+    print(f"\n{summary[0]['county']} County: {summary[0]['customers_out']:,} customers currently out\n")
     print("=" * 70)
 
 

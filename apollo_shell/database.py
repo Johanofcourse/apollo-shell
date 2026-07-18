@@ -277,49 +277,41 @@ class OutageDatabase:
         # so a fresh row every poll cycle keyed on our own fetched_at is
         # the real timeline), plus two fields unique to this source:
         # region_name (Tallahassee's own 5-zone sub-county breakdown) and
-        # status/status_category (reuses TECO's free-text categorizer).
-        # Its whole territory is Leon County only (confirmed against real
-        # historical PSC storm reports), so there's no per-record
-        # reverse-geocoded county the way Duke's lat/lon needs.
+        # City of Tallahassee raw county-level snapshots - a county-
+        # rollup source like Talquin/PRECO, not an incident list.
+        # Redesigned 2026-07-18: the original incident-level design
+        # (incidents/incident_events, keyed by a "ticket" field) turned
+        # out to be unusable in practice - every real incident this feed
+        # has ever returned came back with ticket = None, so this
+        # project's incident-identity-based lifecycle tracking could
+        # never actually track a single one; the old tables logged zero
+        # rows in this project's entire life despite real, ongoing
+        # outages the whole time (see fetch_tallahassee_outages.
+        # get_rollup_summary()). No customers_served/percentage_out
+        # here - unlike Talquin/PRECO, this feed never provides a real
+        # customer-base denominator per poll, and this project doesn't
+        # fabricate one from old storm reports.
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS tallahassee_incidents (
+            CREATE TABLE IF NOT EXISTS tallahassee_outages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                incident_id TEXT NOT NULL,
-                fetched_at TEXT NOT NULL,
-                utility TEXT,
-                customer_count INTEGER,
-                lat REAL,
-                lon REAL,
-                county TEXT,
-                region_name TEXT,
-                status TEXT,
-                status_category TEXT,
-                cause TEXT,
-                cause_category TEXT,
-                outage_type TEXT,
-                reported_start_time TEXT,
-                estimated_restoration TEXT
+                timestamp TEXT NOT NULL,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
+                customers_out INTEGER NOT NULL
             )
         ''')
 
-        # City of Tallahassee incident lifecycle tracking - same
-        # open-on-first-seen/close-on-disappearance approach as
-        # teco_incident_events/duke_incident_events (the feed only lists
-        # currently-active incidents).
+        # City of Tallahassee county-level lifecycle tracking -
+        # identical algorithm to talquin_outage_events (open on
+        # customers_out > 0, track peak, close on return to 0).
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS tallahassee_incident_events (
+            CREATE TABLE IF NOT EXISTS tallahassee_outage_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                incident_id TEXT NOT NULL,
-                utility TEXT,
-                county TEXT,
-                region_name TEXT,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
                 start_time TEXT NOT NULL,
                 end_time TEXT,
-                peak_customer_count INTEGER,
-                cause TEXT,
-                cause_category TEXT,
-                lat REAL,
-                lon REAL
+                peak_customers_out INTEGER NOT NULL
             )
         ''')
 
@@ -720,14 +712,14 @@ class OutageDatabase:
         ''')
 
         # LWBU raw incident snapshots - same incident-level shape as
-        # duke_incidents/tallahassee_incidents (no per-record update_time
-        # of its own, so a fresh row every poll cycle keyed on our own
-        # fetched_at is the real timeline), plus real fields unique to
-        # this source: crew_assigned, work_status, and streets_affected
-        # (this feed reports these directly - a genuinely richer feed
-        # than TECO's/Duke's/Tallahassee's). Its whole territory is Palm
-        # Beach County only (see fetch_lwbu_outages.SERVICE_COUNTY), so
-        # there's no per-record reverse-geocoded county needed.
+        # duke_incidents (no per-record update_time of its own, so a
+        # fresh row every poll cycle keyed on our own fetched_at is the
+        # real timeline), plus real fields unique to this source:
+        # crew_assigned, work_status, and streets_affected (this feed
+        # reports these directly - a genuinely richer feed than TECO's/
+        # Duke's). Its whole territory is Palm Beach County only (see
+        # fetch_lwbu_outages.SERVICE_COUNTY), so there's no per-record
+        # reverse-geocoded county needed.
         #
         # Kept as its own table, separate from lwbu_outages above,
         # deliberately NOT fed into the same aggregate/correlation paths
@@ -761,9 +753,8 @@ class OutageDatabase:
         ''')
 
         # LWBU incident lifecycle tracking - same open-on-first-seen/
-        # close-on-disappearance approach as duke_incident_events/
-        # tallahassee_incident_events (the feed only lists
-        # currently-active incidents).
+        # close-on-disappearance approach as duke_incident_events (the
+        # feed only lists currently-active incidents).
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS lwbu_incident_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -893,8 +884,8 @@ class OutageDatabase:
         ''')
 
         cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_tallahassee_incident_events_open
-            ON tallahassee_incident_events(incident_id, end_time)
+            CREATE INDEX IF NOT EXISTS idx_tallahassee_outage_events_open
+            ON tallahassee_outage_events(utility, county, end_time)
         ''')
 
         cursor.execute('''
@@ -1043,18 +1034,14 @@ class OutageDatabase:
             ON duke_system_alerts(duke_alert_id)
         ''')
 
-        # Same reasoning as duke_incidents above: no per-record update
-        # timestamp of its own, so this is mostly a defensive guard
-        # against a literal double-run within one cycle rather than real
-        # content-based dedup.
         cursor.execute('''
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_tallahassee_incidents_unique
-            ON tallahassee_incidents(incident_id, fetched_at)
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_tallahassee_outages_unique
+            ON tallahassee_outages(timestamp, utility, county)
         ''')
 
         cursor.execute('''
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_tallahassee_incident_events_unique
-            ON tallahassee_incident_events(incident_id, start_time)
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_tallahassee_outage_events_unique
+            ON tallahassee_outage_events(utility, county, start_time)
         ''')
 
         cursor.execute('''
@@ -2634,13 +2621,13 @@ class OutageDatabase:
     def sync_lwbu_incident_events(self, records, timestamp=None):
         """
         Track LWBU incident lifecycle. Same approach as
-        sync_tallahassee_incident_events(): an event opens the first
+        sync_duke_incident_events(): an event opens the first
         time an incident_id is seen, stays updated with the latest known
         values while still being reported, and closes once an
         incident_id that was open stops appearing in a poll at all.
 
         NOT SAFE TO REPLAY - same characteristic as
-        sync_tallahassee_incident_events() (see its docstring).
+        sync_duke_incident_events() (see its docstring).
 
         Args:
             records: list of dicts as returned by
@@ -3701,15 +3688,34 @@ class OutageDatabase:
             "history": self._get_incident_raw_history("fpuc_incidents", incident_id),
         }
 
-    def get_tallahassee_incident_detail(self, incident_id):
+    def get_tallahassee_outage_detail(self, utility, county, start_time):
         """
-        Same as get_teco_incident_detail(), for a City of Tallahassee
-        ticket number.
+        Same idea as get_talquin_outage_detail(), for one City of
+        Tallahassee county-level outage occurrence - no customers_served/
+        percentage_out columns to select, since this feed never
+        provides a real customer-base denominator (see
+        tallahassee_outages).
         """
-        return {
-            "events": self._get_incident_events("tallahassee_incident_events", incident_id),
-            "history": self._get_incident_raw_history("tallahassee_incidents", incident_id),
-        }
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM tallahassee_outage_events WHERE utility = ? AND county = ? AND start_time = ?
+        ''', (utility, county, start_time))
+        event = cursor.fetchone()
+        if event is None:
+            return None
+        event = dict(event)
+
+        end_bound = event["end_time"] or datetime.now().isoformat()
+        cursor.execute('''
+            SELECT timestamp, customers_out FROM tallahassee_outages
+            WHERE utility = ? AND county = ? AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp
+        ''', (utility, county, start_time, end_bound))
+        history = [dict(row) for row in cursor.fetchall()]
+
+        return {"event": event, "history": history}
 
     def get_fpl_outage_detail(self, utility, county, start_time):
         """
@@ -4517,163 +4523,131 @@ class OutageDatabase:
         return [dict(row) for row in cursor.fetchall()]
 
 
-    def log_tallahassee_incidents(self, records):
+    def log_tallahassee_outages(self, outage_list, timestamp=None):
         """
-        Insert City of Tallahassee live outage incidents (from
-        fetch_tallahassee_outages.py).
+        Insert City of Tallahassee's raw county-level snapshot (from
+        fetch_tallahassee_outages.get_rollup_summary()). Same shape/
+        principle as log_talquin_outages(), minus customers_served/
+        percentage_out - this feed never provides a real customer-base
+        denominator per poll, unlike Talquin/PRECO.
 
         Args:
-            records: list of dicts with keys: incident_id, utility,
-                     customer_count, lat, lon, county, region_name, status,
-                     status_category, cause, cause_category, outage_type,
-                     reported_start_time, estimated_restoration
-        """
-        conn = self.connect()
-        cursor = conn.cursor()
-
-        fetched_at = datetime.now().isoformat()
-
-        rows = [
-            (
-                r['incident_id'], fetched_at, r.get('utility'),
-                r.get('customer_count'), r.get('lat'), r.get('lon'),
-                r.get('county'), r.get('region_name'),
-                r.get('status'), r.get('status_category'),
-                r.get('cause'), r.get('cause_category'), r.get('outage_type'),
-                r.get('reported_start_time'), r.get('estimated_restoration'),
-            )
-            for r in records
-        ]
-
-        cursor.executemany('''
-            INSERT OR IGNORE INTO tallahassee_incidents
-                (incident_id, fetched_at, utility, customer_count, lat, lon,
-                 county, region_name, status, status_category, cause,
-                 cause_category, outage_type, reported_start_time,
-                 estimated_restoration)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', rows)
-
-        conn.commit()
-        print(f"Logged {len(rows)} City of Tallahassee incident records")
-
-
-    def sync_tallahassee_incident_events(self, records, timestamp=None):
-        """
-        Track City of Tallahassee incident lifecycle. Same approach as
-        sync_duke_incident_events: an event opens the first time an
-        incident_id is seen, stays updated with the latest known values
-        while still being reported, and closes once an incident_id that
-        was open stops appearing in a poll at all (this feed, like TECO's
-        and Duke's, only lists currently-active incidents).
-
-        NOT SAFE TO REPLAY - same characteristic as
-        sync_teco_incident_events/sync_duke_incident_events (see their
-        docstrings): only safe for calls arriving in real chronological
-        order, one live poll at a time.
-
-        Args:
-            records: list of dicts as returned by
-                fetch_tallahassee_outages.parse_incidents()
-            timestamp: ISO timestamp for this poll; defaults to now
+            outage_list: list of dicts with keys: county, customers_out
+            timestamp: ISO timestamp to record for this batch; defaults to now
         """
         conn = self.connect()
         cursor = conn.cursor()
 
         timestamp = timestamp or datetime.now().isoformat()
-        current_ids = {r['incident_id'] for r in records}
+
+        records = [
+            (timestamp, "City of Tallahassee", outage['county'], outage['customers_out'])
+            for outage in outage_list
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO tallahassee_outages (timestamp, utility, county, customers_out)
+            VALUES (?, ?, ?, ?)
+        ''', records)
+
+        conn.commit()
+        print(f"Logged {len(records)} City of Tallahassee outage records")
+
+
+    def sync_tallahassee_outage_events(self, outage_list, timestamp=None):
+        """
+        Update tallahassee_outage_events from a fresh county-level
+        snapshot. Identical algorithm to sync_talquin_outage_events() -
+        kept as Tallahassee's own dedicated table/method, same one-
+        utility-per-table convention every other source here uses.
+
+        NOT SAFE TO REPLAY - same characteristic as sync_outage_events()
+        (see its docstring): only safe for calls arriving in real
+        chronological order, one live poll at a time.
+
+        Args:
+            outage_list: list of dicts with keys: county, customers_out
+            timestamp: ISO timestamp for opened/closed events; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        utility = "City of Tallahassee"
 
         opened = 0
         closed = 0
 
-        for r in records:
+        for outage in outage_list:
+            county = outage['county']
+            customers_out = outage['customers_out']
+
             cursor.execute('''
-                SELECT id, peak_customer_count FROM tallahassee_incident_events
-                WHERE incident_id = ? AND end_time IS NULL
-            ''', (r['incident_id'],))
+                SELECT id, peak_customers_out FROM tallahassee_outage_events
+                WHERE utility = ? AND county = ? AND end_time IS NULL
+            ''', (utility, county))
             open_event = cursor.fetchone()
 
-            if open_event is None:
-                cursor.execute('''
-                    INSERT OR IGNORE INTO tallahassee_incident_events
-                        (incident_id, utility, county, region_name, start_time,
-                         end_time, peak_customer_count, cause, cause_category,
-                         lat, lon)
-                    VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
-                ''', (
-                    r['incident_id'], r.get('utility'), r.get('county'), r.get('region_name'),
-                    timestamp, r.get('customer_count'), r.get('cause'), r.get('cause_category'),
-                    r.get('lat'), r.get('lon'),
-                ))
-                if cursor.rowcount > 0:
-                    opened += 1
+            if customers_out > 0:
+                if open_event is None:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO tallahassee_outage_events
+                            (utility, county, start_time, end_time, peak_customers_out)
+                        VALUES (?, ?, ?, NULL, ?)
+                    ''', (utility, county, timestamp, customers_out))
+                    if cursor.rowcount > 0:
+                        opened += 1
+                elif customers_out > open_event['peak_customers_out']:
+                    cursor.execute('''
+                        UPDATE tallahassee_outage_events SET peak_customers_out = ? WHERE id = ?
+                    ''', (customers_out, open_event['id']))
             else:
-                peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
-                cursor.execute('''
-                    UPDATE tallahassee_incident_events
-                    SET peak_customer_count = ?, utility = ?, county = ?, region_name = ?,
-                        cause = ?, cause_category = ?, lat = ?, lon = ?
-                    WHERE id = ?
-                ''', (
-                    peak, r.get('utility'), r.get('county'), r.get('region_name'),
-                    r.get('cause'), r.get('cause_category'),
-                    r.get('lat'), r.get('lon'), open_event['id'],
-                ))
-
-        cursor.execute('SELECT id, incident_id FROM tallahassee_incident_events WHERE end_time IS NULL')
-        for row in cursor.fetchall():
-            if row['incident_id'] not in current_ids:
-                cursor.execute('''
-                    UPDATE tallahassee_incident_events SET end_time = ? WHERE id = ?
-                ''', (timestamp, row['id']))
-                closed += 1
+                if open_event is not None:
+                    cursor.execute('''
+                        UPDATE tallahassee_outage_events SET end_time = ? WHERE id = ?
+                    ''', (timestamp, open_event['id']))
+                    closed += 1
 
         conn.commit()
-        print(f"Tallahassee incident events: {opened} opened, {closed} closed this cycle")
+        print(f"Tallahassee outage events: {opened} opened, {closed} closed this cycle")
 
 
     def get_tallahassee_open_events(self):
         """
-        Return currently open tallahassee_incident_events (end_time IS
+        Return currently open tallahassee_outage_events (end_time IS
         NULL), worst (by peak customer count) first. Includes
-        current_customer_count, current status, and estimated_restoration
-        from the latest tallahassee_incidents row fetched for that
-        incident_id, alongside the lifecycle peak - same "peak vs. right
-        now" reasoning as get_open_events(). Unlike TECO's equivalent
-        (whose lifecycle table never actually stored estimated_restoration
-        at all, so its dashboard column has always silently shown "—"),
-        this join pulls both fields for real since the raw data is there.
+        current_customers_out from the latest tallahassee_outages
+        snapshot for that county, alongside the lifecycle peak - same
+        "peak vs. right now" reasoning as get_talquin_open_events().
         """
         conn = self.connect()
         cursor = conn.cursor()
 
         cursor.execute('''
             SELECT oe.*,
-                   cur.customer_count AS current_customer_count,
-                   cur.status AS current_status,
-                   cur.estimated_restoration AS current_estimated_restoration
-            FROM tallahassee_incident_events oe
-            LEFT JOIN tallahassee_incidents cur
-                ON cur.incident_id = oe.incident_id
-                AND cur.fetched_at = (
-                    SELECT MAX(fetched_at) FROM tallahassee_incidents t2
-                    WHERE t2.incident_id = oe.incident_id
+                   cur.customers_out AS current_customers_out
+            FROM tallahassee_outage_events oe
+            LEFT JOIN tallahassee_outages cur
+                ON cur.utility = oe.utility AND cur.county = oe.county
+                AND cur.timestamp = (
+                    SELECT MAX(timestamp) FROM tallahassee_outages o2
+                    WHERE o2.utility = oe.utility AND o2.county = oe.county
                 )
             WHERE oe.end_time IS NULL
-            ORDER BY oe.peak_customer_count DESC
+            ORDER BY oe.peak_customers_out DESC
         ''')
         return [dict(row) for row in cursor.fetchall()]
 
 
     def get_tallahassee_recent_closed_events(self, limit=10):
         """
-        Return the most recently closed tallahassee_incident_events.
+        Return the most recently closed tallahassee_outage_events.
         """
         conn = self.connect()
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT * FROM tallahassee_incident_events
+            SELECT * FROM tallahassee_outage_events
             WHERE end_time IS NOT NULL
             ORDER BY end_time DESC
             LIMIT ?

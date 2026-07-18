@@ -439,17 +439,24 @@ def duke_correlation_summary(matches):
 
 def find_tallahassee_correlations(db_path="outages.db", days=None):
     """
-    Match City of Tallahassee incidents to weather alerts active in the
-    same county at the same time. Same logic/shape as
-    find_duke_correlations() - Tallahassee's raw incidents have no
-    per-record update time either, so fetched_at (our own poll
-    timestamp) is used as the incident time, same reasoning as Duke.
+    Match City of Tallahassee's raw county-level snapshots to weather
+    alerts active in Leon County at the same time. Same logic/shape as
+    find_talquin_correlations() - a county-rollup source, not an
+    incident shape like TECO/Duke - reads tallahassee_outages rather
+    than outages, kept as its own dedicated table per the same one-
+    utility-per-table convention used everywhere else in this project.
 
-    days: same windowing as find_correlations()/find_teco_correlations().
+    Redesigned 2026-07-18 from an original incident-shaped design that
+    never actually worked - see fetch_tallahassee_outages.
+    get_rollup_summary() for why.
 
-    Returns a list of {"incident": {...}, "alert": {...}} dicts - reuse
-    duke_correlation_summary() directly for aggregation, since the shape
-    (and even the summary function's body) is identical to Duke's/TECO's.
+    Only rows with a real outage (customers_out > 0) are considered -
+    same reasoning as find_talquin_correlations().
+
+    days: same windowing as find_correlations().
+
+    Returns a list of {"outage": {...}, "alert": {...}} dicts - reuse
+    correlation_summary() below directly, since the shape matches FPL's.
     """
     db = OutageDatabase(db_path)
     conn = db.connect()
@@ -457,17 +464,17 @@ def find_tallahassee_correlations(db_path="outages.db", days=None):
 
     cutoff = _window_cutoff(days)
     if cutoff is not None:
-        cursor.execute('SELECT * FROM tallahassee_incidents WHERE fetched_at >= ?', (cutoff,))
+        cursor.execute('SELECT * FROM tallahassee_outages WHERE customers_out > 0 AND timestamp >= ?', (cutoff,))
     else:
-        cursor.execute('SELECT * FROM tallahassee_incidents')
-    incidents = [dict(row) for row in cursor.fetchall()]
+        cursor.execute('SELECT * FROM tallahassee_outages WHERE customers_out > 0')
+    outages = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute('SELECT * FROM weather_alerts')
     alerts = [dict(row) for row in cursor.fetchall()]
 
     db.close()
 
-    return _match_items_to_alerts(incidents, alerts, timestamp_key='fetched_at', item_label='incident')
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
 def find_jea_correlations(db_path="outages.db", days=None):
@@ -1024,8 +1031,14 @@ def correlation_summary(matches):
         })
 
         entry["outage_keys"].add((match["outage"]["county"], match["outage"]["timestamp"]))
+        # .get() rather than direct indexing - added 2026-07-18 for City
+        # of Tallahassee, the first "outage"-shaped rollup source with no
+        # real customer-base denominator at all (see
+        # fetch_tallahassee_outages.get_rollup_summary()). Every other
+        # real source here always provides a real percentage_out, so
+        # this is a pure widening, not a behavior change for them.
         entry["max_percentage_out"] = max(
-            entry["max_percentage_out"], match["outage"]["percentage_out"]
+            entry["max_percentage_out"], match["outage"].get("percentage_out") or 0.0
         )
         entry["matched_alerts"][_alert_identity(match["alert"])] = (
             match["alert"]["event_type"], match["confidence"]

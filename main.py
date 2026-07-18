@@ -16,7 +16,7 @@ from fetch_duke_outages import (
     get_system_alerts_summary as get_duke_system_alerts_summary,
 )
 from fetch_jea_outages import get_jea_summary
-from fetch_tallahassee_outages import get_incidents_summary as get_tallahassee_incidents_summary
+from fetch_tallahassee_outages import get_rollup_summary as get_tallahassee_records, TALLAHASSEE_API_URL
 from fetch_talquin_outages import get_talquin_records, TALQUIN_API_URL
 from fetch_fpuc_outages import fetch_fpuc_outage_summary, outages_to_records as fpuc_outages_to_records, markers_to_incidents, FPUC_API_URL
 from fetch_preco_outages import get_preco_records, PRECO_API_URL
@@ -166,18 +166,33 @@ def run_jea_cycle(db):
 
 def run_tallahassee_cycle(db):
     """
-    Fetch City of Tallahassee's live outage incidents, save them, and
-    update tallahassee_incident_events lifecycle tracking (start/end per
-    incident).
+    Fetch City of Tallahassee's live outage data, save the raw
+    snapshot, and update tallahassee_outage_events lifecycle tracking
+    (start/end for Leon County) - a county-rollup source like Talquin,
+    not an incident list (see fetch_tallahassee_outages.
+    get_rollup_summary() for why the original incident-level design,
+    which never logged a single real row in this project's life, was
+    replaced 2026-07-18).
+
+    Unlike run_talquin_cycle(), there's no "empty means the request
+    failed" case to detect here: Tallahassee genuinely has zero active
+    outages plenty of cycles (get_rollup_summary() always returns
+    exactly one record for Leon County, customers_out=0 included), so
+    an empty result isn't a distinguishable failure signal the way it
+    is for Talquin's always-full 10-county feed. A real network/API
+    failure already prints its own message inside
+    fetch_tallahassee_outages() and comes back indistinguishable from
+    "genuinely nothing happening" - the same tradeoff every incident-
+    level source here already has.
     """
-    incidents = get_tallahassee_incidents_summary()
-    if not incidents:
-        print("Skipping Tallahassee save - no active incidents")
+    if not TALLAHASSEE_API_URL:
+        print("Skipping Tallahassee save - TALLAHASSEE_API_URL not configured")
         return
 
+    records = get_tallahassee_records()
     timestamp = datetime.now().isoformat()
-    db.log_tallahassee_incidents(incidents)
-    db.sync_tallahassee_incident_events(incidents, timestamp=timestamp)
+    db.log_tallahassee_outages(records, timestamp=timestamp)
+    db.sync_tallahassee_outage_events(records, timestamp=timestamp)
 
 
 def run_talquin_cycle(db):
@@ -530,12 +545,12 @@ def run_correlation_cycle():
     if not tallahassee_matches:
         print("Tallahassee correlation: no matches this cycle")
     else:
-        tallahassee_summary = duke_correlation_summary(tallahassee_matches)
+        tallahassee_summary = correlation_summary(tallahassee_matches)
         print(f"Tallahassee correlation: {len(tallahassee_matches)} matches across {len(tallahassee_summary)} counties")
         for county, stats in tallahassee_summary.items():
             print(
-                f"  {county}: {stats['incident_count']} incident(s), "
-                f"max {stats['max_customer_count']} customers, alerts={stats['alert_types']}, "
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"alerts={stats['alert_types']}, "
                 f"confidence={stats['confidence_breakdown']}"
             )
 

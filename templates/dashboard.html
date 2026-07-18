@@ -583,28 +583,23 @@
   {% endif %}
   </div>
 
-  <h3>City of Tallahassee — Currently Open Incidents ({{ tallahassee_open_events|length }})</h3>
+  <h3>City of Tallahassee — Currently Open Outages ({{ tallahassee_open_events|length }})</h3>
   <div class="wrap">
   {% if tallahassee_open_events %}
     <table>
-      <tr><th>Incident</th><th>County</th><th>Area</th><th>Current</th><th>Peak</th><th>Cause</th><th>Status</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
+      <tr><th>County</th><th>Current Customers Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
       {% for e in tallahassee_open_events %}
       <tr>
-        <td><a href="/incident?source=tallahassee&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
-        <td>{{ e.county or "—" }}</td>
-        <td>{{ e.region_name or "—" }}</td>
-        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
-        <td class="pct-bad">{{ e.peak_customer_count }}</td>
-        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
-        <td>{{ e.current_status or "—" }}</td>
-        <td>{{ e.current_estimated_restoration | humanize }}</td>
+        <td><a href="/incident?source=tallahassee&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
+        <td class="pct-bad">{{ "{:,}".format(e.peak_customers_out) }}</td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.duration }}</td>
       </tr>
       {% endfor %}
     </table>
   {% else %}
-    <div class="empty">No open Tallahassee incidents right now.</div>
+    <div class="empty">No open Tallahassee outages right now.</div>
   {% endif %}
   </div>
 
@@ -1055,14 +1050,11 @@
   <div class="wrap">
   {% if tallahassee_closed_events %}
     <table>
-      <tr><th>Incident</th><th>County</th><th>Area</th><th>Peak Customers</th><th>Cause</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      <tr><th>County</th><th>Peak Customers Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
       {% for e in tallahassee_closed_events %}
       <tr>
-        <td><a href="/incident?source=tallahassee&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id }}</a></td>
-        <td>{{ e.county or "—" }}</td>
-        <td>{{ e.region_name or "—" }}</td>
-        <td class="pct-ok">{{ e.peak_customer_count }}</td>
-        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
+        <td><a href="/incident?source=tallahassee&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td class="pct-ok">{{ "{:,}".format(e.peak_customers_out) }}</td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.end_time | humanize }}</td>
         <td>{{ e.duration }}</td>
@@ -1462,12 +1454,11 @@
   <div class="wrap">
   {% if tallahassee_correlation %}
     <table>
-      <tr><th>County</th><th>Correlated Incidents</th><th>Max Customers</th><th>Alert Types</th><th>Confidence</th></tr>
+      <tr><th>County</th><th>Correlated Outages</th><th>Alert Types</th><th>Confidence</th></tr>
       {% for county, stats in tallahassee_correlation.items() %}
       <tr>
         <td>{{ county }}</td>
-        <td>{{ stats.incident_count }}</td>
-        <td>{{ stats.max_customer_count }}</td>
+        <td>{{ stats.outage_count }}</td>
         <td>{{ stats.alert_types_display }}</td>
         <td>
           {% if stats.confidence_bar %}
@@ -1483,7 +1474,7 @@
       {% endfor %}
     </table>
   {% else %}
-    <div class="empty">No correlated Tallahassee incident/weather events right now.</div>
+    <div class="empty">No correlated Tallahassee outage/weather events right now.</div>
   {% endif %}
   </div>
 

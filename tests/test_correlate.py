@@ -266,43 +266,42 @@ class TestFindCorrelationsWindow:
 
 class TestFindTallahasseeCorrelations:
     """
-    find_tallahassee_correlations() reuses the exact same matching helpers
-    (_window_cutoff/_parse_timestamp/_county_in_alert/_alert_covers_time)
-    already proven via find_correlations()/find_duke_correlations() above -
-    this is a wiring smoke test (right table/field names), not a re-proof
-    of that shared logic.
+    find_tallahassee_correlations() reuses the exact same matching
+    helpers already proven via find_correlations()/find_jea_correlations()
+    above (it shares correlation_summary() too, since Tallahassee's a
+    county-rollup source like Talquin, not an incident shape - see
+    fetch_tallahassee_outages.get_rollup_summary() for why the original
+    incident-level design was replaced 2026-07-18) - this is a wiring
+    smoke test, not a re-proof of shared logic.
     """
 
-    def test_matches_a_tallahassee_incident_to_an_overlapping_alert(self, db_path):
-        # log_tallahassee_incidents() always stamps fetched_at as
-        # datetime.now() (no timestamp override, same as Duke's) - the
-        # alert window has to actually bracket "now", not a fixed date.
-        now = datetime.now()
+    def test_matches_a_tallahassee_outage_to_an_overlapping_alert(self, db_path):
         db = OutageDatabase(db_path)
-        db.log_weather_alerts([{
-            "id": "test-alert-1", "event": "Heat Advisory", "severity": "Severe",
-            "urgency": "Expected", "areas": "Leon",
-            "effective": (now - timedelta(hours=1)).isoformat(),
-            "expires": (now + timedelta(hours=1)).isoformat(),
-            "headline": "test", "description": "test",
-        }])
-        db.log_tallahassee_incidents([{
-            "incident_id": "1", "utility": "City of Tallahassee",
-            "customer_count": 30, "lat": 30.44, "lon": -84.28, "county": "Leon",
-            "region_name": "East", "status": "Investigating", "status_category": "investigating",
-            "cause": "Tree down", "cause_category": "vegetation", "outage_type": "Unplanned",
-            "reported_start_time": None, "estimated_restoration": None,
-        }])
+        db.log_weather_alerts(_weather_alert("Leon"))
+        db.log_tallahassee_outages(
+            [{"county": "Leon", "customers_out": 30}],
+            timestamp="2026-01-01T12:00:00",
+        )
         db.close()
 
         matches = find_tallahassee_correlations(db_path, days=None)
         assert len(matches) == 1
 
-        summary = duke_correlation_summary(matches)
-        assert summary["Leon"]["incident_count"] == 1
-        assert summary["Leon"]["max_customer_count"] == 30
+        summary = correlation_summary(matches)
+        assert summary["Leon"]["outage_count"] == 1
 
-    def test_no_matches_when_no_incidents_logged(self, db_path):
+    def test_zero_customer_snapshots_are_not_matched(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Leon"))
+        db.log_tallahassee_outages(
+            [{"county": "Leon", "customers_out": 0}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_tallahassee_correlations(db_path, days=None) == []
+
+    def test_no_matches_when_no_outages_logged(self, db_path):
         db = OutageDatabase(db_path)
         db.log_weather_alerts(_weather_alert("Leon"))
         db.close()

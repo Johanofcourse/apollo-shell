@@ -95,7 +95,7 @@
   {% if not detail %}
     <div class="notice">
       No record found for
-      {% if source in ("teco", "duke", "tallahassee", "fpuc_incident", "lwbu_incident") %}
+      {% if source in ("teco", "duke", "fpuc_incident", "lwbu_incident") %}
         incident <code>{{ incident_id }}</code> ({{ source|upper }}).
       {% elif source in ("fpl", "jea") %}
         {{ county }} ({{ source|upper }}) at the given start time.
@@ -106,7 +106,7 @@
       typing an id from memory - if you got here that way, double-check the link.
     </div>
 
-  {% elif source in ("teco", "duke", "tallahassee", "fpuc_incident", "lwbu_incident") %}
+  {% elif source in ("teco", "duke", "fpuc_incident", "lwbu_incident") %}
     {% for ev in detail.events %}
       <div class="episode-block">
         <h2>{{ 'Episode ' ~ loop.index if detail.events|length > 1 else 'Summary' }}</h2>
@@ -180,22 +180,22 @@
         <table>
           <tr>
             <th>Observed At</th>
-            {% if source in ("teco", "tallahassee") %}<th>Status</th>{% endif %}
+            {% if source == "teco" %}<th>Status</th>{% endif %}
             {% if source == "fpuc_incident" %}<th>Substation / Feeder</th>{% endif %}
             {% if source == "lwbu_incident" %}<th>Streets</th><th>Crew / Status</th>{% endif %}
             <th>Customers</th>
             {% if source != "fpuc_incident" %}<th>{{ "Reason" if source == "teco" else "Cause" }}</th>{% endif %}
-            {% if source in ("teco", "tallahassee", "fpuc_incident") %}<th>Est. Restoration</th>{% endif %}
+            {% if source in ("teco", "fpuc_incident") %}<th>Est. Restoration</th>{% endif %}
           </tr>
           {% for row in detail.history %}
             <tr>
               <td>{{ row.fetched_at | humanize }}</td>
-              {% if source in ("teco", "tallahassee") %}<td>{{ row.status or "—" }}</td>{% endif %}
+              {% if source == "teco" %}<td>{{ row.status or "—" }}</td>{% endif %}
               {% if source == "fpuc_incident" %}<td>{{ row.substation or "—" }} / {{ row.feeder or "—" }}</td>{% endif %}
               {% if source == "lwbu_incident" %}<td>{{ row.streets_affected or "—" }}</td><td>{{ "Assigned" if row.crew_assigned else "Unassigned" }} / {{ row.work_status or "—" }}</td>{% endif %}
               <td>{{ "{:,}".format(row.customer_count) if row.customer_count is not none else "—" }}</td>
               {% if source != "fpuc_incident" %}<td>{{ (row.reason if source == "teco" else row.cause) or "—" }}</td>{% endif %}
-              {% if source in ("teco", "tallahassee") %}<td>{{ row.estimated_restoration or "—" }}</td>{% endif %}
+              {% if source == "teco" %}<td>{{ row.estimated_restoration or "—" }}</td>{% endif %}
               {% if source == "fpuc_incident" %}<td>{{ row.estimated_restoration or "—" }}</td>{% endif %}
             </tr>
           {% endfor %}
@@ -211,10 +211,12 @@
         <div class="label">County</div>
         <div class="value">{{ detail.event.county }}</div>
       </div>
+      {% if source != "tallahassee" %}
       <div class="summary-item">
         <div class="label">Peak % Out</div>
         <div class="value">{{ "%.2f"|format(detail.event.peak_percentage_out) }}%</div>
       </div>
+      {% endif %}
       <div class="summary-item">
         <div class="label">Peak Customers</div>
         <div class="value">{{ "{:,}".format(detail.event.peak_customers_out) }}</div>
@@ -239,13 +241,18 @@
     <div class="wrap">
       {% if detail.history %}
         <table>
-          <tr><th>Time</th><th>Customers Out</th><th>Customers Served</th><th>% Out</th></tr>
+          <tr>
+            <th>Time</th><th>Customers Out</th>
+            {% if source != "tallahassee" %}<th>Customers Served</th><th>% Out</th>{% endif %}
+          </tr>
           {% for row in detail.history %}
             <tr>
               <td>{{ row.timestamp | humanize }}</td>
               <td>{{ "{:,}".format(row.customers_out) }}</td>
-              <td>{{ "{:,}".format(row.customers_served) }}</td>
-              <td>{{ "%.2f"|format(row.percentage_out) }}%</td>
+              {% if source != "tallahassee" %}
+                <td>{{ "{:,}".format(row.customers_served) }}</td>
+                <td>{{ "%.2f"|format(row.percentage_out) }}%</td>
+              {% endif %}
             </tr>
           {% endfor %}
         </table>

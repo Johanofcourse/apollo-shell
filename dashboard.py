@@ -39,6 +39,7 @@ from storm_history import (
 from fetch_fpl_outages import UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_jea_outages import UTILITY_NAME as JEA_UTILITY_NAME
 from fetch_talquin_outages import UTILITY_NAME as TALQUIN_UTILITY_NAME
+from fetch_tallahassee_outages import UTILITY_NAME as TALLAHASSEE_UTILITY_NAME
 from fetch_fpuc_outages import UTILITY_NAME as FPUC_UTILITY_NAME
 from fetch_preco_outages import UTILITY_NAME as PRECO_UTILITY_NAME
 from fetch_fkec_outages import UTILITY_NAME as FKEC_UTILITY_NAME
@@ -379,8 +380,8 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
         unified.append({
             "utility": e["utility"],
             "county": e["county"],
-            "customers": e["current_customer_count"],
-            "peak_customers": e["peak_customer_count"],
+            "customers": e["current_customers_out"],
+            "peak_customers": e["peak_customers_out"],
             "start_time": e["start_time"],
             "duration": e["duration"],
         })
@@ -661,7 +662,7 @@ def index():
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
         stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
-    tallahassee_correlation = duke_correlation_summary(tallahassee_matches)
+    tallahassee_correlation = correlation_summary(tallahassee_matches)
     for stats in tallahassee_correlation.values():
         stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
@@ -1224,34 +1225,37 @@ def incident():
     main dashboard (one pair per utility) - not meant to be reached by
     typing an id from memory.
 
-    TECO/Duke/City of Tallahassee/FPUC's per-incident view have a real
-    incident_id, so one id is enough to find everything on file for it
-    (every lifecycle episode, plus the full raw snapshot timeline - both
-    tables log a fresh row every poll cycle while active, so this is a
-    real timeline, not just a start/end pair). FPL/JEA/Talquin/FPUC's
-    combined-territory view/PRECO never give us a discrete incident
-    identity, only a county-level rollup, so a specific occurrence there
-    is identified by (county, start_time) instead - the same natural key
-    their own outage_events-shaped tables' unique index already enforces.
+    TECO/Duke/FPUC's per-incident view have a real incident_id, so one
+    id is enough to find everything on file for it (every lifecycle
+    episode, plus the full raw snapshot timeline - both tables log a
+    fresh row every poll cycle while active, so this is a real
+    timeline, not just a start/end pair). FPL/JEA/Talquin/City of
+    Tallahassee/FPUC's combined-territory view/PRECO never give us a
+    discrete incident identity, only a county-level rollup, so a
+    specific occurrence there is identified by (county, start_time)
+    instead - the same natural key their own outage_events-shaped
+    tables' unique index already enforces. Tallahassee moved from the
+    first group to this one 2026-07-18 - see fetch_tallahassee_outages.
+    get_rollup_summary() for why its old incident-level design never
+    actually worked.
     """
     source = request.args.get("source", "").strip().lower()
     db = OutageDatabase()
 
     detail = None
-    if source in ("teco", "duke", "tallahassee", "fpuc_incident", "lwbu_incident"):
+    if source in ("teco", "duke", "fpuc_incident", "lwbu_incident"):
         incident_id = request.args.get("incident_id", "").strip()
         if incident_id:
             detail_fns = {
                 "teco": db.get_teco_incident_detail,
                 "duke": db.get_duke_incident_detail,
-                "tallahassee": db.get_tallahassee_incident_detail,
                 "fpuc_incident": db.get_fpuc_incident_detail,
                 "lwbu_incident": db.get_lwbu_incident_detail,
             }
             raw_detail = detail_fns[source](incident_id)
             if raw_detail["events"] or raw_detail["history"]:
                 detail = raw_detail
-    elif source in ("fpl", "jea", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "lcec"):
+    elif source in ("fpl", "jea", "talquin", "tallahassee", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "lcec"):
         county = request.args.get("county", "").strip()
         start_time = request.args.get("start_time", "").strip()
         if county and start_time:
@@ -1259,6 +1263,7 @@ def incident():
                 "fpl": (FPL_UTILITY_NAME, db.get_fpl_outage_detail),
                 "jea": (JEA_UTILITY_NAME, db.get_jea_outage_detail),
                 "talquin": (TALQUIN_UTILITY_NAME, db.get_talquin_outage_detail),
+                "tallahassee": (TALLAHASSEE_UTILITY_NAME, db.get_tallahassee_outage_detail),
                 "fpuc": (FPUC_UTILITY_NAME, db.get_fpuc_outage_detail),
                 "preco": (PRECO_UTILITY_NAME, db.get_preco_outage_detail),
                 "fkec": (FKEC_UTILITY_NAME, db.get_fkec_outage_detail),
@@ -1276,7 +1281,7 @@ def incident():
     db.close()
 
     if detail:
-        if source in ("teco", "duke", "tallahassee", "fpuc_incident", "lwbu_incident"):
+        if source in ("teco", "duke", "fpuc_incident", "lwbu_incident"):
             for ev in detail["events"]:
                 ev["duration"] = _duration_since(ev["start_time"], ev["end_time"])
         else:
