@@ -35,6 +35,7 @@ from storm_history import (
     available_history_counties as _available_history_counties,
     all_storms as _all_storms,
     load_history_for_county as _load_history_for_county,
+    fpl_restoration_precedent as _fpl_restoration_precedent,
 )
 from fetch_fpl_outages import UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_jea_outages import UTILITY_NAME as JEA_UTILITY_NAME
@@ -960,6 +961,7 @@ def county_detail():
     active_alerts = []
     historical_confidence = None
     historical_gap_reason = None
+    restoration_precedent = None
 
     if selected_county:
         db = OutageDatabase()
@@ -983,6 +985,14 @@ def county_detail():
         real_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
         combined_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
 
+        # Historical restoration precedent (Phase 3) - only shown when
+        # there's a real, currently-open FPL outage in this county right
+        # now, same gating as the public site - see
+        # storm_history.fpl_restoration_precedent() for why this is the
+        # only honest restoration signal FPL counties can get.
+        fpl_open_now = any(r["utility"] == FPL_UTILITY_NAME for r in real_events)
+        restoration_precedent = _fpl_restoration_precedent(selected_county) if fpl_open_now else None
+
     return render_template(
         "county.html",
         available_counties=COUNTY_PICKER_CHOICES,
@@ -992,6 +1002,7 @@ def county_detail():
         active_alerts=active_alerts,
         historical_confidence=historical_confidence,
         historical_gap_reason=historical_gap_reason,
+        restoration_precedent=restoration_precedent,
     )
 
 

@@ -7,8 +7,16 @@ without either one importing from the other.
 """
 import os
 import sqlite3
+from datetime import datetime
 
 HISTORICAL_DB_PATH = "historical_consolidated.db"
+
+FPL_UTILITY_NAME = "Florida Power and Light Company"
+
+# Below this many real storms on file, a "range" is really just one or
+# two data points wearing a range's clothing - callers should frame it
+# as limited precedent, not a confident historical pattern.
+MIN_STORMS_FOR_CONFIDENT_RANGE = 3
 
 
 def available_history_counties():
@@ -115,3 +123,59 @@ def load_history_for_county(county):
         _storm_bucket(storm["storm_name"], storm["storm_year"])
 
     return sorted(storms_by_key.values(), key=lambda s: s["storm_year"])
+
+
+def fpl_restoration_precedent(county):
+    """
+    Real historical FPL restoration-duration precedent for one county,
+    from the same 17-storm PSC archive load_history_for_county() reads -
+    "storms like this have historically taken about this long to
+    restore here," not a live prediction. FPL's live feed can never
+    support real incident-level restoration modeling (it only ever
+    reports a county-wide customer-out total, and events blur together),
+    so this historical-precedent version is the only honest restoration
+    signal this project can give for FPL counties - see docs/ROADMAP.md's
+    Phase 3 split for why TECO/Duke/JEA get a different treatment later.
+
+    Returns None if FPL has no usable real data for this county at all.
+    Otherwise a dict: n (real storm count), min_hours/median_hours/
+    max_hours (real durations), and limited=True once n is too small for
+    a "range" to mean much (MIN_STORMS_FOR_CONFIDENT_RANGE) - a single
+    storm isn't a range, it's one data point. These durations come from
+    periodic PSC situation-report snapshots, the same shape FPL's live
+    feed has - a single reported duration can still blur multiple real
+    repair jobs into one window, same caveat the live data carries.
+    """
+    conn = sqlite3.connect(HISTORICAL_DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT start_time, end_time FROM historical_outage_events
+        WHERE UPPER(county) = UPPER(?) AND utility = ?
+    ''', (county, FPL_UTILITY_NAME))
+    rows = cursor.fetchall()
+    conn.close()
+
+    durations = []
+    for start_time, end_time in rows:
+        try:
+            hours = (datetime.fromisoformat(end_time) - datetime.fromisoformat(start_time)).total_seconds() / 3600
+        except (TypeError, ValueError):
+            continue
+        if hours > 0:
+            durations.append(hours)
+
+    if not durations:
+        return None
+
+    durations.sort()
+    n = len(durations)
+    mid = n // 2
+    median = durations[mid] if n % 2 == 1 else (durations[mid - 1] + durations[mid]) / 2
+
+    return {
+        "n": n,
+        "min_hours": durations[0],
+        "median_hours": median,
+        "max_hours": durations[-1],
+        "limited": n < MIN_STORMS_FOR_CONFIDENT_RANGE,
+    }

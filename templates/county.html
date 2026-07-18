@@ -165,6 +165,34 @@
       {% endif %}
     </div>
 
+    {% if restoration_precedent %}
+    <h2>Historical Restoration Precedent (FPL)</h2>
+    <p class="section-note">
+      Only shown while a real FPL outage is currently open in this county. FPL's live feed can never support real
+      incident-level restoration modeling (county-wide total only, events blur together) - this is historical
+      precedent from the 17-storm PSC archive (2018&ndash;2025), not a live estimate for this specific outage.
+    </p>
+    <div class="wrap">
+      {% if restoration_precedent.limited %}
+        <div class="empty">
+          Only 1 real storm on file for this county - not enough precedent yet to call this a real range. That
+          single storm's FPL outage here took about {{ "%.0f"|format(restoration_precedent.median_hours) }} hours
+          to restore.
+        </div>
+      {% else %}
+        <table>
+          <tr><th>Real Storms On File</th><th>Min</th><th>Typical (Median)</th><th>Max</th></tr>
+          <tr>
+            <td>{{ restoration_precedent.n }}</td>
+            <td>{{ "%.0f"|format(restoration_precedent.min_hours) }}h</td>
+            <td>{{ "%.0f"|format(restoration_precedent.median_hours) }}h</td>
+            <td>{{ "%.0f"|format(restoration_precedent.max_hours) }}h</td>
+          </tr>
+        </table>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <h2>Combined-Territory Sources Also Covering This Area{{ ' (' ~ combined_events|length ~ ')' if combined_events else '' }}</h2>
     <p class="section-note">
       These utilities report one combined total across several counties at once, not a number specific to

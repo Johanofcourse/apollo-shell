@@ -217,6 +217,8 @@
   .outage-card { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--magenta); padding: 1rem 1.25rem; margin-bottom: 0.85rem; }
   .outage-card:last-child { margin-bottom: 0; }
   .outage-card.combined { border-left-color: var(--cyan); }
+  .outage-card.historical { border-left-color: var(--yellow); }
+  .outage-card.historical .outage-figure { color: var(--yellow); }
   .outage-card.resolved { opacity: 0.82; }
   .outage-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
   .outage-utility { font-weight: 700; font-size: 1rem; }
@@ -421,6 +423,26 @@
           <div class="outage-sub">{{ "{:,}".format(e.customers or 0) }} customers out &middot; ongoing {{ e.duration }}</div>
         </div>
         {% endfor %}
+        {% if county_detail.restoration_precedent %}
+        {% set rp = county_detail.restoration_precedent %}
+        <div class="outage-card historical">
+          <div class="outage-top">
+            <span class="outage-utility">Historical Restoration Precedent</span>
+            <span class="outage-figure mono">{{ "%.0f"|format(rp.median_hours) }}h typical</span>
+          </div>
+          {% if rp.limited %}
+          <div class="outage-sub">Only 1 real storm on file for this county — not enough precedent yet to call
+            this a real range. That single storm's FPL outage here took about
+            {{ "%.0f"|format(rp.median_hours) }} hours to restore.</div>
+          {% else %}
+          <div class="outage-sub">Based on {{ rp.n }} real storms on file, FPL outages here have historically taken
+            between {{ "%.0f"|format(rp.min_hours) }} and {{ "%.0f"|format(rp.max_hours) }} hours to restore.</div>
+          {% endif %}
+          <div class="outage-note">Historical precedent, not a live estimate for this specific outage — real
+            restoration time can differ. From 17 real storm reports (2018&ndash;2025), not this project's own live
+            tracking.</div>
+        </div>
+        {% endif %}
         {% for e in county_detail.combined_events %}
         {% set tier = e | row_tier %}
         <div class="outage-card combined{% if tier == 'critical' %} hz-stripe{% endif %}">

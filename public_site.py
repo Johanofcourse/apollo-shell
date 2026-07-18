@@ -15,7 +15,10 @@ from county_status import (
     _combined_territory_closed_events, _rows_for_county, humanize_timestamp,
     _row_tier,
 )
-from storm_history import available_history_counties, load_history_for_county
+from storm_history import (
+    available_history_counties, load_history_for_county,
+    fpl_restoration_precedent, FPL_UTILITY_NAME,
+)
 import florida_county_paths as county_map
 
 app = Flask(__name__, template_folder="templates_public")
@@ -258,6 +261,16 @@ def index():
         real_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
         combined_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
 
+        # Historical restoration precedent (Phase 3) - only shown when
+        # there's a real, currently-open FPL outage in this county right
+        # now, not as a standalone historical curiosity. FPL's live feed
+        # can never support real incident-level restoration modeling, so
+        # this is the honest substitute: "storms like this have
+        # historically taken about this long here," from the 17-storm
+        # PSC archive - see storm_history.fpl_restoration_precedent().
+        fpl_open_now = any(r["utility"] == FPL_UTILITY_NAME for r in real_events)
+        restoration_precedent = fpl_restoration_precedent(selected_county) if fpl_open_now else None
+
         # This project's own directly-observed outage history for this
         # county (real start/end pairs from the live poller, running
         # since 2026-04) - a genuinely different dataset from Storm
@@ -288,6 +301,7 @@ def index():
             "combined_closed_events_total": combined_closed_events_total,
             "storms": storms,
             "storms_with_data_count": storms_with_data_count,
+            "restoration_precedent": restoration_precedent,
         }
 
     db.close()
