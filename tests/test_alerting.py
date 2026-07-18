@@ -61,9 +61,18 @@ def reset_alert_state():
 
 
 class TestCheckAndAlertPipelineHealth:
+    """
+    PRECO is used as this class's generic example, with
+    DOWN_ALERT_SUPPRESSED_SOURCES cleared - this class tests the general
+    down/recovery state-transition logic, not the suppression feature
+    itself (see TestDownAlertSuppression), so it needs a source that
+    would otherwise send a real "down" email.
+    """
+
     def test_sends_one_alert_when_a_source_first_fails(self, db, monkeypatch):
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+        monkeypatch.setattr(alerting, "DOWN_ALERT_SUPPRESSED_SOURCES", set())
 
         db.log_pipeline_error("preco", "PRECO fetch returned no records")
 
@@ -76,6 +85,7 @@ class TestCheckAndAlertPipelineHealth:
     def test_does_not_resend_while_still_failing(self, db, monkeypatch):
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+        monkeypatch.setattr(alerting, "DOWN_ALERT_SUPPRESSED_SOURCES", set())
 
         db.log_pipeline_error("preco", "first failure")
         alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
@@ -88,6 +98,7 @@ class TestCheckAndAlertPipelineHealth:
     def test_sends_recovery_email_once_a_later_success_is_logged(self, db, monkeypatch):
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+        monkeypatch.setattr(alerting, "DOWN_ALERT_SUPPRESSED_SOURCES", set())
 
         db.log_pipeline_error("preco", "a failure", timestamp="2026-01-01T00:00:00")
         alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
@@ -111,6 +122,7 @@ class TestCheckAndAlertPipelineHealth:
         # before the fix, a real success from right after it).
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+        monkeypatch.setattr(alerting, "DOWN_ALERT_SUPPRESSED_SOURCES", set())
 
         db.log_pipeline_error("preco", "an old failure", timestamp="2026-01-01T00:00:00")
         db.log_preco_outages(
@@ -136,12 +148,13 @@ class TestCheckAndAlertPipelineHealth:
 class TestDownAlertSuppression:
     """
     Johan asked 2026-07-18 to stop the recurring "Talquin is down"
-    emails specifically - the chronic Sienatech issue is already fully
+    emails, then asked again the same day for PRECO once its own repeat
+    email arrived too - the chronic Sienatech issue is already fully
     disclosed and understood, so a repeat "still down" email isn't new
     information the way it is for an ordinary failure. Down emails are
-    fully silenced for DOWN_ALERT_SUPPRESSED_SOURCES, but state tracking
-    and the recovery email both still work normally - only the "down"
-    send itself is skipped.
+    fully silenced for both sources in DOWN_ALERT_SUPPRESSED_SOURCES,
+    but state tracking and the recovery email both still work normally -
+    only the "down" send itself is skipped.
     """
 
     def test_down_email_fully_suppressed_for_talquin(self, db, monkeypatch):
@@ -150,6 +163,15 @@ class TestDownAlertSuppression:
 
         db.log_pipeline_error("talquin", "credential expired")
         alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        assert sent == []
+
+    def test_down_email_fully_suppressed_for_preco(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("preco", "credential expired")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
         assert sent == []
 
@@ -179,12 +201,36 @@ class TestDownAlertSuppression:
         assert "recovered" in sent[0].lower()
         assert "talquin" not in alerting._alerted_sources
 
-    def test_preco_is_unaffected_by_talquins_suppression(self, db, monkeypatch):
+    def test_recovery_email_still_fires_for_preco(self, db, monkeypatch):
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
 
-        db.log_pipeline_error("preco", "credential expired")
+        db.log_pipeline_error("preco", "credential expired", timestamp="2026-01-01T00:00:00")
         alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
+        assert sent == []  # the down email, suppressed
+
+        db.log_preco_outages(
+            [{"county": "Manatee", "customers_out": 0, "customers_served": 26350}],
+            timestamp="2026-01-01T00:15:00",
+        )
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
+
+        assert len(sent) == 1
+        assert "recovered" in sent[0].lower()
+        assert "preco" not in alerting._alerted_sources
+
+    def test_suppression_is_scoped_to_specific_sources_only(self, db, monkeypatch):
+        # DOWN_ALERT_SUPPRESSED_SOURCES silences specific sources, not
+        # every alert-worthy one - demonstrated with a temporary third
+        # alert-worthy source that isn't in the suppressed set. "outages"
+        # (FPL's own table) always exists, so _is_currently_failing()
+        # has a real table to query.
+        monkeypatch.setitem(alerting.ALERT_WORTHY_SOURCES, "faketest", "outages")
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("faketest", "credential expired")
+        alerting.check_and_alert_pipeline_health(db, display_names={"faketest": "Fake Test Utility"})
 
         assert len(sent) == 1
         assert "down" in sent[0].lower()
@@ -198,12 +244,19 @@ class TestDownAlertCooldown:
     time, which is technically correct but not useful once you already
     know it's the same ongoing thing. Recovery emails stay unthrottled -
     each one is a real, wanted confirmation tied to an actual fix.
+
+    PRECO is used as this class's example, with
+    DOWN_ALERT_SUPPRESSED_SOURCES cleared - this class tests the
+    cooldown mechanism itself, which is a separate concern from the
+    full-suppression feature (see TestDownAlertSuppression), so it
+    needs a source whose "down" email isn't unconditionally silenced.
     """
 
     def test_repeat_down_within_cooldown_is_suppressed(self, db, monkeypatch):
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
         monkeypatch.setattr(alerting, "DOWN_ALERT_COOLDOWN_SECONDS", 3600)
+        monkeypatch.setattr(alerting, "DOWN_ALERT_SUPPRESSED_SOURCES", set())
 
         # First failure -> recovery -> failure again, all within the
         # same (mocked) hour.
@@ -230,6 +283,7 @@ class TestDownAlertCooldown:
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
         monkeypatch.setattr(alerting, "DOWN_ALERT_COOLDOWN_SECONDS", 3600)
+        monkeypatch.setattr(alerting, "DOWN_ALERT_SUPPRESSED_SOURCES", set())
 
         db.log_pipeline_error("preco", "failure 1", timestamp="2026-01-01T00:00:00")
         alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
@@ -252,6 +306,7 @@ class TestDownAlertCooldown:
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
         monkeypatch.setattr(alerting, "DOWN_ALERT_COOLDOWN_SECONDS", 3600)
+        monkeypatch.setattr(alerting, "DOWN_ALERT_SUPPRESSED_SOURCES", set())
 
         db.log_pipeline_error("preco", "failure 1", timestamp="2026-01-01T00:00:00")
         alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})

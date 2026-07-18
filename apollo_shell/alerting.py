@@ -49,7 +49,8 @@ DOWN_ALERT_COOLDOWN_SECONDS = 4 * 60 * 60
 _last_down_alert_time = {}
 
 # "Down" emails fully silenced for these sources - Johan asked
-# 2026-07-18 to stop the recurring "Talquin is down" emails specifically:
+# 2026-07-18 to stop the recurring "Talquin is down" emails, then asked
+# again the same day for PRECO once its own repeat email arrived too:
 # the chronic Sienatech issue is already fully understood and disclosed
 # (see the public site's footer), so a repeat "still down" email isn't
 # new, actionable information the way it is for an ordinary failure.
@@ -57,9 +58,9 @@ _last_down_alert_time = {}
 # confirms a real manual fix worked, which is genuinely useful. Doesn't
 # touch ALERT_WORTHY_SOURCES itself, since that's also reused by
 # dashboard.py's pipeline-errors page to group Talquin/PRECO into their
-# own "known chronic issue" section - removing Talquin there would have
-# silently broken that grouping too.
-DOWN_ALERT_SUPPRESSED_SOURCES = {"talquin"}
+# own "known chronic issue" section - removing either source there
+# would have silently broken that grouping too.
+DOWN_ALERT_SUPPRESSED_SOURCES = {"talquin", "preco"}
 
 
 def send_alert_email(subject, body):
