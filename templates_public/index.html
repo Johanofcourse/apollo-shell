@@ -30,6 +30,7 @@
     padding: 0;
     background: var(--void);
     color: var(--ink);
+    overflow-x: hidden;
   }
 
   body {
@@ -89,7 +90,7 @@
   }
   .summary-panel p { margin: 0 0 0.9rem; max-width: 42rem; }
   .summary-panel p:last-child { margin-bottom: 0; }
-  .summary-panel strong { color: var(--ink); font-weight: 600; }
+  .summary-panel strong { color: var(--ink); font-weight: 600; overflow-wrap: break-word; }
   .summary-panel strong.c-magenta { color: var(--magenta); }
   .summary-caveat { display: block; margin-top: 0.5rem; font-size: 0.82rem; color: var(--ink-soft); font-style: italic; }
 
