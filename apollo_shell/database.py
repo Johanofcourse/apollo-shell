@@ -4094,14 +4094,19 @@ class OutageDatabase:
         worst (by peak customer count) first. Includes
         current_customer_count from the latest teco_incidents row fetched
         for that incident_id, alongside the lifecycle peak - same "peak
-        vs. right now" reasoning as get_open_events().
+        vs. right now" reasoning as get_open_events(). Also includes
+        current_estimated_restoration - TECO's own latest stated ETR for
+        this specific incident, distinct from teco_etr_accuracy()'s
+        aggregate track record of how trustworthy that kind of number
+        has historically been.
         """
         conn = self.connect()
         cursor = conn.cursor()
 
         cursor.execute('''
             SELECT oe.*,
-                   cur.customer_count AS current_customer_count
+                   cur.customer_count AS current_customer_count,
+                   cur.estimated_restoration AS current_estimated_restoration
             FROM teco_incident_events oe
             LEFT JOIN teco_incidents cur
                 ON cur.incident_id = oe.incident_id

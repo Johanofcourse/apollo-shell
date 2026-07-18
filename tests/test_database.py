@@ -684,6 +684,7 @@ class TestOpenEventsCurrentVsPeak:
         assert len(open_events) == 1
         assert open_events[0]["peak_customer_count"] == 300
         assert open_events[0]["current_customer_count"] == 25
+        assert open_events[0]["current_estimated_restoration"] == "2026-01-01T06:00:00"
 
     def test_teco_transient_geocode_failure_does_not_erase_known_county(self, db_path):
         # Real bug, 2026-07-17: TECO/Duke's county comes from a live

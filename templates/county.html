@@ -149,7 +149,7 @@
     <div class="wrap">
       {% if real_events %}
         <table>
-          <tr><th>Utility</th><th>Current Customers Out</th><th>Peak This Episode</th><th>Started</th><th>Ongoing</th></tr>
+          <tr><th>Utility</th><th>Current Customers Out</th><th>Peak This Episode</th><th>Started</th><th>Ongoing</th><th>TECO's Estimate</th></tr>
           {% for e in real_events %}
           <tr>
             <td>{{ e.utility }}</td>
@@ -157,6 +157,7 @@
             <td>{{ "{:,}".format(e.peak_customers or 0) }}</td>
             <td>{{ e.start_time | humanize }}</td>
             <td>{{ e.duration }}</td>
+            <td>{{ e.estimated_restoration | humanize if e.estimated_restoration else "—" }}</td>
           </tr>
           {% endfor %}
         </table>

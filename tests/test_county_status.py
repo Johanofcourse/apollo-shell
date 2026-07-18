@@ -373,6 +373,27 @@ class TestNormalizeClosedEvents:
         assert rows[0]["peak_percentage_out"] is None
 
 
+class TestNormalizeOpenEvents:
+    def test_teco_row_carries_estimated_restoration_through(self):
+        rows = cs._normalize_open_events([{
+            "utility": "Tampa Electric Company", "county": "Hillsborough",
+            "current_customer_count": 40, "peak_customer_count": 100,
+            "current_estimated_restoration": "2026-01-01T06:00:00",
+            "start_time": "2026-01-01T00:00:00",
+        }], "current_customer_count", "peak_customer_count")
+
+        assert rows[0]["estimated_restoration"] == "2026-01-01T06:00:00"
+
+    def test_source_without_estimated_restoration_gets_none(self):
+        rows = cs._normalize_open_events([{
+            "utility": "FPL", "county": "Alachua",
+            "current_customers_out": 40, "peak_customers_out": 100,
+            "start_time": "2026-01-01T00:00:00",
+        }], "current_customers_out", "peak_customers_out")
+
+        assert rows[0]["estimated_restoration"] is None
+
+
 class TestRealPerCountyClosedEvents:
     def test_includes_a_real_resolved_fpl_outage(self, db_path):
         db = OutageDatabase(db_path)

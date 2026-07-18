@@ -104,6 +104,11 @@ def _normalize_open_events(open_events, customers_field, peak_field):
     incident-level sources - TECO, Duke, Tallahassee, FPUC's incidents -
     which have no clean per-incident denominator/customer base at all).
     See county_verdict() for how the two cases get tiered together.
+
+    estimated_restoration is carried through the same optional way -
+    only TECO's get_teco_open_events() row has
+    current_estimated_restoration to give, so every other source's rows
+    come back None here.
     """
     return [{
         "utility": e["utility"],
@@ -113,6 +118,7 @@ def _normalize_open_events(open_events, customers_field, peak_field):
         "current_percentage_out": e.get("current_percentage_out"),
         "peak_percentage_out": e.get("peak_percentage_out"),
         "customers_served": e.get("customers_served"),
+        "estimated_restoration": e.get("current_estimated_restoration"),
         "start_time": e["start_time"],
         "duration": _duration_since(e["start_time"]),
     } for e in open_events]
