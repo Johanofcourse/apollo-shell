@@ -2850,7 +2850,7 @@ class OutageDatabase:
 
         for r in records:
             cursor.execute('''
-                SELECT id, peak_customer_count FROM fpuc_incident_events
+                SELECT id, peak_customer_count, county FROM fpuc_incident_events
                 WHERE incident_id = ? AND end_time IS NULL
             ''', (r['incident_id'],))
             open_event = cursor.fetchone()
@@ -2870,13 +2870,19 @@ class OutageDatabase:
                     opened += 1
             else:
                 peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
+                # Same overwrite-guard as sync_duke_incident_events/
+                # sync_teco_incident_events - FPUC's county is reverse-geocoded
+                # per-record too (see fetch_fpuc_outages.markers_to_incidents),
+                # so a transient lookup failure must never downgrade an
+                # already-known county back to None.
+                county = r.get('county') or open_event['county']
                 cursor.execute('''
                     UPDATE fpuc_incident_events
                     SET peak_customer_count = ?, utility = ?, county = ?,
                         substation = ?, feeder = ?, lat = ?, lon = ?
                     WHERE id = ?
                 ''', (
-                    peak, r.get('utility'), r.get('county'),
+                    peak, r.get('utility'), county,
                     r.get('substation'), r.get('feeder'),
                     r.get('lat'), r.get('lon'), open_event['id'],
                 ))

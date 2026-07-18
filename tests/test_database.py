@@ -753,6 +753,32 @@ class TestOpenEventsCurrentVsPeak:
 
         assert open_events[0]["county"] == "Orange"
 
+    def test_fpuc_transient_geocode_failure_does_not_erase_known_county(self, db_path):
+        # Same real bug as Duke's/TECO's equivalent test above, found in
+        # this project's own 2026-07-18 audit sweep: FPUC's county is
+        # reverse-geocoded per-record too (see
+        # fetch_fpuc_outages.markers_to_incidents), but
+        # sync_fpuc_incident_events never got the overwrite guard Duke
+        # and TECO did, so it was still exposed to the same failure mode.
+        db = OutageDatabase(db_path)
+        db.sync_fpuc_incident_events([_fpuc_incident("F1", county="Liberty")], timestamp="2026-01-01T00:00:00")
+        db.sync_fpuc_incident_events([_fpuc_incident("F1", county=None)], timestamp="2026-01-01T00:15:00")
+
+        open_incidents = db.get_fpuc_open_incidents()
+        db.close()
+
+        assert open_incidents[0]["county"] == "Liberty"
+
+    def test_fpuc_county_fills_in_once_a_later_lookup_succeeds(self, db_path):
+        db = OutageDatabase(db_path)
+        db.sync_fpuc_incident_events([_fpuc_incident("F1", county=None)], timestamp="2026-01-01T00:00:00")
+        db.sync_fpuc_incident_events([_fpuc_incident("F1", county="Liberty")], timestamp="2026-01-01T00:15:00")
+
+        open_incidents = db.get_fpuc_open_incidents()
+        db.close()
+
+        assert open_incidents[0]["county"] == "Liberty"
+
     def test_tallahassee_open_event_reports_current_alongside_peak(self, db_path):
         db = OutageDatabase(db_path)
         db.log_tallahassee_outages([_tallahassee_row("Leon", 15)], timestamp="2026-01-01T00:00:00")
