@@ -428,7 +428,7 @@
         <div class="outage-card historical">
           <div class="outage-top">
             <span class="outage-utility">Historical Restoration Precedent</span>
-            <span class="outage-figure mono">{{ "%.0f"|format(rp.median_hours) }}h typical</span>
+            <span class="outage-figure mono">{{ "%.0f"|format(rp.median_hours) }}h median</span>
           </div>
           {% if rp.limited %}
           <div class="outage-sub">Only 1 real storm on file for this county — not enough precedent yet to call
@@ -436,7 +436,8 @@
             {{ "%.0f"|format(rp.median_hours) }} hours to restore.</div>
           {% else %}
           <div class="outage-sub">Based on {{ rp.n }} real storms on file, FPL outages here have historically taken
-            between {{ "%.0f"|format(rp.min_hours) }} and {{ "%.0f"|format(rp.max_hours) }} hours to restore.</div>
+            between {{ "%.0f"|format(rp.min_hours) }} and {{ "%.0f"|format(rp.max_hours) }} hours to restore,
+            a median of {{ "%.0f"|format(rp.median_hours) }} hours.</div>
           {% endif %}
           <div class="outage-note">Historical precedent, not a live estimate for this specific outage — real
             restoration time can differ. From 17 real storm reports (2018&ndash;2025), not this project's own live
