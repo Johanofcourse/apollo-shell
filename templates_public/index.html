@@ -531,6 +531,17 @@
             Public Service Commission required a formal utility restoration report for it - mostly named hurricanes
             and tropical storms, plus a few severe non-tropical outbreaks. From 17 real PSC reports
             (2018&ndash;2025), not this project's own live tracking.</div>
+          {% set sev = county_detail.major_storm_by_severity %}
+          {% if sev and (sev.hurricane_force or sev.sub_hurricane) %}
+          <div class="outage-sub">By real NOAA-reported wind, split at the National Hurricane Center's own
+            Category 1 threshold (74mph):
+            {% if sev.hurricane_force %} hurricane-force storms here median
+            {{ "%.0f"|format(sev.hurricane_force.median_hours) }}h ({{ sev.hurricane_force.n }} on file){% if sev.sub_hurricane %};{% else %}.{% endif %}{% endif %}
+            {% if sev.sub_hurricane %} sub-hurricane storms median {{ "%.0f"|format(sev.sub_hurricane.median_hours) }}h
+            ({{ sev.sub_hurricane.n }} on file).{% endif %}
+            {% if sev.unmatched_count %} ({{ sev.unmatched_count }} storm{{ "s" if sev.unmatched_count != 1 }} here
+            {{ "have" if sev.unmatched_count != 1 else "has" }} no wind reading to classify.){% endif %}</div>
+          {% endif %}
         </div>
         {% endif %}
         {% if county_detail.teco_accuracy %}

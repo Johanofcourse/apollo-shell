@@ -19,7 +19,7 @@ from county_status import (
 )
 from storm_history import (
     available_history_counties, load_history_for_county,
-    fpl_restoration_precedent, FPL_UTILITY_NAME,
+    fpl_restoration_precedent, fpl_restoration_precedent_by_wind_severity, FPL_UTILITY_NAME,
 )
 import florida_county_paths as county_map
 
@@ -286,6 +286,7 @@ def index():
         # into one number - they honestly answer different questions.
         fpl_open_now = any(r["utility"] == FPL_UTILITY_NAME for r in real_events)
         major_storm_precedent = fpl_restoration_precedent(selected_county) if fpl_open_now else None
+        major_storm_by_severity = fpl_restoration_precedent_by_wind_severity(selected_county) if fpl_open_now else None
         everyday_precedent = fpl_ordinary_restoration_stats(selected_county, db) if fpl_open_now else None
 
         # A genuinely different Phase 3 signal for TECO - it already
@@ -340,6 +341,7 @@ def index():
             "storms": storms,
             "storms_with_data_count": storms_with_data_count,
             "major_storm_precedent": major_storm_precedent,
+            "major_storm_by_severity": major_storm_by_severity,
             "everyday_precedent": everyday_precedent,
             "teco_accuracy": teco_accuracy,
             "duke_precedent": duke_precedent,

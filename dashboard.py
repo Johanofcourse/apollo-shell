@@ -38,6 +38,7 @@ from storm_history import (
     all_storms as _all_storms,
     load_history_for_county as _load_history_for_county,
     fpl_restoration_precedent as _fpl_restoration_precedent,
+    fpl_restoration_precedent_by_wind_severity as _fpl_restoration_precedent_by_wind_severity,
 )
 from fetch_fpl_outages import UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_jea_outages import UTILITY_NAME as JEA_UTILITY_NAME
@@ -964,6 +965,7 @@ def county_detail():
     historical_confidence = None
     historical_gap_reason = None
     major_storm_precedent = None
+    major_storm_by_severity = None
     everyday_precedent = None
     teco_accuracy = None
     duke_precedent = None
@@ -997,6 +999,7 @@ def county_detail():
         # connection, unlike the storm one's own separate archive db.
         fpl_open_now = any(r["utility"] == FPL_UTILITY_NAME for r in real_events)
         major_storm_precedent = _fpl_restoration_precedent(selected_county) if fpl_open_now else None
+        major_storm_by_severity = _fpl_restoration_precedent_by_wind_severity(selected_county) if fpl_open_now else None
         everyday_precedent = fpl_ordinary_restoration_stats(selected_county, db) if fpl_open_now else None
 
         # A genuinely different Phase 3 signal for TECO - it already
@@ -1034,6 +1037,7 @@ def county_detail():
         historical_confidence=historical_confidence,
         historical_gap_reason=historical_gap_reason,
         major_storm_precedent=major_storm_precedent,
+        major_storm_by_severity=major_storm_by_severity,
         everyday_precedent=everyday_precedent,
         teco_accuracy=teco_accuracy,
         duke_precedent=duke_precedent,

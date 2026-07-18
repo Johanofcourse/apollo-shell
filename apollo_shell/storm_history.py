@@ -179,3 +179,104 @@ def fpl_restoration_precedent(county):
         "max_hours": durations[-1],
         "limited": n < MIN_STORMS_FOR_CONFIDENT_RANGE,
     }
+
+
+# 74 mph is the real NHC/Saffir-Simpson Category 1 hurricane threshold -
+# not a guessed split. Checked against the real matched data before
+# picking it: no single dramatic gap exists in the wind distribution
+# (29-155 mph, fairly continuous), so an invented percentile split would
+# be arbitrary in a way this authoritative, already-public number isn't.
+# Confirmed worth building 2026-07-18 by checking the aggregate effect
+# first: hurricane-force (>=74) storms have a 96h statewide median
+# restoration time vs 30h for sub-hurricane storms - a real, large gap,
+# not a false signal. Caveat worth knowing: this is a real but imperfect
+# proxy - Nassau County's own real data shows every storm on file there
+# topped out under 65 mph even during Helene (65.8h outage), because
+# wind speed at one NOAA station isn't the only thing driving restoration
+# time (rain, flooding, storm size/duration, and distance from repair
+# crews all matter too) - so a low-exposure county's own split may still
+# land entirely in one bucket even though the split is real and useful
+# in aggregate.
+HURRICANE_FORCE_WIND_MPH = 74
+
+
+def _bucket_stats(durations):
+    """Same n/min/median/max/limited shape as fpl_restoration_precedent(), for one bucket."""
+    if not durations:
+        return None
+    durations = sorted(durations)
+    n = len(durations)
+    mid = n // 2
+    median = durations[mid] if n % 2 == 1 else (durations[mid - 1] + durations[mid]) / 2
+    return {
+        "n": n,
+        "min_hours": durations[0],
+        "median_hours": median,
+        "max_hours": durations[-1],
+        "limited": n < MIN_STORMS_FOR_CONFIDENT_RANGE,
+    }
+
+
+def fpl_restoration_precedent_by_wind_severity(county):
+    """
+    Same real 17-storm PSC archive as fpl_restoration_precedent(), but
+    split into two tiers by each storm's real NOAA-reported peak wind for
+    this county (historical_storm_severity, HURRICANE_FORCE_WIND_MPH cutoff -
+    see its own comment for why 74 mph and not something invented) -
+    refines the flat precedent instead of replacing it, since not every
+    storm has a usable wind reading for every county (about 45% of FPL's
+    real duration records do, statewide) and a low-exposure county can
+    have real storms in neither tier.
+
+    Returns None if FPL has no usable real data for this county at all
+    (matches fpl_restoration_precedent()). Otherwise a dict:
+    hurricane_force / sub_hurricane (each the same n/min/median/max/
+    limited shape as fpl_restoration_precedent(), or None if that tier
+    has zero real storms for this county), and unmatched_count (real
+    storms on file here with no NOAA wind reading to classify them by -
+    not silently dropped, just not sorted into either tier).
+    """
+    conn = sqlite3.connect(HISTORICAL_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT storm_name, start_time, end_time FROM historical_outage_events
+        WHERE UPPER(county) = UPPER(?) AND utility = ?
+    ''', (county, FPL_UTILITY_NAME))
+    rows = cursor.fetchall()
+
+    if not rows:
+        conn.close()
+        return None
+
+    cursor.execute('''
+        SELECT storm_name, MAX(reported_wind_mph) AS max_wind_mph
+        FROM historical_storm_severity
+        WHERE UPPER(county) = UPPER(?) AND reported_wind_mph IS NOT NULL
+        GROUP BY storm_name
+    ''', (county,))
+    wind_by_storm = {row["storm_name"]: row["max_wind_mph"] for row in cursor.fetchall()}
+    conn.close()
+
+    hurricane_force, sub_hurricane, unmatched_count = [], [], 0
+    for row in rows:
+        try:
+            hours = (datetime.fromisoformat(row["end_time"]) - datetime.fromisoformat(row["start_time"])).total_seconds() / 3600
+        except (TypeError, ValueError):
+            continue
+        if hours <= 0:
+            continue
+
+        wind = wind_by_storm.get(row["storm_name"])
+        if wind is None:
+            unmatched_count += 1
+        elif wind >= HURRICANE_FORCE_WIND_MPH:
+            hurricane_force.append(hours)
+        else:
+            sub_hurricane.append(hours)
+
+    return {
+        "hurricane_force": _bucket_stats(hurricane_force),
+        "sub_hurricane": _bucket_stats(sub_hurricane),
+        "unmatched_count": unmatched_count,
+    }

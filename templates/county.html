@@ -229,6 +229,43 @@
           </tr>
         </table>
       {% endif %}
+
+      {% if major_storm_by_severity and (major_storm_by_severity.hurricane_force or major_storm_by_severity.sub_hurricane) %}
+      <h4>By Storm Severity</h4>
+      <p class="section-note">
+        Same storms, split by each one's real NOAA-reported peak wind for this county, at the National Hurricane
+        Center's own Category 1 threshold (74mph). Not every storm has a usable wind reading on file, so this can
+        be less complete than the combined total above.
+      </p>
+      <table>
+        <tr><th>Severity</th><th>Storms</th><th>Min</th><th>Median</th><th>Max</th></tr>
+        {% if major_storm_by_severity.hurricane_force %}
+        <tr>
+          <td>Hurricane-force (74mph+)</td>
+          <td>{{ major_storm_by_severity.hurricane_force.n }}{% if major_storm_by_severity.hurricane_force.limited %} (limited){% endif %}</td>
+          <td>{{ "%.0f"|format(major_storm_by_severity.hurricane_force.min_hours) }}h</td>
+          <td>{{ "%.0f"|format(major_storm_by_severity.hurricane_force.median_hours) }}h</td>
+          <td>{{ "%.0f"|format(major_storm_by_severity.hurricane_force.max_hours) }}h</td>
+        </tr>
+        {% endif %}
+        {% if major_storm_by_severity.sub_hurricane %}
+        <tr>
+          <td>Sub-hurricane (under 74mph)</td>
+          <td>{{ major_storm_by_severity.sub_hurricane.n }}{% if major_storm_by_severity.sub_hurricane.limited %} (limited){% endif %}</td>
+          <td>{{ "%.0f"|format(major_storm_by_severity.sub_hurricane.min_hours) }}h</td>
+          <td>{{ "%.0f"|format(major_storm_by_severity.sub_hurricane.median_hours) }}h</td>
+          <td>{{ "%.0f"|format(major_storm_by_severity.sub_hurricane.max_hours) }}h</td>
+        </tr>
+        {% endif %}
+      </table>
+      {% if major_storm_by_severity.unmatched_count %}
+      <p class="section-note">
+        {{ major_storm_by_severity.unmatched_count }} storm{{ "s" if major_storm_by_severity.unmatched_count != 1 }}
+        on file here with no NOAA wind reading to classify - included in the combined total above, not in either
+        tier here.
+      </p>
+      {% endif %}
+      {% endif %}
     </div>
     {% endif %}
 
