@@ -48,6 +48,19 @@ DOWN_ALERT_COOLDOWN_SECONDS = 4 * 60 * 60
 
 _last_down_alert_time = {}
 
+# "Down" emails fully silenced for these sources - Johan asked
+# 2026-07-18 to stop the recurring "Talquin is down" emails specifically:
+# the chronic Sienatech issue is already fully understood and disclosed
+# (see the public site's footer), so a repeat "still down" email isn't
+# new, actionable information the way it is for an ordinary failure.
+# Recovery emails are NOT suppressed here - a "back up" email still
+# confirms a real manual fix worked, which is genuinely useful. Doesn't
+# touch ALERT_WORTHY_SOURCES itself, since that's also reused by
+# dashboard.py's pipeline-errors page to group Talquin/PRECO into their
+# own "known chronic issue" section - removing Talquin there would have
+# silently broken that grouping too.
+DOWN_ALERT_SUPPRESSED_SOURCES = {"talquin"}
+
 
 def send_alert_email(subject, body):
     """
@@ -113,6 +126,10 @@ def check_and_alert_pipeline_health(db, display_names):
     re-sends "down" once that cooldown has elapsed, even though the
     underlying failure/recovery state is still tracked and reported
     accurately every cycle. Recovery emails are never throttled.
+
+    A source in DOWN_ALERT_SUPPRESSED_SOURCES never gets a "down" email
+    at all, regardless of the cooldown - state tracking and the
+    recovery email both still work normally for it.
     """
     for source, success_table in ALERT_WORTHY_SOURCES.items():
         is_failing = _is_currently_failing(db, source, success_table)
@@ -120,6 +137,10 @@ def check_and_alert_pipeline_health(db, display_names):
 
         if is_failing and source not in _alerted_sources:
             _alerted_sources.add(source)
+
+            if source in DOWN_ALERT_SUPPRESSED_SOURCES:
+                print(f"{display_name} is down, but down-alerts are suppressed for this source - skipping email")
+                continue
 
             now = time.time()
             last_sent = _last_down_alert_time.get(source, 0)

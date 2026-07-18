@@ -65,23 +65,23 @@ class TestCheckAndAlertPipelineHealth:
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
 
-        db.log_pipeline_error("talquin", "Talquin fetch returned no records")
+        db.log_pipeline_error("preco", "PRECO fetch returned no records")
 
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
         assert len(sent) == 1
-        assert "Talquin Electric Cooperative" in sent[0]
+        assert "Peace River Electric Cooperative" in sent[0]
         assert "down" in sent[0].lower()
 
     def test_does_not_resend_while_still_failing(self, db, monkeypatch):
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
 
-        db.log_pipeline_error("talquin", "first failure")
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        db.log_pipeline_error("preco", "first failure")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
-        db.log_pipeline_error("talquin", "still failing")
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        db.log_pipeline_error("preco", "still failing")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
         assert len(sent) == 1
 
@@ -89,19 +89,19 @@ class TestCheckAndAlertPipelineHealth:
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
 
-        db.log_pipeline_error("talquin", "a failure", timestamp="2026-01-01T00:00:00")
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        db.log_pipeline_error("preco", "a failure", timestamp="2026-01-01T00:00:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
         assert len(sent) == 1
 
-        db.log_talquin_outages(
-            [{"county": "Leon", "customers_out": 0, "customers_served": 26350}],
+        db.log_preco_outages(
+            [{"county": "Manatee", "customers_out": 0, "customers_served": 26350}],
             timestamp="2026-01-01T00:15:00",
         )
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
         assert len(sent) == 2
         assert "recovered" in sent[1].lower()
-        assert "talquin" not in alerting._alerted_sources
+        assert "preco" not in alerting._alerted_sources
 
     def test_no_false_alarm_when_old_failure_precedes_a_newer_success(self, db, monkeypatch):
         # The real regression: an old failure sitting in pipeline_errors
@@ -112,16 +112,16 @@ class TestCheckAndAlertPipelineHealth:
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
 
-        db.log_pipeline_error("talquin", "an old failure", timestamp="2026-01-01T00:00:00")
-        db.log_talquin_outages(
-            [{"county": "Leon", "customers_out": 0, "customers_served": 26350}],
+        db.log_pipeline_error("preco", "an old failure", timestamp="2026-01-01T00:00:00")
+        db.log_preco_outages(
+            [{"county": "Manatee", "customers_out": 0, "customers_served": 26350}],
             timestamp="2026-01-01T00:30:00",
         )
 
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
         assert sent == []
-        assert "talquin" not in alerting._alerted_sources
+        assert "preco" not in alerting._alerted_sources
 
     def test_ignores_sources_outside_alert_worthy_set(self, db, monkeypatch):
         sent = []
@@ -131,6 +131,63 @@ class TestCheckAndAlertPipelineHealth:
         alerting.check_and_alert_pipeline_health(db, display_names={"fpl": "Florida Power and Light"})
 
         assert sent == []
+
+
+class TestDownAlertSuppression:
+    """
+    Johan asked 2026-07-18 to stop the recurring "Talquin is down"
+    emails specifically - the chronic Sienatech issue is already fully
+    disclosed and understood, so a repeat "still down" email isn't new
+    information the way it is for an ordinary failure. Down emails are
+    fully silenced for DOWN_ALERT_SUPPRESSED_SOURCES, but state tracking
+    and the recovery email both still work normally - only the "down"
+    send itself is skipped.
+    """
+
+    def test_down_email_fully_suppressed_for_talquin(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("talquin", "credential expired")
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        assert sent == []
+
+    def test_state_still_tracks_failing_despite_suppressed_email(self, db, monkeypatch):
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: None)
+
+        db.log_pipeline_error("talquin", "credential expired")
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        assert "talquin" in alerting._alerted_sources
+
+    def test_recovery_email_still_fires_for_talquin(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("talquin", "credential expired", timestamp="2026-01-01T00:00:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        assert sent == []  # the down email, suppressed
+
+        db.log_talquin_outages(
+            [{"county": "Gadsden", "customers_out": 0, "customers_served": 15493}],
+            timestamp="2026-01-01T00:15:00",
+        )
+        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+
+        assert len(sent) == 1
+        assert "recovered" in sent[0].lower()
+        assert "talquin" not in alerting._alerted_sources
+
+    def test_preco_is_unaffected_by_talquins_suppression(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("preco", "credential expired")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
+
+        assert len(sent) == 1
+        assert "down" in sent[0].lower()
 
 
 class TestDownAlertCooldown:
@@ -150,43 +207,43 @@ class TestDownAlertCooldown:
 
         # First failure -> recovery -> failure again, all within the
         # same (mocked) hour.
-        db.log_pipeline_error("talquin", "failure 1", timestamp="2026-01-01T00:00:00")
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        db.log_pipeline_error("preco", "failure 1", timestamp="2026-01-01T00:00:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
         assert len(sent) == 1  # the real first "down" email
 
-        db.log_talquin_outages(
-            [{"county": "Leon", "customers_out": 0, "customers_served": 26350}],
+        db.log_preco_outages(
+            [{"county": "Manatee", "customers_out": 0, "customers_served": 26350}],
             timestamp="2026-01-01T00:10:00",
         )
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
         assert len(sent) == 2  # recovery email, never throttled
 
-        db.log_pipeline_error("talquin", "failure 2", timestamp="2026-01-01T00:20:00")
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        db.log_pipeline_error("preco", "failure 2", timestamp="2026-01-01T00:20:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
         # Still within the 1-hour cooldown since the first "down" email -
         # no new "down" email, but the state still correctly shows failing.
         assert len(sent) == 2
-        assert "talquin" in alerting._alerted_sources
+        assert "preco" in alerting._alerted_sources
 
     def test_recovery_email_still_fires_even_during_cooldown(self, db, monkeypatch):
         sent = []
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
         monkeypatch.setattr(alerting, "DOWN_ALERT_COOLDOWN_SECONDS", 3600)
 
-        db.log_pipeline_error("talquin", "failure 1", timestamp="2026-01-01T00:00:00")
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        db.log_pipeline_error("preco", "failure 1", timestamp="2026-01-01T00:00:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
-        db.log_pipeline_error("talquin", "failure 2", timestamp="2026-01-01T00:10:00")
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        db.log_pipeline_error("preco", "failure 2", timestamp="2026-01-01T00:10:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
         # Recovers again, still well inside the cooldown window - the
         # recovery email must still fire, since it's never throttled.
-        db.log_talquin_outages(
-            [{"county": "Leon", "customers_out": 0, "customers_served": 26350}],
+        db.log_preco_outages(
+            [{"county": "Manatee", "customers_out": 0, "customers_served": 26350}],
             timestamp="2026-01-01T00:20:00",
         )
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
         assert len(sent) == 2  # one "down" (cooldown suppressed the rest), one "recovered"
         assert "recovered" in sent[-1].lower()
@@ -196,17 +253,17 @@ class TestDownAlertCooldown:
         monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
         monkeypatch.setattr(alerting, "DOWN_ALERT_COOLDOWN_SECONDS", 3600)
 
-        db.log_pipeline_error("talquin", "failure 1", timestamp="2026-01-01T00:00:00")
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        db.log_pipeline_error("preco", "failure 1", timestamp="2026-01-01T00:00:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
         assert len(sent) == 1
 
         # Simulate real time having actually passed well beyond the
         # cooldown (rather than sleeping in the test).
-        alerting._last_down_alert_time["talquin"] -= 7200
-        alerting._alerted_sources.discard("talquin")
+        alerting._last_down_alert_time["preco"] -= 7200
+        alerting._alerted_sources.discard("preco")
 
-        db.log_pipeline_error("talquin", "failure 2", timestamp="2026-01-01T02:00:00")
-        alerting.check_and_alert_pipeline_health(db, display_names={"talquin": "Talquin Electric Cooperative"})
+        db.log_pipeline_error("preco", "failure 2", timestamp="2026-01-01T02:00:00")
+        alerting.check_and_alert_pipeline_health(db, display_names={"preco": "Peace River Electric Cooperative"})
 
         assert len(sent) == 2
         assert "down" in sent[-1].lower()
