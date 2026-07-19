@@ -51,8 +51,8 @@ detective instead. No regrets.
 
 ## The plot twist
 Same night, different rabbit hole: went looking at whether other
-Florida utilities' outage maps had richer live data than FPL's — one
-of them did, dramatically so. It hands over, per outage incident: real
+Florida utilities' own public information had richer live data than
+FPL's — one of them did, dramatically so. It hands over, per outage incident: real
 coordinates, a stated *cause* ("tree limb," "equipment damage,"
 genuinely once "squirrel"-adjacent), live crew status, and — the thing
 this project had already concluded didn't exist anywhere — a real
@@ -431,8 +431,8 @@ plainly before building anything further.
 
 The map question resolved fast, and in the opposite direction expected:
 keep it, live verdict and all. The reasoning was refreshingly direct -
-a sufficiently attentive visitor might work out that the site pulls
-from several utilities' outage maps, and that's fine, because the
+a sufficiently attentive visitor might work out that the site draws on
+several utilities' own public information, and that's fine, because the
 information itself is genuinely useful to the person looking at it.
 Not every risk is worth avoiding at the cost of the thing actually
 being useful. The internal-only ops telemetry - utility breakdowns,
