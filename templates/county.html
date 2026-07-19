@@ -270,7 +270,7 @@
     {% endif %}
 
     {% if teco_accuracy %}
-    <h2>Restoration Estimate Accuracy (TECO)</h2>
+    <h2>Restoration Estimate Accuracy: Tampa Electric Company (TECO)</h2>
     <p class="section-note">
       Only shown while a real TECO outage is currently open in this county. Unlike FPL, TECO already reports a
       real per-incident restoration estimate - so instead of inventing a precedent range, this checks how
@@ -330,7 +330,7 @@
     {% endif %}
 
     {% if jea_precedent %}
-    <h2>Restoration Precedent (JEA)</h2>
+    <h2>Restoration Precedent: JEA (Jacksonville's Municipal Electric Utility)</h2>
     <p class="section-note">
       Only shown while a real JEA outage is currently open in this county. JEA has the same structural limit
       as FPL - a county-wide rollup, no per-incident data at all - so it gets FPL's historical-precedent shape:
@@ -358,7 +358,7 @@
     {% endif %}
 
     {% if lwbu_accuracy %}
-    <h2>Restoration Estimate Accuracy (LWBU)</h2>
+    <h2>Restoration Estimate Accuracy: Lake Worth Beach Utilities (LWBU)</h2>
     <p class="section-note">
       Only shown while a real LWBU outage is currently open in this county. Same shape as TECO's accuracy
       check - LWBU already reports a real per-incident restoration estimate, so this compares each resolved

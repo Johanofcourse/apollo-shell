@@ -594,7 +594,7 @@
         {% set ta = county_detail.teco_accuracy %}
         <div class="outage-card historical">
           <div class="outage-top">
-            <span class="outage-utility">Restoration Estimate Accuracy (TECO)</span>
+            <span class="outage-utility">Restoration Estimate Accuracy: Tampa Electric Company (TECO)</span>
             <span class="outage-figure mono">{{ "%.0f"|format(ta.on_time_pct) }}% on time</span>
           </div>
           {% if ta.limited %}
@@ -640,7 +640,7 @@
         {% set jp = county_detail.jea_precedent %}
         <div class="outage-card historical">
           <div class="outage-top">
-            <span class="outage-utility">Restoration Precedent (JEA)</span>
+            <span class="outage-utility">Restoration Precedent: JEA (Jacksonville's Municipal Electric Utility)</span>
             <span class="outage-figure mono">{{ "%.0f"|format(jp.median_hours) }}h median</span>
           </div>
           {% if jp.limited %}
@@ -662,7 +662,7 @@
         {% set la = county_detail.lwbu_accuracy %}
         <div class="outage-card historical">
           <div class="outage-top">
-            <span class="outage-utility">Restoration Estimate Accuracy (LWBU)</span>
+            <span class="outage-utility">Restoration Estimate Accuracy: Lake Worth Beach Utilities (LWBU)</span>
             <span class="outage-figure mono">{{ "%.0f"|format(la.on_time_pct) }}% on time</span>
           </div>
           {% if la.limited %}
