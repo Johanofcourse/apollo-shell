@@ -396,7 +396,7 @@
     <div class="wrap">
       {% if combined_events %}
         <table>
-          <tr><th>Utility</th><th>Territory</th><th>Current Customers Out</th><th>Peak This Episode</th><th>Started</th><th>Ongoing</th></tr>
+          <tr><th>Utility</th><th>Territory</th><th>Current Customers Out</th><th>Peak This Episode</th><th>Started</th><th>Ongoing</th><th>Real Location Data</th></tr>
           {% for e in combined_events %}
           <tr>
             <td>{{ e.utility }}</td>
@@ -405,9 +405,24 @@
             <td>{{ "{:,}".format(e.peak_customers or 0) }}</td>
             <td>{{ e.start_time | humanize }}</td>
             <td>{{ e.duration }}</td>
+            <td>
+              {% if e.confirmed_active_here %}
+                Confirmed active in {{ selected_county }}{% if e.other_active_counties %}; also: {{ e.other_active_counties | join(", ") }}{% endif %}
+              {% elif e.other_active_counties %}
+                Active elsewhere in territory: {{ e.other_active_counties | join(", ") }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </table>
+        <p class="section-note">
+          "Real Location Data" comes from real street names some of these sources report during an active outage,
+          resolved to a county only when confidently matched within this utility's own known territory - see
+          combined total above for the authoritative customer count, this is a real but separate signal about
+          where.
+        </p>
       {% else %}
         <div class="empty">No combined-territory source covering {{ selected_county }} has an open outage right now.</div>
       {% endif %}

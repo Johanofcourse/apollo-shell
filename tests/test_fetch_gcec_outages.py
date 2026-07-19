@@ -51,6 +51,22 @@ class TestOutagesToRecords:
         assert gcec.outages_to_records({}) == []
 
 
+class TestStreetsAffected:
+    def test_real_populated_shape(self):
+        # Real response captured 2026-07-18 during an actual active outage.
+        data = {"customersOutNow": 3, "streetsAffected": ["Hwy 77", "Oak Tree Ln"]}
+        assert gcec.streets_affected(data) == ["Hwy 77", "Oak Tree Ln"]
+
+    def test_missing_field_returns_empty(self):
+        assert gcec.streets_affected({"customersOutNow": 0}) == []
+
+    def test_null_field_returns_empty(self):
+        assert gcec.streets_affected({"streetsAffected": None}) == []
+
+    def test_none_data_returns_empty(self):
+        assert gcec.streets_affected(None) == []
+
+
 class TestGetGcecRecords:
     def test_fetch_failure_returns_empty(self, monkeypatch):
         monkeypatch.setattr(gcec, "fetch_gcec_outage_summary", lambda: None)

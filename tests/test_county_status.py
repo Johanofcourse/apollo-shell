@@ -464,6 +464,72 @@ class TestCombinedTerritoryClosedEvents:
         assert len(calhoun_rows) == 1
 
 
+class TestAttachActiveCounties:
+    """
+    attach_active_counties() - added 2026-07-18 alongside
+    street_county_resolver.py, once a real active CHELCO outage showed
+    its streetsAffected field populates with real street names during a
+    genuine event. Purely additive to combined_events - never touches
+    the existing customer-count numbers, which stay authoritative
+    regardless of whether any street data resolved this cycle.
+    """
+
+    def test_no_active_counties_resolved_yet_leaves_row_unconfirmed(self, db_path):
+        db = OutageDatabase(db_path)
+        rows = [{"utility": "Choctawhatchee Electric Cooperative, Inc.", "county": "Santa Rosa/Okaloosa/Walton/Holmes"}]
+
+        cs.attach_active_counties(rows, "Walton", db)
+        db.close()
+
+        assert rows[0]["confirmed_active_here"] is False
+        assert rows[0]["other_active_counties"] == []
+
+    def test_selected_county_among_active_ones_is_confirmed(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_active_counties("Choctawhatchee Electric Cooperative, Inc.", ["Walton", "Okaloosa"])
+        rows = [{"utility": "Choctawhatchee Electric Cooperative, Inc.", "county": "Santa Rosa/Okaloosa/Walton/Holmes"}]
+
+        cs.attach_active_counties(rows, "Walton", db)
+        db.close()
+
+        assert rows[0]["confirmed_active_here"] is True
+        assert rows[0]["other_active_counties"] == ["Okaloosa"]
+
+    def test_active_elsewhere_but_not_selected_county(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_active_counties("Choctawhatchee Electric Cooperative, Inc.", ["Holmes"])
+        rows = [{"utility": "Choctawhatchee Electric Cooperative, Inc.", "county": "Santa Rosa/Okaloosa/Walton/Holmes"}]
+
+        cs.attach_active_counties(rows, "Walton", db)
+        db.close()
+
+        assert rows[0]["confirmed_active_here"] is False
+        assert rows[0]["other_active_counties"] == ["Holmes"]
+
+    def test_active_counties_are_looked_up_per_row_by_utility(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_active_counties("Gulf Coast Electric Cooperative, Inc.", ["Bay"])
+        rows = [
+            {"utility": "Choctawhatchee Electric Cooperative, Inc.", "county": "x"},
+            {"utility": "Gulf Coast Electric Cooperative, Inc.", "county": "y"},
+        ]
+
+        cs.attach_active_counties(rows, "Bay", db)
+        db.close()
+
+        assert rows[0]["confirmed_active_here"] is False
+        assert rows[1]["confirmed_active_here"] is True
+
+    def test_returns_the_same_list_mutated(self, db_path):
+        db = OutageDatabase(db_path)
+        rows = [{"utility": "Gulf Coast Electric Cooperative, Inc.", "county": "x"}]
+
+        result = cs.attach_active_counties(rows, "Bay", db)
+        db.close()
+
+        assert result is rows
+
+
 def _open_and_close_fpl_event(db, county, start, end, customers=50):
     db.sync_outage_events(
         cs.FPL_UTILITY_NAME, [{"county": county, "customers_out": customers, "customers_served": 100_000}],

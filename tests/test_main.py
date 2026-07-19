@@ -147,81 +147,108 @@ class TestRunFkecCycleFailureVisibility:
 
 class TestRunTcecCycleFailureVisibility:
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_tcec_records", lambda: [])
+        monkeypatch.setattr(main, "fetch_tcec_outage_summary", lambda: None)
         monkeypatch.setattr(main, "TCEC_API_URL", "https://example.com/real-endpoint")
         with pytest.raises(RuntimeError):
             main.run_tcec_cycle(db)
 
     def test_does_not_raise_when_not_configured(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_tcec_records", lambda: [])
+        monkeypatch.setattr(main, "fetch_tcec_outage_summary", lambda: None)
         monkeypatch.setattr(main, "TCEC_API_URL", None)
         main.run_tcec_cycle(db)  # should not raise
 
     def test_does_not_raise_when_records_present(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_tcec_records", lambda: [
-            {"county": "Jefferson/Madison/Taylor (+ partial Dixie/Lafayette/Leon)",
-             "customers_out": 42, "customers_served": 20103}
-        ])
+        monkeypatch.setattr(main, "fetch_tcec_outage_summary", lambda: {
+            "customersOutNow": 42, "customersServed": 20103,
+        })
         monkeypatch.setattr(main, "TCEC_API_URL", "https://example.com/real-endpoint")
         main.run_tcec_cycle(db)  # should not raise
+
+    def test_real_streets_affected_resolves_without_touching_the_network_for_cached_ones(self, db, monkeypatch):
+        # A populated streetsAffected list must not make this test hit
+        # the real Nominatim service - pre-seed the cache (same real
+        # seam street_county_resolver.py itself checks first) rather
+        # than mock requests directly.
+        db.save_street_county(main.TCEC_UTILITY_NAME, "Some Rd", "Jefferson")
+        monkeypatch.setattr(main, "fetch_tcec_outage_summary", lambda: {
+            "customersOutNow": 5, "customersServed": 20103, "streetsAffected": ["Some Rd"],
+        })
+        monkeypatch.setattr(main, "TCEC_API_URL", "https://example.com/real-endpoint")
+
+        main.run_tcec_cycle(db)
+
+        assert db.get_active_counties(main.TCEC_UTILITY_NAME) == ["Jefferson"]
 
 
 class TestRunErecCycleFailureVisibility:
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_erec_records", lambda: [])
+        monkeypatch.setattr(main, "fetch_erec_outage_summary", lambda: None)
         monkeypatch.setattr(main, "EREC_API_URL", "https://example.com/real-endpoint")
         with pytest.raises(RuntimeError):
             main.run_erec_cycle(db)
 
     def test_does_not_raise_when_not_configured(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_erec_records", lambda: [])
+        monkeypatch.setattr(main, "fetch_erec_outage_summary", lambda: None)
         monkeypatch.setattr(main, "EREC_API_URL", None)
         main.run_erec_cycle(db)  # should not raise
 
     def test_does_not_raise_when_records_present(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_erec_records", lambda: [
-            {"county": "Escambia/Santa Rosa", "customers_out": 7, "customers_served": 13663}
-        ])
+        monkeypatch.setattr(main, "fetch_erec_outage_summary", lambda: {
+            "customersOutNow": 7, "customersServed": 13663,
+        })
         monkeypatch.setattr(main, "EREC_API_URL", "https://example.com/real-endpoint")
         main.run_erec_cycle(db)  # should not raise
 
 
 class TestRunChelcoCycleFailureVisibility:
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_chelco_records", lambda: [])
+        monkeypatch.setattr(main, "fetch_chelco_outage_summary", lambda: None)
         monkeypatch.setattr(main, "CHELCO_API_URL", "https://example.com/real-endpoint")
         with pytest.raises(RuntimeError):
             main.run_chelco_cycle(db)
 
     def test_does_not_raise_when_not_configured(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_chelco_records", lambda: [])
+        monkeypatch.setattr(main, "fetch_chelco_outage_summary", lambda: None)
         monkeypatch.setattr(main, "CHELCO_API_URL", None)
         main.run_chelco_cycle(db)  # should not raise
 
     def test_does_not_raise_when_records_present(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_chelco_records", lambda: [
-            {"county": "Santa Rosa/Okaloosa/Walton/Holmes", "customers_out": 7, "customers_served": 74996}
-        ])
+        monkeypatch.setattr(main, "fetch_chelco_outage_summary", lambda: {
+            "customersOutNow": 7, "customersServed": 74996,
+        })
         monkeypatch.setattr(main, "CHELCO_API_URL", "https://example.com/real-endpoint")
         main.run_chelco_cycle(db)  # should not raise
+
+    def test_real_streets_affected_resolves_using_the_cache(self, db, monkeypatch):
+        db.save_street_county(main.CHELCO_UTILITY_NAME, "Howell Bluff Rd", "Walton")
+        db.save_street_county(main.CHELCO_UTILITY_NAME, "Cotton Creek Rd", "Okaloosa")
+        monkeypatch.setattr(main, "fetch_chelco_outage_summary", lambda: {
+            "customersOutNow": 347, "customersServed": 74996,
+            "streetsAffected": ["Howell Bluff Rd", "Cotton Creek Rd"],
+        })
+        monkeypatch.setattr(main, "CHELCO_API_URL", "https://example.com/real-endpoint")
+
+        main.run_chelco_cycle(db)
+
+        assert db.get_active_counties(main.CHELCO_UTILITY_NAME) == ["Okaloosa", "Walton"]
 
 
 class TestRunGcecCycleFailureVisibility:
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_gcec_records", lambda: [])
+        monkeypatch.setattr(main, "fetch_gcec_outage_summary", lambda: None)
         monkeypatch.setattr(main, "GCEC_API_URL", "https://example.com/real-endpoint")
         with pytest.raises(RuntimeError):
             main.run_gcec_cycle(db)
 
     def test_does_not_raise_when_not_configured(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_gcec_records", lambda: [])
+        monkeypatch.setattr(main, "fetch_gcec_outage_summary", lambda: None)
         monkeypatch.setattr(main, "GCEC_API_URL", None)
         main.run_gcec_cycle(db)  # should not raise
 
     def test_does_not_raise_when_records_present(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_gcec_records", lambda: [
-            {"county": "Bay/Calhoun/Gulf/Jackson/Walton/Washington", "customers_out": 7, "customers_served": 23206}
-        ])
+        monkeypatch.setattr(main, "fetch_gcec_outage_summary", lambda: {
+            "customersOutNow": 7, "customersServed": 23206,
+        })
         monkeypatch.setattr(main, "GCEC_API_URL", "https://example.com/real-endpoint")
         main.run_gcec_cycle(db)  # should not raise
 

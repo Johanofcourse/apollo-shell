@@ -52,6 +52,23 @@ class TestOutagesToRecords:
         assert chelco.outages_to_records({}) == []
 
 
+class TestStreetsAffected:
+    def test_real_populated_shape(self):
+        # Real response captured 2026-07-18 during an actual active
+        # outage - contradicts the older "always empty" assumption.
+        data = {"customersOutNow": 347, "streetsAffected": ["Howell Bluff Rd", "Cotton Creek Rd"]}
+        assert chelco.streets_affected(data) == ["Howell Bluff Rd", "Cotton Creek Rd"]
+
+    def test_missing_field_returns_empty(self):
+        assert chelco.streets_affected({"customersOutNow": 0}) == []
+
+    def test_null_field_returns_empty(self):
+        assert chelco.streets_affected({"streetsAffected": None}) == []
+
+    def test_none_data_returns_empty(self):
+        assert chelco.streets_affected(None) == []
+
+
 class TestGetChelcoRecords:
     def test_fetch_failure_returns_empty(self, monkeypatch):
         monkeypatch.setattr(chelco, "fetch_chelco_outage_summary", lambda: None)

@@ -693,7 +693,12 @@
             </span>
           </div>
           <div class="outage-sub">{{ "{:,}".format(e.customers or 0) }} customers out across its whole territory &middot; ongoing {{ e.duration }}</div>
-          <div class="outage-note">Reports one combined total across several counties, not broken out by county.</div>
+          {% if e.confirmed_active_here %}
+          <div class="outage-sub">Real street-level data confirms activity in {{ selected_county }}{% if e.other_active_counties %}, and also in {{ e.other_active_counties | join(", ") }}{% endif %}.</div>
+          {% elif e.other_active_counties %}
+          <div class="outage-sub">Real street-level data shows activity elsewhere in this territory ({{ e.other_active_counties | join(", ") }}), not confirmed specifically in {{ selected_county }}.</div>
+          {% endif %}
+          <div class="outage-note">Reports one combined total across several counties, not broken out by county. Location detail above (when present) comes from real street names this source sometimes reports, resolved to a county only when confidently matched within its own known territory.</div>
         </div>
         {% endfor %}
         {% for a in county_detail.active_alerts %}

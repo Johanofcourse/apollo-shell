@@ -77,6 +77,23 @@ def outages_to_records(data):
     }]
 
 
+def streets_affected(data):
+    """
+    Real street names from this same response's streetsAffected field -
+    confirmed real 2026-07-18 that this field can be null even during a
+    real active outage (43 customers out, still null) - EREC genuinely
+    doesn't always populate this the way CHELCO/GCEC do. No per-street
+    customer count or coordinates when it is present, just names - see
+    street_county_resolver.py for what this project can honestly do with
+    that (which counties are active, not a number).
+
+    Returns a list of street name strings, or [] if empty/missing.
+    """
+    if not data:
+        return []
+    return data.get("streetsAffected") or []
+
+
 def get_erec_records():
     """
     Fetch and parse EREC's current combined-territory outage record in

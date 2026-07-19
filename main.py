@@ -21,10 +21,23 @@ from fetch_talquin_outages import get_talquin_records, TALQUIN_API_URL
 from fetch_fpuc_outages import fetch_fpuc_outage_summary, outages_to_records as fpuc_outages_to_records, markers_to_incidents, FPUC_API_URL
 from fetch_preco_outages import get_preco_records, PRECO_API_URL
 from fetch_fkec_outages import get_fkec_records, FKEC_API_URL
-from fetch_tcec_outages import get_tcec_records, TCEC_API_URL
-from fetch_erec_outages import get_erec_records, EREC_API_URL
-from fetch_chelco_outages import get_chelco_records, CHELCO_API_URL
-from fetch_gcec_outages import get_gcec_records, GCEC_API_URL
+from fetch_tcec_outages import (
+    fetch_tcec_outage_summary, outages_to_records as tcec_outages_to_records,
+    streets_affected as tcec_streets_affected, UTILITY_NAME as TCEC_UTILITY_NAME, TCEC_API_URL,
+)
+from fetch_erec_outages import (
+    fetch_erec_outage_summary, outages_to_records as erec_outages_to_records,
+    streets_affected as erec_streets_affected, UTILITY_NAME as EREC_UTILITY_NAME, EREC_API_URL,
+)
+from fetch_chelco_outages import (
+    fetch_chelco_outage_summary, outages_to_records as chelco_outages_to_records,
+    streets_affected as chelco_streets_affected, UTILITY_NAME as CHELCO_UTILITY_NAME, CHELCO_API_URL,
+)
+from fetch_gcec_outages import (
+    fetch_gcec_outage_summary, outages_to_records as gcec_outages_to_records,
+    streets_affected as gcec_streets_affected, UTILITY_NAME as GCEC_UTILITY_NAME, GCEC_API_URL,
+)
+import street_county_resolver
 from fetch_lwbu_outages import (
     get_lwbu_records, LWBU_API_BASE,
     get_incidents_summary as get_lwbu_incidents_summary,
@@ -271,19 +284,35 @@ def run_fkec_cycle(db):
     db.sync_fkec_outage_events(records, timestamp=timestamp)
 
 
+# A real active outage can carry dozens of never-before-seen streets in
+# one poll (79 real ones for CHELCO alone, confirmed 2026-07-18) - each
+# needing several rate-limited (~1/sec) network round trips to resolve.
+# Capping how many NEW streets get resolved per cycle keeps this from
+# blocking every other utility's polling behind it; already-cached
+# streets (the common case once a backlog is worked through) are
+# unaffected by this cap. The rest simply get resolved on a later cycle
+# while the outage is still active - see street_county_resolver.
+# resolve_streets()'s own docstring.
+STREET_RESOLUTION_CAP_PER_CYCLE = 10
+
+
 def run_tcec_cycle(db):
     """
     Fetch Tri-County Electric Cooperative's live combined-territory
-    outage data, save the raw snapshot, and update tcec_outage_events
-    lifecycle tracking (start/end) - a combined-territory source (always
+    outage data, save the raw snapshot, update tcec_outage_events
+    lifecycle tracking (start/end), and refresh the real per-county
+    activity read derived from this cycle's streetsAffected list (see
+    street_county_resolver.py) - a combined-territory source (always
     exactly one row, see fetch_tcec_outages.COMBINED_TERRITORY_LABEL),
-    same shape as FPUC's original tracker, not a per-county rollup.
+    same shape as FPUC's original tracker, not a per-county rollup, but
+    real street-level detail sometimes rides along in the same response.
 
     Raises only when TCEC_API_URL is actually configured but the fetch
     still came back empty - same reasoning/config-check pattern as
     run_fkec_cycle() above.
     """
-    records = get_tcec_records()
+    data = fetch_tcec_outage_summary()
+    records = tcec_outages_to_records(data)
     if not records:
         if TCEC_API_URL:
             raise RuntimeError("TCEC fetch returned no data - see the poller's own log for the underlying request error")
@@ -294,19 +323,32 @@ def run_tcec_cycle(db):
     db.log_tcec_outages(records, timestamp=timestamp)
     db.sync_tcec_outage_events(records, timestamp=timestamp)
 
+    streets = tcec_streets_affected(data)
+    active = street_county_resolver.active_counties(
+        TCEC_UTILITY_NAME, streets, db, max_new_lookups=STREET_RESOLUTION_CAP_PER_CYCLE
+    )
+    db.store_active_counties(TCEC_UTILITY_NAME, active, timestamp=timestamp)
+
 
 def run_erec_cycle(db):
     """
     Fetch Escambia River Electric Cooperative's live combined-territory
-    outage data, save the raw snapshot, and update erec_outage_events
-    lifecycle tracking (start/end) - same platform/shape as TCEC (always
-    exactly one row, see fetch_erec_outages.COMBINED_TERRITORY_LABEL).
+    outage data, save the raw snapshot, update erec_outage_events
+    lifecycle tracking (start/end), and refresh the real per-county
+    activity read derived from this cycle's streetsAffected list - same
+    platform/shape as TCEC (always exactly one row, see
+    fetch_erec_outages.COMBINED_TERRITORY_LABEL). EREC's own
+    streetsAffected has so far always been null even during a real
+    active outage (confirmed 2026-07-18), so this will usually resolve
+    to [] here - kept for consistency with the other three and in case
+    that changes.
 
     Raises only when EREC_API_URL is actually configured but the fetch
     still came back empty - same reasoning/config-check pattern as
     run_tcec_cycle() above.
     """
-    records = get_erec_records()
+    data = fetch_erec_outage_summary()
+    records = erec_outages_to_records(data)
     if not records:
         if EREC_API_URL:
             raise RuntimeError("EREC fetch returned no data - see the poller's own log for the underlying request error")
@@ -317,20 +359,31 @@ def run_erec_cycle(db):
     db.log_erec_outages(records, timestamp=timestamp)
     db.sync_erec_outage_events(records, timestamp=timestamp)
 
+    streets = erec_streets_affected(data)
+    active = street_county_resolver.active_counties(
+        EREC_UTILITY_NAME, streets, db, max_new_lookups=STREET_RESOLUTION_CAP_PER_CYCLE
+    )
+    db.store_active_counties(EREC_UTILITY_NAME, active, timestamp=timestamp)
+
 
 def run_chelco_cycle(db):
     """
     Fetch Choctawhatchee Electric Cooperative's live combined-territory
-    outage data, save the raw snapshot, and update chelco_outage_events
-    lifecycle tracking (start/end) - same platform/shape as TCEC/EREC
+    outage data, save the raw snapshot, update chelco_outage_events
+    lifecycle tracking (start/end), and refresh the real per-county
+    activity read derived from this cycle's streetsAffected list (see
+    street_county_resolver.py) - same platform/shape as TCEC/EREC
     (always exactly one row, see
-    fetch_chelco_outages.COMBINED_TERRITORY_LABEL).
+    fetch_chelco_outages.COMBINED_TERRITORY_LABEL), but real street-level
+    detail sometimes rides along in the same response (confirmed real
+    2026-07-18: 79 real street names during an actual active outage).
 
     Raises only when CHELCO_API_URL is actually configured but the
     fetch still came back empty - same reasoning/config-check pattern
     as run_erec_cycle() above.
     """
-    records = get_chelco_records()
+    data = fetch_chelco_outage_summary()
+    records = chelco_outages_to_records(data)
     if not records:
         if CHELCO_API_URL:
             raise RuntimeError("CHELCO fetch returned no data - see the poller's own log for the underlying request error")
@@ -341,20 +394,31 @@ def run_chelco_cycle(db):
     db.log_chelco_outages(records, timestamp=timestamp)
     db.sync_chelco_outage_events(records, timestamp=timestamp)
 
+    streets = chelco_streets_affected(data)
+    active = street_county_resolver.active_counties(
+        CHELCO_UTILITY_NAME, streets, db, max_new_lookups=STREET_RESOLUTION_CAP_PER_CYCLE
+    )
+    db.store_active_counties(CHELCO_UTILITY_NAME, active, timestamp=timestamp)
+
 
 def run_gcec_cycle(db):
     """
     Fetch Gulf Coast Electric Cooperative's live combined-territory
-    outage data, save the raw snapshot, and update gcec_outage_events
-    lifecycle tracking (start/end) - same platform/shape as TCEC/EREC/
+    outage data, save the raw snapshot, update gcec_outage_events
+    lifecycle tracking (start/end), and refresh the real per-county
+    activity read derived from this cycle's streetsAffected list (see
+    street_county_resolver.py) - same platform/shape as TCEC/EREC/
     CHELCO (always exactly one row, see
-    fetch_gcec_outages.COMBINED_TERRITORY_LABEL).
+    fetch_gcec_outages.COMBINED_TERRITORY_LABEL), but real street-level
+    detail sometimes rides along in the same response (confirmed real
+    2026-07-18: 2 real street names during an actual active outage).
 
     Raises only when GCEC_API_URL is actually configured but the fetch
     still came back empty - same reasoning/config-check pattern as
     run_chelco_cycle() above.
     """
-    records = get_gcec_records()
+    data = fetch_gcec_outage_summary()
+    records = gcec_outages_to_records(data)
     if not records:
         if GCEC_API_URL:
             raise RuntimeError("GCEC fetch returned no data - see the poller's own log for the underlying request error")
@@ -364,6 +428,12 @@ def run_gcec_cycle(db):
     timestamp = datetime.now().isoformat()
     db.log_gcec_outages(records, timestamp=timestamp)
     db.sync_gcec_outage_events(records, timestamp=timestamp)
+
+    streets = gcec_streets_affected(data)
+    active = street_county_resolver.active_counties(
+        GCEC_UTILITY_NAME, streets, db, max_new_lookups=STREET_RESOLUTION_CAP_PER_CYCLE
+    )
+    db.store_active_counties(GCEC_UTILITY_NAME, active, timestamp=timestamp)
 
 
 def run_lwbu_cycle(db):

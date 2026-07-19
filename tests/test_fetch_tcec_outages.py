@@ -51,6 +51,23 @@ class TestOutagesToRecords:
         assert tcec.outages_to_records({}) == []
 
 
+class TestStreetsAffected:
+    def test_populated_shape(self):
+        data = {"customersOutNow": 581, "streetsAffected": ["Some Rd", "Other Ln"]}
+        assert tcec.streets_affected(data) == ["Some Rd", "Other Ln"]
+
+    def test_missing_field_returns_empty(self):
+        assert tcec.streets_affected({"customersOutNow": 0}) == []
+
+    def test_null_field_returns_empty(self):
+        # Real behavior confirmed 2026-07-18: null even at a real
+        # non-zero reading, not just when customersOutNow is 0.
+        assert tcec.streets_affected({"customersOutNow": 1, "streetsAffected": None}) == []
+
+    def test_none_data_returns_empty(self):
+        assert tcec.streets_affected(None) == []
+
+
 class TestGetTcecRecords:
     def test_fetch_failure_returns_empty(self, monkeypatch):
         monkeypatch.setattr(tcec, "fetch_tcec_outage_summary", lambda: None)

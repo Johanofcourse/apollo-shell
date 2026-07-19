@@ -79,6 +79,22 @@ def outages_to_records(data):
     }]
 
 
+def streets_affected(data):
+    """
+    Real street names from this same response's streetsAffected field -
+    confirmed real 2026-07-18 during an actual active outage (79 real
+    CHELCO street names), contradicting the older assumption that this
+    field is always empty. No per-street customer count or coordinates,
+    just names - see street_county_resolver.py for what this project can
+    honestly do with that (which counties are active, not a number).
+
+    Returns a list of street name strings, or [] if empty/missing.
+    """
+    if not data:
+        return []
+    return data.get("streetsAffected") or []
+
+
 def get_chelco_records():
     """
     Fetch and parse CHELCO's current combined-territory outage record in

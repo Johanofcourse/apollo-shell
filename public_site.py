@@ -17,6 +17,7 @@ from county_status import (
     teco_etr_accuracy, TECO_UTILITY_NAME,
     duke_restoration_precedent, DUKE_UTILITY_NAME,
     lwbu_etr_accuracy,
+    attach_active_counties,
 )
 from storm_history import (
     available_history_counties, load_history_for_county,
@@ -275,6 +276,12 @@ def index():
 
         real_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
         combined_events.sort(key=lambda r: r["customers"] or 0, reverse=True)
+
+        # Real per-county activity confirmation for TCEC/EREC/CHELCO/GCEC,
+        # when street_county_resolver.py has resolved anything - purely
+        # additive, never changes the combined customer-count numbers
+        # above. See county_status.attach_active_counties().
+        attach_active_counties(combined_events, selected_county, db)
 
         # Restoration precedent (Phase 3) - two deliberately separate,
         # distinctly-labeled numbers, only shown when there's a real,

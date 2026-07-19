@@ -1219,3 +1219,105 @@ class TestHistoricalConfidenceTallyStorage:
         db.close()
 
         assert result == {"Alachua": {"high": 3, "medium": 0, "low": 0}}
+
+
+class TestStreetCountyLookup:
+    def test_uncached_street_is_absent_from_result(self, db_path):
+        db = OutageDatabase(db_path)
+        result = db.get_cached_street_counties("CHELCO", ["Never Seen Rd"])
+        db.close()
+
+        assert result == {}
+
+    def test_save_then_get_round_trips(self, db_path):
+        db = OutageDatabase(db_path)
+        db.save_street_county("CHELCO", "Howell Bluff Rd", "Walton")
+        result = db.get_cached_street_counties("CHELCO", ["Howell Bluff Rd"])
+        db.close()
+
+        assert result == {"Howell Bluff Rd": "Walton"}
+
+    def test_unresolvable_street_caches_as_none_not_absent(self, db_path):
+        db = OutageDatabase(db_path)
+        db.save_street_county("CHELCO", "Fake Rd", None)
+        result = db.get_cached_street_counties("CHELCO", ["Fake Rd"])
+        db.close()
+
+        assert result == {"Fake Rd": None}
+        assert "Fake Rd" in result
+
+    def test_same_street_name_is_independent_per_utility(self, db_path):
+        db = OutageDatabase(db_path)
+        db.save_street_county("CHELCO", "Main St", "Walton")
+        db.save_street_county("GCEC", "Main St", "Bay")
+        result = db.get_cached_street_counties("CHELCO", ["Main St"])
+        db.close()
+
+        assert result == {"Main St": "Walton"}
+
+    def test_saving_again_overwrites_the_previous_value(self, db_path):
+        db = OutageDatabase(db_path)
+        db.save_street_county("CHELCO", "Howell Bluff Rd", None)
+        db.save_street_county("CHELCO", "Howell Bluff Rd", "Walton")
+        result = db.get_cached_street_counties("CHELCO", ["Howell Bluff Rd"])
+        db.close()
+
+        assert result == {"Howell Bluff Rd": "Walton"}
+
+    def test_only_requested_streets_are_returned(self, db_path):
+        db = OutageDatabase(db_path)
+        db.save_street_county("CHELCO", "Howell Bluff Rd", "Walton")
+        db.save_street_county("CHELCO", "Cotton Creek Rd", "Okaloosa")
+        result = db.get_cached_street_counties("CHELCO", ["Howell Bluff Rd"])
+        db.close()
+
+        assert result == {"Howell Bluff Rd": "Walton"}
+
+
+class TestCoOpActiveCounties:
+    def test_empty_before_first_store_returns_empty(self, db_path):
+        db = OutageDatabase(db_path)
+        result = db.get_active_counties("CHELCO")
+        db.close()
+
+        assert result == []
+
+    def test_store_then_get_round_trips_sorted(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_active_counties("CHELCO", ["Walton", "Okaloosa"])
+        result = db.get_active_counties("CHELCO")
+        db.close()
+
+        assert result == ["Okaloosa", "Walton"]
+
+    def test_restoring_fully_replaces_the_previous_result(self, db_path):
+        # A county no longer showing any active street should disappear,
+        # not linger with a stale reading from an earlier cycle - same
+        # reasoning as store_historical_confidence_tally().
+        db = OutageDatabase(db_path)
+        db.store_active_counties("CHELCO", ["Walton", "Okaloosa"])
+        db.store_active_counties("CHELCO", ["Holmes"])
+        result = db.get_active_counties("CHELCO")
+        db.close()
+
+        assert result == ["Holmes"]
+
+    def test_storing_empty_list_clears_previous_result(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_active_counties("CHELCO", ["Walton"])
+        db.store_active_counties("CHELCO", [])
+        result = db.get_active_counties("CHELCO")
+        db.close()
+
+        assert result == []
+
+    def test_is_independent_per_utility(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_active_counties("CHELCO", ["Walton"])
+        db.store_active_counties("GCEC", ["Bay"])
+        chelco_result = db.get_active_counties("CHELCO")
+        gcec_result = db.get_active_counties("GCEC")
+        db.close()
+
+        assert chelco_result == ["Walton"]
+        assert gcec_result == ["Bay"]

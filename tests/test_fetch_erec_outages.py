@@ -53,6 +53,24 @@ class TestOutagesToRecords:
         assert erec.outages_to_records({}) == []
 
 
+class TestStreetsAffected:
+    def test_null_even_at_a_real_active_outage(self):
+        # Real behavior confirmed 2026-07-18: 43 customers out live,
+        # streetsAffected still null - EREC genuinely doesn't always
+        # populate this the way CHELCO/GCEC do.
+        assert erec.streets_affected({"customersOutNow": 43, "streetsAffected": None}) == []
+
+    def test_missing_field_returns_empty(self):
+        assert erec.streets_affected({"customersOutNow": 0}) == []
+
+    def test_none_data_returns_empty(self):
+        assert erec.streets_affected(None) == []
+
+    def test_populated_shape_if_it_ever_happens(self):
+        data = {"customersOutNow": 10, "streetsAffected": ["Some Rd"]}
+        assert erec.streets_affected(data) == ["Some Rd"]
+
+
 class TestGetErecRecords:
     def test_fetch_failure_returns_empty(self, monkeypatch):
         monkeypatch.setattr(erec, "fetch_erec_outage_summary", lambda: None)

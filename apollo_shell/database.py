@@ -676,6 +676,56 @@ class OutageDatabase:
             )
         ''')
 
+        # Real per-street-name resolution cache for TCEC/EREC/CHELCO/GCEC -
+        # these four report ONE combined total with no per-county split in
+        # their main response, but a streetsAffected field (real street
+        # names, no customer count or coordinates per street) sometimes
+        # populates during a real active outage. A bare street name isn't
+        # reliably geocodable on its own (confirmed real 2026-07-18: an
+        # unconstrained nationwide lookup for "Sawmill Rd" returned Duval/
+        # Leon/Hillsborough county matches, nowhere near any of these four
+        # co-ops' real territory) - but constraining the search to just
+        # this utility's own known counties (street_county_resolver.py)
+        # resolves reliably, since we already know structurally which
+        # counties a real outage here could possibly be in. Resolved once
+        # and cached forever per (utility, street_name) - streets don't
+        # move, and re-geocoding the same name every 15-minute poll cycle
+        # would violate Nominatim's free public usage policy for no
+        # benefit. county is NULL for a street checked against every one
+        # of the utility's known counties and matched in none (or matched
+        # in more than one, genuinely ambiguous) - still cached, so a
+        # known-unresolvable street isn't retried every cycle either.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS street_county_lookup (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                utility TEXT NOT NULL,
+                street_name TEXT NOT NULL,
+                county TEXT,
+                resolved_at TEXT NOT NULL
+            )
+        ''')
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_street_county_lookup_unique
+            ON street_county_lookup(utility, street_name)
+        ''')
+
+        # Real, currently-active counties for TCEC/EREC/CHELCO/GCEC,
+        # derived each poll cycle from that cycle's streetsAffected list
+        # via street_county_resolver.active_counties() - see
+        # street_county_lookup's own comment for the underlying data.
+        # Fully replaced per utility every cycle (DELETE + INSERT), same
+        # reasoning as store_historical_confidence_tally(): a county with
+        # no currently-affected street shouldn't linger as "active" from
+        # a previous cycle.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS co_op_active_counties (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                utility TEXT NOT NULL,
+                county TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        ''')
+
         # Lake Worth Beach Utilities (LWBU) raw snapshots - a real
         # single-county rollup like FKEC/PRECO, always exactly one row
         # (see fetch_lwbu_outages.SERVICE_COUNTY: Palm Beach), kept in
@@ -2293,6 +2343,81 @@ class OutageDatabase:
 
         conn.commit()
         print(f"GCEC outage events: {opened} opened, {closed} closed this cycle")
+
+
+    def get_cached_street_counties(self, utility, street_names):
+        """
+        Look up already-resolved counties for the given street names, for
+        one utility (see street_county_lookup's own schema comment for
+        why this is cached forever rather than re-geocoded every poll).
+
+        Returns a dict of {street_name: county_or_None} - only for street
+        names actually found in the cache. A street name absent from the
+        returned dict has never been resolved (attempted or not) and
+        needs street_county_resolver.py to check it; a street name
+        present with value None was checked and genuinely didn't resolve
+        to any of this utility's known counties.
+        """
+        if not street_names:
+            return {}
+
+        conn = self.connect()
+        cursor = conn.cursor()
+        placeholders = ','.join('?' * len(street_names))
+        cursor.execute(f'''
+            SELECT street_name, county FROM street_county_lookup
+            WHERE utility = ? AND street_name IN ({placeholders})
+        ''', (utility, *street_names))
+        return {row['street_name']: row['county'] for row in cursor.fetchall()}
+
+    def save_street_county(self, utility, street_name, county, timestamp=None):
+        """
+        Cache one resolved (or confirmed-unresolvable, county=None)
+        street -> county mapping, permanently - see
+        street_county_lookup's own schema comment.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        timestamp = timestamp or datetime.now().isoformat()
+        cursor.execute('''
+            INSERT INTO street_county_lookup (utility, street_name, county, resolved_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(utility, street_name) DO UPDATE SET county = excluded.county, resolved_at = excluded.resolved_at
+        ''', (utility, street_name, county, timestamp))
+        conn.commit()
+
+    def store_active_counties(self, utility, counties, timestamp=None):
+        """
+        Overwrite this utility's currently-active-counties result (see
+        co_op_active_counties's own schema comment) - called once per
+        poll cycle from main.py for TCEC/EREC/CHELCO/GCEC, same
+        DELETE+INSERT full-replace reasoning as
+        store_historical_confidence_tally().
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        timestamp = timestamp or datetime.now().isoformat()
+
+        cursor.execute('DELETE FROM co_op_active_counties WHERE utility = ?', (utility,))
+        cursor.executemany('''
+            INSERT INTO co_op_active_counties (utility, county, updated_at)
+            VALUES (?, ?, ?)
+        ''', [(utility, county, timestamp) for county in counties])
+        conn.commit()
+
+    def get_active_counties(self, utility):
+        """
+        This utility's currently-active counties, as of the last poll
+        cycle that called store_active_counties() - see that method and
+        co_op_active_counties's own schema comment.
+
+        Returns a sorted list of county names, [] if none are currently
+        active (or none have ever been resolved for this utility).
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute('SELECT county FROM co_op_active_counties WHERE utility = ? ORDER BY county', (utility,))
+        return [row['county'] for row in cursor.fetchall()]
 
 
     def log_lwbu_outages(self, outage_list, timestamp=None):

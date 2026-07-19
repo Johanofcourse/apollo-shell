@@ -170,6 +170,32 @@ def _combined_territory_open_events(db):
     )
 
 
+def attach_active_counties(combined_events, selected_county, db):
+    """
+    Enrich combined-territory rows (TCEC/EREC/CHELCO/GCEC) with the real
+    per-county activity read from street_county_resolver.py, when any
+    exists (see co_op_active_counties's own schema comment - most cycles
+    this will be empty, either because the source's streetsAffected field
+    didn't populate this time or nothing's resolved yet). Purely additive
+    - never changes combined_events' existing customer-count numbers,
+    which stay the authoritative reading regardless.
+
+    Adds two keys to each row in place: confirmed_active_here (True if
+    real street data specifically confirms activity in selected_county,
+    not just somewhere in the wider combined territory) and
+    other_active_counties (the rest of the utility's currently-active
+    counties, excluding selected_county, so a reader isn't told "active
+    here" twice).
+
+    Returns combined_events (same list, mutated).
+    """
+    for row in combined_events:
+        active = db.get_active_counties(row["utility"])
+        row["confirmed_active_here"] = any(_county_in_alert(selected_county, c) for c in active)
+        row["other_active_counties"] = [c for c in active if not _county_in_alert(selected_county, c)]
+    return combined_events
+
+
 def _rows_for_county(rows, search_county):
     """
     Filter normalized event rows down to ones whose county field
