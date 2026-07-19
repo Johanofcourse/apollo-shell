@@ -43,13 +43,22 @@ detective instead. No regrets.
 - Real restoration-time guidance, honestly scoped to what each utility
   actually supports rather than one invented model for everyone: FPL
   gets a historical-precedent pair (major storms vs. everyday outages,
-  kept as two separate numbers on purpose, never blended), TECO gets an
-  accuracy check on its own existing restoration estimate instead,
-  since it already has one FPL doesn't, and Duke gets a third, simpler
-  shape - a plain duration precedent, real and individually-tracked
-  like TECO's but with no estimate of its own to check.
+  further split by real wind severity, kept as separate numbers on
+  purpose, never blended), TECO and LWBU each get an accuracy check on
+  their own existing restoration estimate instead, since they already
+  have one FPL doesn't, and Duke and JEA get the simpler shape - a
+  plain duration precedent, real and individually-tracked, with no
+  estimate of their own to check. TECO, FPUC, and LWBU's live open
+  outages also show their own restoration estimate inline, not just in
+  the aggregate accuracy numbers
+- Street-to-county resolution for the four utilities that only ever
+  report a combined multi-county total: real street names geocoded
+  against each utility's own known territory, cached forever, so a
+  live outage can now surface which of its counties are actually
+  affected
+- Outage History pages, and the public map on narrow screens
 
-## The plot twist
+## The plot twist (July 2, 2026)
 Same night, different rabbit hole: went looking at whether other
 Florida utilities' own public information had richer live data than
 FPL's — one of them did, dramatically so. It hands over, per outage incident: real
@@ -72,7 +81,7 @@ Also found a real deployment bug and double-checked a timezone
 assumption that turned out to already be correct — good reminders that
 "it works" and "it's been checked" aren't the same sentence.
 
-## Where the historical data actually comes from
+## Where the historical data actually comes from (July 2, 2026)
 Deliberately vague on specifics here. Broad strokes: one public source
 publishes after-action situation reports during declared storm
 emergencies, county-by-county, per utility, with a real
@@ -101,27 +110,36 @@ real and usable.
   a real load-time bug (up to 44s) fixed at the source, not papered
   over with a longer cache
 - A real FPL outage open right now gets two honest restoration numbers
-  on its county's page (major-storm precedent, everyday-outage
-  precedent); a real TECO outage gets an accuracy read on TECO's own
-  stated estimate instead; a real Duke outage gets a plain duration
-  precedent, the simplest of the three - all three only appear when
-  actually relevant, never as a standalone historical curiosity
+  on its county's page (major-storm precedent, split by real wind
+  severity where enough data exists; everyday-outage precedent); a real
+  TECO or LWBU outage gets an accuracy read on that utility's own
+  stated estimate instead, plus its live per-incident ETR shown inline;
+  a real Duke or JEA outage gets a plain duration precedent - all only
+  appear when actually relevant, never as a standalone historical
+  curiosity
+- TCEC/EREC/CHELCO/GCEC's live outages now resolve to real affected
+  counties from their raw street lists, geocoded and cached rather than
+  left as one blended multi-county total
+- Outage History no longer hard-stops at 15 rows - real Prev/Next
+  pagination - and the public page's map and long explainer text
+  actually work on a phone screen now, not just desktop
 
 ## The honest gaps
-- Real restoration guidance now exists for FPL, TECO, and Duke - a
-  historical-precedent pair for FPL, an accuracy check on TECO's own
-  existing estimate, a plain duration precedent for Duke. JEA still
-  doesn't get any version, for a real reason, not just "needs more
-  time": it has no per-incident data at all, county-rollup only, like
-  FPL - if it ever gets a restoration signal, it'll need FPL's shape,
-  not Duke's or TECO's
+- Real restoration guidance now covers every utility with enough real
+  data to support it - FPL, TECO, Duke, JEA, and LWBU, each in the
+  shape its own feed actually supports rather than one model forced
+  onto all five
+- FPUC's live feed still reports one combined total across its five
+  non-adjacent counties, no per-county split - a real, unresolved
+  limitation of the source itself, not something this project's code
+  can parse around
 - *Historical* storms are the strong suit: 17 of them, 2018-2025, real
   multi-day restoration data, cross-checked severity context
 - The original plan — AI input parser, command history, an actual
   interactive shell — is still benched. "Map power outages against
   weather" turned out to be the more interesting rabbit hole.
 
-## End of a long one
+## End of a long one (July 2-3, 2026)
 Real late-night session. Went from re-explaining the correlation logic
 to digging into a new utility's live feed, fixing half a dozen real
 bugs along the way that would've quietly poisoned the data. Nothing
@@ -129,7 +147,7 @@ dramatic weather-wise that night — small potatoes, no real storm to
 test any of it against yet. Fine — the point wasn't finding a storm,
 it was making sure the thing is ready to trust when one shows up.
 
-## The 2018-2025 backfill, and the confidence label
+## The 2018-2025 backfill, and the confidence label (July 4, 2026)
 A later session, all business: backfilled every remaining storm on
 record back to May 2018 — 17 storms total, every utility per storm,
 each independently checked (a utility-name mismatch turned out to be a
@@ -144,7 +162,7 @@ within an already-plausible type. High/medium/low, not a percentage,
 shipped straight into the dashboard with confidence bars, severity
 badges, and a KPI strip.
 
-## The design detour
+## The design detour (July 4-5, 2026)
 A different kind of session: less "fix a bug," more "what should this
 look like." Used an isolated design sandbox — never touching the real
 dashboard or live data — to explore a visual language first.
@@ -170,7 +188,7 @@ tech-savvy habits (hover-only reveals, icon-only controls, jargon).
 Nothing from this session is in the live app yet — porting the
 settled design into the real dashboard is the deliberate next step.
 
-## An old quirk, revisited: Elsa's storm-history recaps
+## An old quirk, revisited: Elsa's storm-history recaps (July 5, 2026)
 A much earlier bug got a proper look back: the narrative text for
 Hurricane Elsa sometimes restated the storm's own historical peak wind
 (from days earlier, out in the Caribbean) in the same paragraph as the
@@ -183,7 +201,7 @@ storms have this pattern at all. A quirk of how that one storm's
 narratives happened to get written, not a systemic problem across the
 whole historical archive.
 
-## The Miami-Dade saga
+## The Miami-Dade saga (July 8, 2026)
 Started with a simple ask - let people query a county's real storm
 history - and turned into the best bug hunt this project's had. Built a
 consolidated historical database and a real query page, then noticed
@@ -212,7 +230,7 @@ integrity-check script and a real automated test suite, including a
 test that reproduces the replay bug itself and proves the fix actually
 holds.
 
-## Heat gets its own moment
+## Heat gets its own moment (July 9, 2026)
 A simple question - "do we track heat advisories?" - turned out to have
 a one-word answer (yes, already, for free) and a more interesting
 follow-up. Heat Advisory and Excessive Heat Warning are just ordinary
@@ -239,7 +257,7 @@ zones under an active advisory, plus a plain-language note on what a
 timestamp on the dashboard and history pages now renders as actual
 prose ("July 2, 2026, 1:19 AM") instead.
 
-## The isometric map, and a fourth utility in one night
+## The isometric map, and a fourth utility in one night (July 9, 2026)
 Two more things landed the same night. First, the county map got a real
 isometric pass in the design sandbox - a true angled projection on the
 real county boundary data already in place, each county given a modest
@@ -264,7 +282,7 @@ since JEA's ZIP list doesn't move between polls. JEA got its own
 dedicated tables rather than sharing FPL's, on purpose, so the two
 utilities' numbers could never get silently blended together.
 
-## A public-facing Storm History, and the same lesson twice
+## A public-facing Storm History, and the same lesson twice (July 12, 2026)
 Picked up the design sandbox again to sketch what a genuinely
 public-facing page could look like, starting from the one piece already
 clear to publish: storm history. Landed on a real question to build
@@ -293,7 +311,7 @@ gap to close, just a different job than the public-facing mockup. Every
 county's page now lists all 17 storms, honest "no report" rows and all,
 verified against the same real numbers (Miami-Dade 12/17, Duval 13/17).
 
-## Why the dashboard got slow
+## Why the dashboard got slow (July 12, 2026)
 A plain complaint - "dashboard is taking a while to load" - turned into
 a real, measured diagnosis rather than a guess. Every page load was
 silently recomputing all correlation results from scratch, each one a
@@ -313,7 +331,7 @@ minutes, about 0.05s. Deliberately the smaller fix over a deeper
 rewrite that would solve the same problem more thoroughly but risks
 quietly changing the matching logic's actual behavior in the process.
 
-## Two incident IDs, decoded, one of them worth translating
+## Two incident IDs, decoded, one of them worth translating (July 12, 2026)
 A passing question about why two utilities' incident numbers looked so
 different turned into an actual investigation rather than a shrug.
 Checked both against real data instead of guessing: one really does
@@ -330,7 +348,7 @@ The other stays exactly as sent - there's nothing real underneath it to
 translate, and showing a fake decoded label would be worse than showing
 an honest opaque one.
 
-## Checking on one outage after it's over
+## Checking on one outage after it's over (July 12, 2026)
 A natural next question once you can see incident IDs clearly: can you
 actually look one up? Turned into a real, small feature - click any row
 in a "Recently Resolved" table and land on that one incident's own page.
@@ -353,7 +371,7 @@ that model itself, which is still waiting on a lot more resolved-
 incident history to accumulate, just the part where you can finally go
 look at one incident's whole story by hand.
 
-## A dashboard row that didn't add up
+## A dashboard row that didn't add up (July 12, 2026)
 Asked to explain a single row - Nassau, 1244 correlated outages, Rip
 Current Statement x280 - and answering it honestly meant actually
 reading the logic behind it instead of describing what the label
@@ -420,7 +438,7 @@ pink already living in the design language - kept the orange exactly
 where it still means something (the severity badges, the confidence
 bar's low segment), and moved on.
 
-## The first real shape of a public page
+## The first real shape of a public page (July 12, 2026)
 A bigger question arrived next: what would it actually look like to
 ship this for real, not just as an internal tool? Answering it honestly
 meant admitting the existing design sandbox quietly mixed two different
@@ -452,7 +470,7 @@ checking your own utility's outage map. Nothing here is live in the
 real app yet - still a concept, still waiting on an actual test/
 production environment that doesn't exist yet either.
 
-## The Panhandle hunt, and a bug that needed catching twice
+## The Panhandle hunt, and a bug that needed catching twice (July 12, 2026)
 One more section landed in the public concept that night - a page
 showing every active weather alert statewide, not just heat. Real and
 small: two alerts active at the time, one of them a rip current
@@ -499,7 +517,7 @@ one. Closed eight of the ten missing counties outright. Three remain -
 probably someone smaller, still unfound, still an honest gap instead of
 a guessed-away one.
 
-## Peak isn't the same thing as right now
+## Peak isn't the same thing as right now (July 13, 2026)
 A comparison against a well-known public outage tracker's live count
 for Palm Beach surfaced a real, honest confusion: our dashboard said
 2,343 customers out, theirs said 233. Neither number was wrong. Pulling
@@ -520,7 +538,7 @@ borrow another aggregator's utility-count figure either, checking our
 own historical roster first rather than assuming their number applied
 to us.
 
-## Three utilities, one dead end, and a night of real bugs caught early
+## Three utilities, one dead end, and a night of real bugs caught early (July 13, 2026)
 Kept pulling the same thread: what else is a real, live Florida utility
 we're not tracking yet. City of Tallahassee came first - a real catch
 before it ever shipped: an early data pull looked like a valid but
@@ -558,7 +576,7 @@ real coverage one particular Panhandle county had - just as part of one
 blended five-county number, not a verified reading for that county on
 its own. That gap was properly closed later on (see below).
 
-## A map that finally shows what's happening right now
+## A map that finally shows what's happening right now (July 13, 2026)
 The isometric county map had one real gap the whole time: its color and
 height were always driven by historical weather-correlation pattern,
 never by what's actually happening at this moment - the live outage
@@ -572,7 +590,7 @@ the rewrite before shipping: a needless workaround standing in for
 something that could just be done directly, and a conditional quietly
 returning the same value on both sides.
 
-## The last county, closed
+## The last county, closed (July 14, 2026)
 One real gap had been sitting there since the Panhandle work began: a
 single county with no true per-county live reading of its own, only
 ever showing up blended into someone else's combined total. Rather than
@@ -592,7 +610,7 @@ it - not a milestone chased for its own sake, just the natural end of
 a thread that started with one simple question: who else out there is
 a real, live Florida utility this project isn't tracking yet.
 
-## A second app, not a second coat of paint
+## A second app, not a second coat of paint (July 14, 2026)
 The public-facing design concept had been sitting as a frozen mockup
 for a while - real numbers, but hardcoded, no live wiring, no backend.
 The plan for turning it into something real settled on two things at
@@ -643,7 +661,7 @@ Runs locally for now, same as the internal dashboard always has -
 putting it on the actual internet is still its own later decision, not
 something that happens by default just because the code exists.
 
-## The rebuild: fetching the real thing instead of remembering it
+## The rebuild: fetching the real thing instead of remembering it (July 14, 2026)
 First pass above shipped, then failed a look-at-it-live test almost
 immediately: wrong colors, a flat map where an isometric one was
 promised, no narrative summary, and a real comma-joining bug the
@@ -677,7 +695,7 @@ identical problem was already solved once on the internal dashboard, a
 short-lived cache, since the underlying data only actually changes once
 a poll cycle.
 
-## A fourteenth utility, and one number instead of two
+## A fourteenth utility, and one number instead of two (July 14, 2026)
 Lake Worth Beach Utilities joined next - a single real city inside Palm
 Beach County, already covered indirectly through FPL's county-wide
 number but never on its own. Its live feed turned out to offer
@@ -699,7 +717,7 @@ percentage, not a raw count) and the individual incidents stayed
 exactly what they are: real, useful, per-outage detail, on their own
 dashboard section, never summed into anything statewide.
 
-## The fifteenth utility, found the same honest way as the fourteenth
+## The fifteenth utility, found the same honest way as the fourteenth (July 16, 2026)
 A live poller restart was quietly grinding through a genuinely
 different kind of wait - a cloud VM stuck behind a real capacity
 shortage on a free-tier compute shape, nothing to do about it but check
@@ -727,7 +745,7 @@ a real city-wide percentage for a county that already had some
 coverage, just never a clean customer-base denominator to trust before
 now.
 
-## The sixteenth, the same ranking's runner-up
+## The sixteenth, the same ranking's runner-up (July 16, 2026)
 Once the fifteenth was live, the same historical-storm ranking's #2
 candidate was the obvious next move - a large real cooperative, edged
 out only narrowly the first time around. Its live feed turned out to be
@@ -737,7 +755,7 @@ around at all. It also exposes a genuinely live per-incident array with
 real start and restoration-estimate times - unlike the fifteenth's, this
 one isn't empty, just out of scope for this pass.
 
-## Off the laptop, onto a real server
+## Off the laptop, onto a real server (July 17, 2026)
 Everything above had been running off a laptop under a desk - fine for
 a hobby project, less fine for something meant to run day and night
 without depending on someone's Wi-Fi staying up. Moving it onto a real,
@@ -788,7 +806,7 @@ database twice a day, and the server's own disk gets a real, automatic
 snapshot once a day on Oracle's side - both genuinely free, neither
 one depending on the other.
 
-## A long day of real bugs, not one big feature
+## A long day of real bugs, not one big feature (July 17, 2026)
 Started by comparing the internal dashboard against the public page and
 finding they didn't quite agree - the beginning of a real bug-fixing
 run, not a planned sprint.
@@ -824,7 +842,7 @@ silently couldn't include a combined-territory source's number at all,
 one where the dashboard's own statewide total was missing an entire
 real utility's incident view.
 
-## Restoration confidence, for real this time
+## Restoration confidence, for real this time (July 17-18, 2026)
 The long-deferred idea finally got a real, honest shape - not one
 model for every utility, two genuinely different ones for the two
 utilities that can actually support them.
@@ -865,7 +883,82 @@ from 7,195 real closed incidents statewide, only one of them over 48
 hours the whole time. Real number: about an hour and twenty minutes,
 typically, statewide.
 
-JEA still doesn't get any version - real per-incident data doesn't
-exist for it at all, county-rollup only like FPL, so whatever it
-eventually gets has to be FPL's shape, not Duke's or TECO's. Real,
-honest, still-open work, not something this session got to.
+JEA still doesn't get any version as of this session - real
+per-incident data doesn't exist for it at all, county-rollup only like
+FPL, so whatever it eventually gets has to be FPL's shape, not Duke's
+or TECO's. Real, honest, still-open work, not something this session
+got to. (Closed the following night - see below.)
+
+FPL's Major Storms range also got a real refinement the next day (July
+18): it was one blended min/median/max across every storm regardless of
+strength, so a glancing tropical storm and an actual Category 3 landed
+in the same number. Split by real wind severity instead, using the
+National Hurricane Center's own 74mph hurricane-force threshold against
+the same `historical_storm_severity` table this project already had
+sitting unused for exactly this - "Hurricane-Force Storms" and
+"Weaker Storms" now report separately, falling back to the old blended
+number for a county that's only ever seen one bucket.
+
+## Closing the utility gaps: JEA, LWBU, and four co-ops that only know their own street names (July 18-19, 2026)
+Two real per-incident sources still had zero restoration signal after
+the July 17-18 push, for two different honest reasons. JEA had never
+gotten one at all - closed the same way Duke's shape was reached, a
+plain min/median/max duration precedent from JEA's own closed
+incidents, since JEA has no restoration-estimate field of its own to
+check the way TECO's gets checked. Lake Worth Beach Utilities had never
+gotten the TECO-style check either, despite carrying the same real
+per-incident restoration estimate - built the same way, and along the
+way caught two real bugs a clean local fixture had been hiding: LWBU's
+timestamps sometimes arrive timezone-aware and sometimes naive, which a
+straight subtraction can't handle, and LWBU doesn't always zero-pad
+fractional seconds, which the VM's older Python rejects outright where
+a newer one wouldn't. Both only showed up once tested against the
+VM's real messy data, not the clean local kind. A third bug, lower
+stakes: the new accuracy check first landed pointed at the wrong table
+- LWBU's rollup view, not its incident-level one - fixed by gating on
+the real incident table directly. TECO, FPUC, and LWBU also picked up
+a live per-incident ETR display the same night: any of their ongoing
+outages that already carries the utility's own restoration estimate
+now shows it inline, not just in the aggregate accuracy numbers.
+
+The other four - TCEC, EREC, CHELCO, and GCEC - share a real, different
+limitation: each hands over a combined multi-county total plus a raw
+list of affected street names, with no county tag attached to either.
+Closing that meant real geocoding, constrained to each utility's own
+known counties rather than an open nationwide search (an unconstrained
+lookup for a real CHELCO street matched three counties nowhere near
+CHELCO's territory; the same name constrained to CHELCO's own four
+came back correct). Every resolved street gets cached forever, so a
+given name only ever gets looked up once. A real bug turned up during a
+second audit pass the following night: a genuine network failure and a
+confirmed zero-result response were both collapsing into the same
+"no match," so a transient hiccup could get permanently cached as
+"this street isn't in this county." Split into two real outcomes -
+a confirmed no-match still caches as `None`, a technical failure now
+raises its own exception and gets retried next cycle instead - and 69
+stale entries already poisoned by the old logic got cleared from the
+VM.
+
+The rest of the same stretch was mobile and reading-experience work,
+prompted by actually loading the public page on a phone: the county map
+now scales to the viewport instead of overflowing it, five walls of
+explainer text collapsed behind "what is this section?" toggles, the
+Storm History county search became a real type-to-filter combobox
+instead of a plain dropdown, and a genuine overflow bug got found (a
+run of county names with no spaces - "Bay/Calhoun/Gulf/Jackson/
+Walton/Washington" - couldn't line-break on a narrow screen) and fixed
+after an initial wrong guess at the cause. Outage History moved from a
+hard 15-row ceiling to real pagination. And the public-facing wording
+got one more pass, softening a few remaining phrases that read as
+implying a direct read of utilities' own systems rather than their
+published public information - the same privacy stance already applied
+everywhere else, just closing the last few spots that had drifted from
+it.
+
+A second full audit sweep closed out the stretch - the same eight-
+category check (test suite, data integrity, wiring, live smoke test,
+known bug classes, real-number cross-reference, infrastructure and
+ops hygiene) run once already this week - and it's what caught the
+street-resolver network-failure bug above before it could quietly
+mismark more streets. 562 tests passing by the end of it, up from 474
+at the start of this whole stretch.

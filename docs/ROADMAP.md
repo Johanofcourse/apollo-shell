@@ -1,6 +1,11 @@
 # Apollo Shell Roadmap
 
-## Phase 1: Foundation (Done)
+## Phase 1: Foundation (Done, ~2026-04)
+Real date range pulled from git history: initial build started 2026-04-01,
+live poller running since 2026-04 (the date this project's own copy still
+cites for "live tracking began"). Per-item dates from this far back aren't
+reliably reconstructable without deeper archaeology than tonight's pass -
+this is a real range, not a guess, but not bullet-level precision either.
 - [x] FPL data collection (live, 15-minute polling)
 - [x] SQLite storage
 - [x] Web dashboard (localhost only — internal tool, not public-facing)
@@ -9,7 +14,11 @@
       [`docs/product-review-weather-correlation.md`](./product-review-weather-correlation.md)
       for what's built vs. still proposed
 
-## Phase 2: Multi-Source Intelligence (In Progress)
+## Phase 2: Multi-Source Intelligence (In Progress, 2026-07-02 through 2026-07-17)
+Real date range from git history - the bulk of this phase was one
+continuous, heavy sprint: 16 commits on 07-02 alone, staying dense
+through 07-17. Same caveat as Phase 1 - real range, not bullet-level
+precision for the earliest items in this list.
 - [x] Second live Florida utility integrated end-to-end — richer than
       FPL's feed, with a real cause, live status, and an actual
       restoration estimate per incident
@@ -123,7 +132,7 @@
       plus a color scheme fix after an earlier accent color read as an
       unintended resemblance to an unrelated brand.
 
-## Phase 2.5: Dashboard Redesign (In progress — design exploration)
+## Phase 2.5: Dashboard Redesign (In progress — design exploration, ~2026-07-05 onward)
 - [x] Visual direction settled on, explored entirely in an isolated
       design sandbox (never connected to live data, never touching the
       real app) before any porting work: a flat, typographic, dark-mode
@@ -149,7 +158,7 @@
       Not scoped yet, deliberately - revisit once the desktop version
       is actually settled and ported.
 
-## Phase 3: Predictive (Restoration signal shipped for FPL, TECO, and Duke; the at-risk-counties idea and JEA's own version are the real remaining work)
+## Phase 3: Predictive (Restoration signal shipped for every utility with real usable data - FPL, TECO, Duke, JEA, and LWBU; only the at-risk-counties idea and FPUC's still-too-thin sample remain)
 - [ ] **Weather-based "at-risk counties" signal - a real idea, not yet
       built, and NOT blocked the way the rest of this phase is.**
       Everything else here needs data that only accumulates with time;
@@ -176,7 +185,7 @@
       later - real storm-track/forecast-cone data (e.g. NOAA's National
       Hurricane Center advisories) instead of just "is an alert active
       right now" - not needed to ship a first pass.
-- [x] **Restoration-time signal for FPL - shipped 2026-07-18, as two
+- [x] **Restoration-time signal for FPL - shipped 2026-07-17, as two
       deliberately separate, distinctly-labeled numbers, never merged
       into one.** FPL can never get a live incident-level model (its
       feed only ever reports a county-wide total, and events blur
@@ -205,7 +214,24 @@
       Both gated the same way: only shown on a county's live page while
       a real FPL outage is currently open there, not as a standalone
       historical curiosity.
-- [x] **TECO restoration-estimate accuracy - shipped 2026-07-18, a
+- [x] **"Major Storms" bucketed by real wind severity - shipped
+      2026-07-18.** The flat range above was blending genuinely
+      different storms into one number (Nassau County alone: a 9-hour
+      event and a 66-hour event averaged into a meaningless ~34h) -
+      `storm_history.fpl_restoration_precedent_by_wind_severity()` splits
+      the same real durations at the NHC's own Category 1 hurricane
+      threshold (74mph, picked from real data - no single dramatic gap
+      exists in the real 29-155mph distribution, so an invented
+      percentile split would have been arbitrary in a way this
+      authoritative number isn't). Verified worth building against the
+      aggregate first: hurricane-force storms have a 96h statewide
+      median vs 30h for sub-hurricane storms. Shown as a refinement next
+      to the existing combined number, not a replacement - only about
+      45% of FPL's historical records have a usable wind match, so a
+      low-exposure county can still land entirely in one tier (confirmed
+      real for Nassau: every one of its own storms on file tops out
+      under 65mph, even during Helene).
+- [x] **TECO restoration-estimate accuracy - shipped 2026-07-17, a
       genuinely different kind of signal from FPL's pair.** TECO already
       reports a real per-incident restoration estimate (unlike FPL,
       which has none at all), so instead of inventing a precedent range,
@@ -214,13 +240,15 @@
       stated ETR vs. when it actually closed. Real, clean data (every
       closed incident statewide has a usable ETR, no blurring problem to
       filter since each is already individually tracked by a real
-      incident_id) - statewide, TECO's incidents resolve a median of
-      ~2.5 hours *before* their own first estimate, on-time-or-early
-      roughly two-thirds of the time. Same live-outage gating as FPL's
-      pair.
+      incident_id). Numbers checked and corrected 2026-07-18 after a real
+      audit sweep found the originally-cited figures had drifted as more
+      incidents closed (83% on-time had become 66%) - current statewide
+      read: incidents resolve a median of ~2.5 hours *before* their own
+      first estimate, on-time-or-early roughly two-thirds of the time.
+      Same live-outage gating as FPL's pair.
 - [x] **Duke restoration-time precedent - shipped 2026-07-18, the
-      simplest of the three Phase 3 shapes.** Duke's raw feed has no
-      restoration-estimate field at all, so TECO's accuracy-check
+      simplest of the three original Phase 3 shapes.** Duke's raw feed
+      has no restoration-estimate field at all, so TECO's accuracy-check
       approach is permanently off the table for it - but Duke already
       reports real, individually-tracked incidents (like TECO, not a
       blurred county-wide aggregate like FPL), so it gets a plain
@@ -233,21 +261,35 @@
       does. Real finding: Duke's incidents statewide resolve in a
       median of about 1.3 hours. Same live-outage gating as the other
       two.
-- [ ] **JEA still doesn't get any version, for a real structural reason
-      confirmed 2026-07-18.** It has no per-incident data at all -
-      county-rollup only, same shape as FPL - so if it ever gets a
-      restoration signal, it has to be FPL's shape (a live-tracking
-      precedent off its own outage_events), not Duke's or TECO's. Real,
-      schedulable work once picked up, not blocked on data - just not
-      done yet.
-- [ ] FPUC's real per-incident view and LWBU both technically have an
-      ETR field like TECO's, confirmed 2026-07-18 - but only 3 and 8
-      real closed incidents respectively right now, too thin for
+- [x] **JEA restoration precedent - shipped 2026-07-18, the last
+      utility with zero Phase 3 signal.** Same structural limit as FPL
+      (no per-incident data at all, county-rollup only), so it gets
+      FPL's historical-precedent shape via `storm_history.
+      jea_restoration_precedent()` - 46 real records across Duval/Clay/
+      St. Johns in the same 17-storm PSC archive. No live "Everyday
+      Outages" companion though - JEA's real live volume is too thin (2
+      closed events statewide when checked) to be worth a range built
+      from 2 points, the same trap this project has avoided everywhere
+      else. Ships historical-only, honestly scoped to what the data
+      actually supports.
+- [x] **LWBU restoration-estimate accuracy - shipped 2026-07-18.** Same
+      shape as TECO's via `county_status.lwbu_etr_accuracy()` - judged
+      too thin to build when TECO's version shipped (8 closed incidents),
+      revisited once it reached 12. Two real bugs caught building this,
+      not just plumbing: LWBU's raw ETR always carries a real UTC offset
+      unlike TECO's naive format, which would have raised a real
+      exception on every row and made the function silently always
+      return "no data"; and LWBU's API doesn't zero-pad fractional
+      seconds, which Python's timestamp parser rejects outright on the
+      VM's Python version. Both fixed by testing against real messy VM
+      data, not just clean local fixtures.
+- [ ] FPUC's real per-incident view still only has 3 real closed
+      incidents (checked again 2026-07-19) - still too thin for
       `teco_etr_accuracy()`'s approach to mean anything yet. Revisit once
-      they accumulate more real incident history - no code change
-      needed, the function would just need reusing.
+      it accumulates more real incident history - no code change needed,
+      the function would just need reusing.
 
-## Phase 4: Public-Facing Query Layer (Future consideration, not started)
+## Phase 4: Public-Facing Query Layer (Live and actively growing since 2026-07-14 - "Future consideration, not started" below is stale as a phase-level label; individual items are still accurately marked)
 - [ ] Let people query the **derived/aggregated** data (historical
       severity vs. outage duration, weather-match confidence,
       eventually restoration confidence) - never the raw live feeds
@@ -260,16 +302,17 @@
   3. [ ] Enough live volume for restoration confidence to mean anything
      (Phase 3's data-volume bar)
 - Not scoped in detail yet - revisit once the above are real, not before.
-- [x] **First real concept for the actual public-facing page**, built
-      as a separate design exploration. Combines the map, the Heat This
+- [x] **First real concept for the actual public-facing page (~2026-07-08
+      through 2026-07-13)**, built as a separate design exploration. Combines the map, the Heat This
       Month panel, and the Storm History section into one real page
       layout on real live data rather than placeholders. Deliberately
       drops the internal-monitoring-style detail from the ops version -
       that's language for us, not a real visitor. Ends with an honest
       footer stating plainly what the page does and doesn't show. Still
       just a design concept - nothing here is a live route yet.
-- [x] **The concept above is now real, live code - a genuinely separate
-      app from the internal dashboard, not a redesign of it.** Built as
+- [x] **The concept above is now real, live code - shipped 2026-07-14,
+      a genuinely separate app from the internal dashboard, not a
+      redesign of it.** Built as
       its own Flask app (own port, own template folder), sharing only
       the read-only data layer with the internal tool - it imports
       nothing from the internal dashboard's own code, and the internal
@@ -327,8 +370,9 @@
       a raw feed pass-through. This does not reopen "Explicitly not
       planned" below - raw feeds themselves stay off-limits,
       permanently.
-- [x] **Confirmed a real live-data geographic gap in Florida, and
-      closed most of it utility by utility.** Cross-referencing the
+- [x] **Confirmed a real live-data geographic gap in Florida (2026-07-12),
+      and closed most of it utility by utility over the following two
+      days.** Cross-referencing the
       full Florida county list against everywhere our live sources
       report data found exactly 10 of 67 counties with zero live
       coverage, every one of them in the Panhandle - no outliers
@@ -363,6 +407,15 @@
       and the test/prod split above first, not something to start now.
 
 ## Utility coverage
+Real dates, pulled from git history rather than memory: FPL (foundational,
+Phase 1). TECO 2026-07-02. Duke 2026-07-03. JEA 2026-07-09. Tallahassee,
+Talquin, FPUC (combined), and Peace River Electric all 2026-07-13, the
+same day as Florida Keys Electric. TCEC, EREC, CHELCO, GCEC, and Lake
+Worth Beach Utilities all 2026-07-14 (GCEC's real per-county coverage
+milestone below is also this date). Orlando Utilities Commission
+2026-07-16, same day as Lee County Electric Cooperative, the 16th and
+(so far) last.
+
 Grew from one utility (FPL) to sixteen live sources across this
 project's life, each one closing a real, verified county-coverage gap
 rather than being added for its own sake. In rough order: a second and
@@ -410,7 +463,7 @@ everywhere it shows up - on the dashboard, in the county lookup tool,
 and in its own weather-correlation logic, which is designed to return
 empty rather than fake a match it can't actually verify.
 
-- [x] **Live `/county` lookup page added** - pick any of Florida's 67
+- [x] **Live `/county` lookup page added (2026-07-14)** - pick any of Florida's 67
       real counties and see everything currently relevant to it in one
       place: real per-county outages from every source that actually
       reports per-county, active weather alerts naming that county, and
@@ -418,6 +471,78 @@ empty rather than fake a match it can't actually verify.
       combined-territory sources whose multi-county label happens to
       cover it. Deliberately live/current-status only; the storm-history
       tool remains the place for real multi-year data per county.
+- [x] **Real mobile pass on the public page - shipped 2026-07-18.** The
+      Florida map had a hardcoded 400px width wider than every real
+      iPhone viewport once the page's own padding was accounted for -
+      switched to a real responsive width/aspect-ratio, verified against
+      a true 390px device-emulated viewport via headless Chrome/CDP, not
+      just a resized desktop window (which turned out to give a false
+      pass - a real, separate finding this same night). Also: the
+      header intro and five section intros (Heat This Month, Current
+      Weather Alerts, County Status, Outage History, Storm History) now
+      collapse behind a "What is this section?" toggle instead of
+      showing their full explanatory paragraph by default, meaningfully
+      cutting real scroll length. Two real overflow bugs also found and
+      fixed this pass: a combined-territory label with no spaces
+      (`Bay/Calhoun/Gulf/Jackson/Walton/Washington`) had no valid point
+      to line-break and ran off the screen with a real horizontal
+      scrollbar; a card's decorative corner-cut clip-path only clipped
+      the two diagonal corners, not content overflowing the straight
+      edge.
+- [x] **Real county-search combobox, replacing a plain `<input list>` +
+      `<datalist>` - shipped 2026-07-18.** Datalist's native dropdown
+      can't be sized or styled (no forcing "show 5 rows") and iOS
+      Safari's support for it is spotty at best - likely near-unusable
+      for the exact audience (older users, less precise taps) this was
+      meant to help. Hand-built replacement: real substring matching (so
+      "Dade" finds "Miami-Dade", not just names starting with "Dade"), a
+      fixed-height scrollable list sized for ~5 real touch-target rows,
+      both tap and keyboard selection. Added in two places - the hero
+      map card (instant navigation, same as clicking the map) and Storm
+      History (navigates + searches) - sharing one factory function
+      rather than two copy-pasted instances.
+- [x] **Outage History paginated instead of a hard display ceiling -
+      shipped 2026-07-19.** The old cap silently dropped anything past
+      15 rows with just a "showing N of TOTAL" note and no way to
+      actually see the rest. Real server-side pagination instead (7 per
+      page, Prev/Next links, page number clamped to a valid range so a
+      stale bookmark can't 500 or silently show nothing) - verified
+      against real production-scale data, a 412-outage county
+      (59 real pages) and a 13-outage county (2 pages), confirming page
+      2 actually shows different, older events, not a repeat of page 1.
+- [x] **Real per-county activity signal for TCEC/EREC/CHELCO/GCEC -
+      shipped 2026-07-18.** These four report one combined total with no
+      per-county split - but a real active outage that same night
+      revealed their `streetsAffected` field isn't always empty like
+      earlier notes assumed; it's real street names (no per-street
+      customer count or coordinates), so the honest ceiling is "which
+      counties currently have reported activity," not a number, shown as
+      a refinement next to the existing combined total. Two real
+      problems solved, not just plumbing: a bare street name isn't
+      reliably geocodable on its own (an unconstrained nationwide lookup
+      for a real CHELCO street matched counties nowhere near its actual
+      territory - constraining the search to just that utility's own
+      known counties resolved it correctly instead), and Nominatim's
+      free usage policy caps requests at 1/second, so results are cached
+      forever per street and new lookups are capped per poll cycle
+      rather than blocking every other utility's polling behind a
+      dozens-of-streets backlog. A real bug in this same feature was
+      caught and fixed the next day (2026-07-19) during a full audit
+      sweep: a network failure and a genuine zero-result response were
+      both being cached as the same confident "no match," permanently -
+      the same root-cause pattern as the county-overwrite bugs above,
+      just a different mechanism. Fixed so a real request failure
+      retries on a later cycle instead of being baked in wrong forever.
+- [x] **FPUC's combined-vs-incident undercount concern checked against
+      real data - 2026-07-18, re-check banked for ~2026-08-01.** Long-
+      standing open question, never previously checked against real
+      overlapping data. Found 9 real non-zero combined-total readings
+      across the whole live-tracking history, mapping to 4 distinct real
+      incidents - every single one matched exactly (same customer count,
+      same timestamp), no undercount observed in any real instance
+      checked. Sample is thin (4 incidents since April), so this isn't
+      proof the concern never happens - banked as a standing re-check
+      once more incidents accumulate, not treated as permanently closed.
 
 ## Phase 5: Scale (Open question — not yet committed)
 - [ ] More utility integrations beyond Florida
@@ -428,7 +553,7 @@ empty rather than fake a match it can't actually verify.
   generalize. Worth treating as its own design decision when it comes
   up, not an incremental add.
 
-## Phase 6: Public Launch (Not started - after the Oracle Cloud migration settles)
+## Phase 6: Public Launch (Not started, but no longer blocked - the Oracle Cloud migration settled 2026-07-17, hardened with systemd/SELinux/backups on both sides)
 Making the Apollo Sentinel public page a real, clickable website - not
 just reachable over an SSH tunnel. Same VM, no second server needed;
 this project's traffic never justifies one.
