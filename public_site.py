@@ -44,11 +44,35 @@ def _severity_icon(severity):
 
 app.jinja_env.filters['severity_icon'] = _severity_icon
 
-# Most recent resolved outages shown per county in the Outage History
-# section - a high-churn county's full history could otherwise be an
-# unbounded scroll; this is a display cap, not a data limitation (see
-# county_status._CLOSED_EVENTS_LIMIT for the query-side cap).
-OUTAGE_HISTORY_DISPLAY_LIMIT = 15
+# Resolved outages shown per page in the Outage History section - a
+# high-churn county's full history could otherwise be an unbounded
+# mobile scroll (see county_status._CLOSED_EVENTS_LIMIT for the
+# separate query-side cap). Real pagination, not a hard display
+# ceiling - see history_page/combined_history_page below.
+OUTAGE_HISTORY_PAGE_SIZE = 7
+
+
+def _paginate(rows, page_param_name):
+    """
+    Slice rows (already sorted newest-first) into one page, reading the
+    real page number from request.args - clamped to a valid range so a
+    stale bookmark or hand-edited URL (e.g. a page number from before
+    some events aged out of the 500-row query cap) doesn't 500 or
+    silently show nothing.
+
+    Returns (page_rows, current_page, total_pages) - total_pages is
+    always at least 1, even for an empty list, so callers/templates
+    don't need a separate zero-results special case for the page count.
+    """
+    total_pages = max(1, (len(rows) + OUTAGE_HISTORY_PAGE_SIZE - 1) // OUTAGE_HISTORY_PAGE_SIZE)
+    try:
+        page = int(request.args.get(page_param_name, 1))
+    except ValueError:
+        page = 1
+    page = min(max(page, 1), total_pages)
+
+    start = (page - 1) * OUTAGE_HISTORY_PAGE_SIZE
+    return rows[start:start + OUTAGE_HISTORY_PAGE_SIZE], page, total_pages
 
 # Real count of independently-integrated live utility sources, for the
 # narrative summary's "We track N utilities" line. Kept as an explicit
@@ -353,17 +377,20 @@ def index():
         # county (real start/end pairs from the live poller, running
         # since 2026-04) - a genuinely different dataset from Storm
         # History below (independently-sourced, backfilled 2018-2025).
-        # Capped to the most recent OUTAGE_HISTORY_DISPLAY_LIMIT per
-        # group so a high-churn county's page doesn't turn into an
-        # unbounded scroll.
+        # Real pagination (see _paginate()) rather than a hard display
+        # ceiling, so a high-churn county's older history is still
+        # reachable, just not all loaded into one unbounded mobile
+        # scroll by default.
         closed_events = _rows_for_county(_real_per_county_closed_events(db), selected_county)
         combined_closed_events = _rows_for_county(_combined_territory_closed_events(db), selected_county)
         closed_events.sort(key=lambda r: r["end_time"] or "", reverse=True)
         combined_closed_events.sort(key=lambda r: r["end_time"] or "", reverse=True)
         closed_events_total = len(closed_events)
         combined_closed_events_total = len(combined_closed_events)
-        closed_events = closed_events[:OUTAGE_HISTORY_DISPLAY_LIMIT]
-        combined_closed_events = combined_closed_events[:OUTAGE_HISTORY_DISPLAY_LIMIT]
+        closed_events, closed_events_page, closed_events_total_pages = _paginate(closed_events, "history_page")
+        combined_closed_events, combined_closed_events_page, combined_closed_events_total_pages = _paginate(
+            combined_closed_events, "combined_history_page"
+        )
 
         has_history = selected_county.upper() in {c.upper() for c in available_history_counties()}
         storms = load_history_for_county(selected_county) if has_history else []
@@ -375,8 +402,12 @@ def index():
             "active_alerts": active_alerts,
             "closed_events": closed_events,
             "closed_events_total": closed_events_total,
+            "closed_events_page": closed_events_page,
+            "closed_events_total_pages": closed_events_total_pages,
             "combined_closed_events": combined_closed_events,
             "combined_closed_events_total": combined_closed_events_total,
+            "combined_closed_events_page": combined_closed_events_page,
+            "combined_closed_events_total_pages": combined_closed_events_total_pages,
             "storms": storms,
             "storms_with_data_count": storms_with_data_count,
             "major_storm_precedent": major_storm_precedent,

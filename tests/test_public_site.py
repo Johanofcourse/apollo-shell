@@ -282,3 +282,108 @@ class TestIndexRoute:
         client = public_site.app.test_client()
         r = client.get("/")
         assert r.status_code == 200
+
+
+class TestPaginate:
+    """
+    _paginate() - added 2026-07-18 to replace OUTAGE_HISTORY_DISPLAY_LIMIT's
+    hard ceiling (older resolved outages beyond the cap were permanently
+    unreachable, just silently dropped) with real pagination - a high-
+    churn county's older history is still reachable, just not all loaded
+    into one unbounded mobile scroll by default.
+    """
+
+    def test_first_page_defaults_when_no_query_param(self):
+        with public_site.app.test_request_context("/?county=X"):
+            rows, page, total_pages = public_site._paginate(list(range(20)), "history_page")
+
+        assert rows == list(range(7))
+        assert page == 1
+        assert total_pages == 3
+
+    def test_second_page_reads_the_real_query_param(self):
+        with public_site.app.test_request_context("/?county=X&history_page=2"):
+            rows, page, total_pages = public_site._paginate(list(range(20)), "history_page")
+
+        assert rows == list(range(7, 14))
+        assert page == 2
+
+    def test_last_page_is_a_partial_page(self):
+        with public_site.app.test_request_context("/?county=X&history_page=3"):
+            rows, page, total_pages = public_site._paginate(list(range(20)), "history_page")
+
+        assert rows == list(range(14, 20))
+        assert total_pages == 3
+
+    def test_page_number_past_the_real_last_page_clamps_down(self):
+        # A stale bookmark or hand-edited URL shouldn't 500 or silently
+        # show nothing - clamp to the real last page instead.
+        with public_site.app.test_request_context("/?county=X&history_page=999"):
+            rows, page, total_pages = public_site._paginate(list(range(20)), "history_page")
+
+        assert page == 3
+        assert rows == list(range(14, 20))
+
+    def test_page_number_below_one_clamps_up(self):
+        with public_site.app.test_request_context("/?county=X&history_page=0"):
+            rows, page, total_pages = public_site._paginate(list(range(20)), "history_page")
+
+        assert page == 1
+
+    def test_non_numeric_page_falls_back_to_one(self):
+        with public_site.app.test_request_context("/?county=X&history_page=notanumber"):
+            rows, page, total_pages = public_site._paginate(list(range(20)), "history_page")
+
+        assert page == 1
+        assert rows == list(range(7))
+
+    def test_empty_list_is_one_page_not_zero(self):
+        # So callers/templates don't need a separate zero-results
+        # special case just for the page count.
+        with public_site.app.test_request_context("/?county=X"):
+            rows, page, total_pages = public_site._paginate([], "history_page")
+
+        assert rows == []
+        assert total_pages == 1
+
+    def test_exactly_one_full_page_reports_a_single_page(self):
+        with public_site.app.test_request_context("/?county=X"):
+            rows, page, total_pages = public_site._paginate(list(range(7)), "history_page")
+
+        assert total_pages == 1
+
+    def test_two_independent_page_params_do_not_interfere(self):
+        with public_site.app.test_request_context("/?county=X&history_page=2&combined_history_page=1"):
+            main_rows, main_page, _ = public_site._paginate(list(range(20)), "history_page")
+            combined_rows, combined_page, _ = public_site._paginate(list(range(20)), "combined_history_page")
+
+        assert main_page == 2
+        assert combined_page == 1
+        assert main_rows != combined_rows
+
+
+class TestOutageHistoryPaginationRoute:
+    def test_history_page_two_shows_different_events_than_page_one(self):
+        # Real end-to-end check against a county with enough real
+        # closed-event history to actually span more than one page -
+        # Palm Beach already has real LWBU/FPL history from earlier
+        # sessions.
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r1 = client.get("/?county=Palm+Beach")
+        r2 = client.get("/?county=Palm+Beach&history_page=2")
+
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+
+    def test_out_of_range_history_page_does_not_error(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Palm+Beach&history_page=9999")
+        assert r.status_code == 200
+
+    def test_non_numeric_history_page_does_not_error(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Palm+Beach&history_page=abc")
+        assert r.status_code == 200

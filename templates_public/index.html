@@ -276,6 +276,16 @@
     font-weight: 700; font-size: 1.4rem; text-transform: uppercase; letter-spacing: 0.02em; margin-bottom: 0.3rem;
   }
   .history-county-sub { color: var(--ink-soft); font-size: 0.8rem; margin-bottom: 1.3rem; }
+  .history-pagination {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;
+    color: var(--ink-soft); font-size: 0.8rem; margin-bottom: 1.3rem;
+  }
+  .history-pagination a {
+    color: var(--cyan); font-weight: 700; text-decoration: none; border-bottom: 1px solid var(--cyan);
+    white-space: nowrap;
+  }
+  .history-pagination a:hover { color: var(--ink); border-bottom-color: var(--ink); }
+  .history-pagination span { flex: 1; min-width: 12rem; text-align: center; }
 
   .storm-entry { display: flex; gap: 1rem; position: relative; }
   .storm-year { flex: 0 0 3.4rem; text-align: right; color: var(--ink-soft); font-size: 0.85rem; font-weight: 700; padding-top: 0.15rem; }
@@ -748,8 +758,16 @@
         <div class="outage-sub">{{ e.start_time | humanize }} &rarr; {{ e.end_time | humanize }} &middot; lasted {{ e.duration }}</div>
       </div>
       {% endfor %}
-      {% if county_detail.closed_events_total > county_detail.closed_events | length %}
-        <div class="history-county-sub">Showing the {{ county_detail.closed_events | length }} most recent of {{ county_detail.closed_events_total }} resolved outages on file.</div>
+      {% if county_detail.closed_events_total_pages > 1 %}
+        <div class="history-pagination">
+          {% if county_detail.closed_events_page > 1 %}
+            <a href="/?county={{ selected_county | urlencode }}&history_page={{ county_detail.closed_events_page - 1 }}#outageHistorySection">&larr; Newer</a>
+          {% endif %}
+          <span>Page {{ county_detail.closed_events_page }} of {{ county_detail.closed_events_total_pages }} ({{ county_detail.closed_events_total }} resolved outages on file)</span>
+          {% if county_detail.closed_events_page < county_detail.closed_events_total_pages %}
+            <a href="/?county={{ selected_county | urlencode }}&history_page={{ county_detail.closed_events_page + 1 }}#outageHistorySection">Older &rarr;</a>
+          {% endif %}
+        </div>
       {% endif %}
       {% for e in county_detail.combined_closed_events %}
       {% set tier = e | row_tier %}
@@ -765,8 +783,16 @@
         <div class="outage-note">Reports one combined total across several counties, not broken out by county.</div>
       </div>
       {% endfor %}
-      {% if county_detail.combined_closed_events_total > county_detail.combined_closed_events | length %}
-        <div class="history-county-sub">Showing the {{ county_detail.combined_closed_events | length }} most recent of {{ county_detail.combined_closed_events_total }} combined-territory resolved outages touching this county.</div>
+      {% if county_detail.combined_closed_events_total_pages > 1 %}
+        <div class="history-pagination">
+          {% if county_detail.combined_closed_events_page > 1 %}
+            <a href="/?county={{ selected_county | urlencode }}&combined_history_page={{ county_detail.combined_closed_events_page - 1 }}#outageHistorySection">&larr; Newer</a>
+          {% endif %}
+          <span>Page {{ county_detail.combined_closed_events_page }} of {{ county_detail.combined_closed_events_total_pages }} ({{ county_detail.combined_closed_events_total }} combined-territory resolved outages touching this county)</span>
+          {% if county_detail.combined_closed_events_page < county_detail.combined_closed_events_total_pages %}
+            <a href="/?county={{ selected_county | urlencode }}&combined_history_page={{ county_detail.combined_closed_events_page + 1 }}#outageHistorySection">Older &rarr;</a>
+          {% endif %}
+        </div>
       {% endif %}
     {% endif %}
   </section>
