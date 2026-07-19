@@ -329,6 +329,34 @@
     </div>
     {% endif %}
 
+    {% if jea_precedent %}
+    <h2>Restoration Precedent (JEA)</h2>
+    <p class="section-note">
+      Only shown while a real JEA outage is currently open in this county. JEA has the same structural limit
+      as FPL - a county-wide rollup, no per-incident data at all - so it gets FPL's historical-precedent shape:
+      real storm durations from the same 17-storm PSC archive. JEA's live event volume is too thin right now
+      for an "Everyday Outages" companion the way FPL has, so this is historical-only for now.
+    </p>
+    <div class="wrap">
+      {% if jea_precedent.limited %}
+        <div class="empty">
+          Only {{ jea_precedent.n }} real storm{{ "s" if jea_precedent.n != 1 }} on file for this county - not
+          enough precedent yet to call this a real range.
+        </div>
+      {% else %}
+        <table>
+          <tr><th>Storms On File</th><th>Min</th><th>Median</th><th>Max</th></tr>
+          <tr>
+            <td>{{ jea_precedent.n }}</td>
+            <td>{{ "%.0f"|format(jea_precedent.min_hours) }}h</td>
+            <td>{{ "%.0f"|format(jea_precedent.median_hours) }}h</td>
+            <td>{{ "%.0f"|format(jea_precedent.max_hours) }}h</td>
+          </tr>
+        </table>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <h2>Combined-Territory Sources Also Covering This Area{{ ' (' ~ combined_events|length ~ ')' if combined_events else '' }}</h2>
     <p class="section-note">
       These utilities report one combined total across several counties at once, not a number specific to

@@ -192,3 +192,57 @@ class TestFplRestorationPrecedentByWindSeverity:
         result = storm_history.fpl_restoration_precedent_by_wind_severity("Dixie")
 
         assert result["hurricane_force"]["limited"] is True
+
+
+class TestJeaRestorationPrecedent:
+    def test_no_data_for_county_returns_none(self, historical_db_path):
+        assert storm_history.jea_restoration_precedent("Duval") is None
+
+    def test_single_storm_computes_stats_and_is_flagged_limited(self, historical_db_path):
+        _insert(historical_db_path, "DUVAL", "2024-10-01T00:00:00", "2024-10-02T00:00:00",
+                utility=storm_history.JEA_UTILITY_NAME)
+
+        result = storm_history.jea_restoration_precedent("Duval")
+
+        assert result["n"] == 1
+        assert result["min_hours"] == 24.0
+        assert result["median_hours"] == 24.0
+        assert result["max_hours"] == 24.0
+        assert result["limited"] is True
+
+    def test_county_name_match_is_case_insensitive(self, historical_db_path):
+        _insert(historical_db_path, "CLAY", "2024-10-01T00:00:00", "2024-10-01T12:00:00",
+                utility=storm_history.JEA_UTILITY_NAME)
+
+        assert storm_history.jea_restoration_precedent("Clay") is not None
+
+    def test_multiple_storms_compute_real_min_median_max(self, historical_db_path):
+        _insert(historical_db_path, "ST. JOHNS", "2024-01-01T00:00:00", "2024-01-01T03:00:00",
+                storm_name="A", utility=storm_history.JEA_UTILITY_NAME)
+        _insert(historical_db_path, "ST. JOHNS", "2024-02-01T00:00:00", "2024-02-03T06:00:00",
+                storm_name="B", utility=storm_history.JEA_UTILITY_NAME)
+        _insert(historical_db_path, "ST. JOHNS", "2024-03-01T00:00:00", "2024-03-08T15:00:00",
+                storm_name="C", utility=storm_history.JEA_UTILITY_NAME)
+
+        result = storm_history.jea_restoration_precedent("St. Johns")
+
+        assert result["n"] == 3
+        assert result["min_hours"] == 3.0
+        assert result["median_hours"] == 54.0
+        assert result["max_hours"] == 183.0
+        assert result["limited"] is False
+
+    def test_other_utilities_in_the_same_county_are_ignored(self, historical_db_path):
+        _insert(historical_db_path, "DUVAL", "2024-10-01T00:00:00", "2024-10-05T00:00:00")  # defaults to FPL
+
+        assert storm_history.jea_restoration_precedent("Duval") is None
+
+    def test_malformed_timestamps_are_skipped_not_a_crash(self, historical_db_path):
+        _insert(historical_db_path, "DUVAL", None, None, utility=storm_history.JEA_UTILITY_NAME)
+        _insert(historical_db_path, "DUVAL", "2024-10-01T00:00:00", "2024-10-01T12:00:00",
+                utility=storm_history.JEA_UTILITY_NAME)
+
+        result = storm_history.jea_restoration_precedent("Duval")
+
+        assert result["n"] == 1
+        assert result["median_hours"] == 12.0

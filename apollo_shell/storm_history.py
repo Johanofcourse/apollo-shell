@@ -12,6 +12,7 @@ from datetime import datetime
 HISTORICAL_DB_PATH = "historical_consolidated.db"
 
 FPL_UTILITY_NAME = "Florida Power and Light Company"
+JEA_UTILITY_NAME = "Jacksonville (JEA)"
 
 # Below this many real storms on file, a "range" is really just one or
 # two data points wearing a range's clothing - callers should frame it
@@ -152,6 +153,60 @@ def fpl_restoration_precedent(county):
         SELECT start_time, end_time FROM historical_outage_events
         WHERE UPPER(county) = UPPER(?) AND utility = ?
     ''', (county, FPL_UTILITY_NAME))
+    rows = cursor.fetchall()
+    conn.close()
+
+    durations = []
+    for start_time, end_time in rows:
+        try:
+            hours = (datetime.fromisoformat(end_time) - datetime.fromisoformat(start_time)).total_seconds() / 3600
+        except (TypeError, ValueError):
+            continue
+        if hours > 0:
+            durations.append(hours)
+
+    if not durations:
+        return None
+
+    durations.sort()
+    n = len(durations)
+    mid = n // 2
+    median = durations[mid] if n % 2 == 1 else (durations[mid - 1] + durations[mid]) / 2
+
+    return {
+        "n": n,
+        "min_hours": durations[0],
+        "median_hours": median,
+        "max_hours": durations[-1],
+        "limited": n < MIN_STORMS_FOR_CONFIDENT_RANGE,
+    }
+
+
+def jea_restoration_precedent(county):
+    """
+    Same real historical-precedent shape as fpl_restoration_precedent(),
+    for JEA - the one utility that had no Phase 3 signal at all until
+    now. JEA's live feed has the identical structural limit FPL's does
+    (jea_outage_events is a county-wide rollup, no per-incident data),
+    so it needs FPL's shape, not TECO's/Duke's - but unlike FPL, JEA's
+    real live event volume is too thin right now for an "Everyday
+    Outages" companion (2 closed events statewide, checked 2026-07-18 -
+    JEA is a single-metro utility, nowhere near FPL's live volume), so
+    this ships without one for now rather than inventing a range from 2
+    points. The historical side is genuinely usable though: 46 real
+    records across Duval/Clay/St. Johns in the same 17-storm PSC
+    archive, 14-16 per county - real precedent, not a placeholder.
+
+    Returns None if JEA has no usable real data for this county at all.
+    Otherwise the same n/min/median/max/limited shape as
+    fpl_restoration_precedent().
+    """
+    conn = sqlite3.connect(HISTORICAL_DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT start_time, end_time FROM historical_outage_events
+        WHERE UPPER(county) = UPPER(?) AND utility = ?
+    ''', (county, JEA_UTILITY_NAME))
     rows = cursor.fetchall()
     conn.close()
 

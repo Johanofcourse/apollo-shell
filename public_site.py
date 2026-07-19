@@ -20,6 +20,7 @@ from county_status import (
 from storm_history import (
     available_history_counties, load_history_for_county,
     fpl_restoration_precedent, fpl_restoration_precedent_by_wind_severity, FPL_UTILITY_NAME,
+    jea_restoration_precedent, JEA_UTILITY_NAME,
 )
 import florida_county_paths as county_map
 
@@ -310,6 +311,15 @@ def index():
         duke_open_now = any(r["utility"] == DUKE_UTILITY_NAME for r in real_events)
         duke_precedent = duke_restoration_precedent(selected_county, db) if duke_open_now else None
 
+        # JEA gets FPL's shape, not TECO's/Duke's - same structural limit
+        # as FPL (jea_outage_events is a county-wide rollup, no
+        # per-incident data at all). Unlike FPL, JEA's live event volume
+        # is too thin right now for an "Everyday Outages" companion (2
+        # closed events statewide, checked 2026-07-18), so this ships
+        # historical-only for now. See storm_history.jea_restoration_precedent().
+        jea_open_now = any(r["utility"] == JEA_UTILITY_NAME for r in real_events)
+        jea_precedent = jea_restoration_precedent(selected_county) if jea_open_now else None
+
         # This project's own directly-observed outage history for this
         # county (real start/end pairs from the live poller, running
         # since 2026-04) - a genuinely different dataset from Storm
@@ -345,6 +355,7 @@ def index():
             "everyday_precedent": everyday_precedent,
             "teco_accuracy": teco_accuracy,
             "duke_precedent": duke_precedent,
+            "jea_precedent": jea_precedent,
         }
 
     db.close()

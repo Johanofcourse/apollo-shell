@@ -636,6 +636,28 @@
             for this specific outage.</div>
         </div>
         {% endif %}
+        {% if county_detail.jea_precedent %}
+        {% set jp = county_detail.jea_precedent %}
+        <div class="outage-card historical">
+          <div class="outage-top">
+            <span class="outage-utility">Restoration Precedent (JEA)</span>
+            <span class="outage-figure mono">{{ "%.0f"|format(jp.median_hours) }}h median</span>
+          </div>
+          {% if jp.limited %}
+          <div class="outage-sub">Only {{ jp.n }} major storm{{ "s" if jp.n != 1 }} on file for this county — not
+            enough precedent yet to call this a real range.</div>
+          {% else %}
+          <div class="outage-sub">Based on {{ jp.n }} major storms on file, JEA outages here have historically taken
+            between {{ "%.0f"|format(jp.min_hours) }} and {{ "%.0f"|format(jp.max_hours) }} hours to restore,
+            a median of {{ "%.0f"|format(jp.median_hours) }} hours.</div>
+          {% endif %}
+          <div class="outage-note">JEA has the same structural limit as FPL — a county-wide rollup, no
+            per-incident data at all — so it gets FPL's historical-precedent shape instead of TECO's/Duke's.
+            JEA's live event volume is too thin right now for an "Everyday Outages" companion, so this is
+            historical-only for now. From 17 real PSC reports (2018&ndash;2025), not this project's own live
+            tracking.</div>
+        </div>
+        {% endif %}
         {% for e in county_detail.combined_events %}
         {% set tier = e | row_tier %}
         <div class="outage-card combined{% if tier == 'critical' %} hz-stripe{% endif %}">
