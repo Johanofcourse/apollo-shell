@@ -982,3 +982,13 @@ all still need real running access - the live database, live URLs, the
 actual VM - that a public repo's CI shouldn't be handed secrets or SSH
 access to reach. Those stay a manual ask, same as always; CI just means
 the one piece that *can* run in a clean sandbox now always does.
+
+## A real gate in front of main, not just a report card (July 19, 2026)
+CI reporting pass/fail after a commit already landed on `main` was
+still an honest gap - it could tell you something broke, but nothing
+stopped it from getting there in the first place. Closed with a real
+GitHub ruleset on `main`: a pull request is now required for every
+change, the "test" status check has to pass before that PR can merge,
+and force-pushes/deletions on `main` are blocked outright. Required
+approvals set to 0 on purpose - solo repo, no second person to ever
+approve a PR, so the real gate is the passing test suite, not a review.
