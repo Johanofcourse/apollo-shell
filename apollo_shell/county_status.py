@@ -5,7 +5,8 @@ facing page) so the two apps read the same live data the same way,
 without either one importing from the other. Pure data-assembly and
 formatting functions only; no Flask/template dependency here.
 """
-from datetime import datetime
+import re
+from datetime import datetime, timezone
 
 from correlate import (
     _county_in_alert, correlation_summary,
@@ -566,10 +567,10 @@ def teco_etr_accuracy(county, db):
     Confirmed 2026-07-18 this is TECO-specific, not a Duke/JEA feature
     too: Duke's raw feed has no restoration-estimate field at all, and
     JEA has no per-incident data at all (county-rollup only, like FPL).
-    FPUC's real incident view and LWBU both technically have an ETR
-    field, but only 3 and 8 real closed incidents respectively right
-    now - too thin to mean anything yet, revisit once they accumulate
-    more.
+    FPUC's real incident view also has an ETR field, but only 3 real
+    closed incidents right now - still too thin to mean anything, revisit
+    once it accumulates more. LWBU got the same treatment as TECO here
+    once it reached 12 closed incidents - see lwbu_etr_accuracy() below.
 
     For each resolved incident, compares its FIRST reported ETR (the
     earliest raw snapshot with one) against when it actually closed - no
@@ -601,6 +602,106 @@ def teco_etr_accuracy(county, db):
             continue
         try:
             error_hours = (datetime.fromisoformat(end_time) - datetime.fromisoformat(first_etr)).total_seconds() / 3600
+        except (TypeError, ValueError):
+            continue
+        errors.append(error_hours)
+
+    if not errors:
+        return None
+
+    errors.sort()
+    n = len(errors)
+    mid = n // 2
+    median = errors[mid] if n % 2 == 1 else (errors[mid - 1] + errors[mid]) / 2
+    on_time = sum(1 for e in errors if e <= 0)
+
+    return {
+        "n": n,
+        "median_error_hours": median,
+        "on_time_pct": on_time / n * 100,
+        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
+    }
+
+
+_FRACTIONAL_SECONDS_RE = re.compile(r'\.(\d+)')
+
+
+def _parse_flexible_isoformat(value):
+    """
+    datetime.fromisoformat() on Python <3.11 (this runs on 3.9) requires
+    the fractional-seconds component to be exactly 0, 3, or 6 digits -
+    LWBU's raw API doesn't zero-pad it (real examples seen: ".74",
+    ".967", ".027", and sometimes no fraction at all in the very same
+    field), so a real, valid ISO 8601 timestamp can fail to parse purely
+    depending on how many digits that particular reading happened to
+    have. Pads/trims the fractional part to exactly 6 digits before
+    parsing so any real precision works, not just the specific counts
+    the stdlib happens to accept pre-3.11.
+    """
+    match = _FRACTIONAL_SECONDS_RE.search(value)
+    if match:
+        padded = (match.group(1) + "000000")[:6]
+        value = value[:match.start()] + "." + padded + value[match.end():]
+    return datetime.fromisoformat(value)
+
+
+LWBU_UTILITY_NAME = "Lake Worth Beach Utilities"
+
+
+def lwbu_etr_accuracy(county, db):
+    """
+    Same real accuracy-check shape as teco_etr_accuracy(), for LWBU -
+    it reports a real per-incident ETR too (lwbu_incidents.
+    estimated_restoration), the same TECO-like structure (real,
+    individually-tracked incidents, not a blurred county-wide
+    aggregate). Originally judged too thin to build (8 real closed
+    incidents when teco_etr_accuracy() was shipped 2026-07-18) - real
+    data checked again the same day once more had accumulated: 12
+    closed incidents now, still small, but this project's own
+    established pattern is to show a real number honestly flagged
+    limited rather than withhold it (see fpl_restoration_precedent()'s
+    single-storm case, teco_etr_accuracy() itself at low n) - a real
+    n=12 read is more honest than silence.
+
+    Returns None if there's no usable data for this county. Otherwise
+    the same n/median_error_hours/on_time_pct/limited shape as
+    teco_etr_accuracy().
+
+    Real bug found and fixed while building this, 2026-07-18: unlike
+    TECO's naive-format ETR, LWBU's raw estimated_restoration always
+    carries a real UTC offset (e.g. "...-04:00" - real Eastern time),
+    while end_time is this project's own naive timestamp - and this
+    server's own clock runs in UTC (confirmed via timedatectl), not
+    Eastern, so end_time is naive-but-actually-UTC. Subtracting an
+    aware datetime from a naive one raises TypeError, not silently
+    wrong math - but since 100% of LWBU's real ETRs carry an offset,
+    every single row would hit that and get skipped, so this would have
+    always returned None for every county, indistinguishable from "no
+    data" despite 12 real closed incidents on file. Fixed by converting
+    any offset-aware ETR to naive UTC before comparing, so it lines up
+    with what end_time actually represents.
+    """
+    conn = db.connect()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT oe.end_time,
+               (SELECT li.estimated_restoration FROM lwbu_incidents li
+                WHERE li.incident_id = oe.incident_id AND li.estimated_restoration IS NOT NULL
+                ORDER BY li.fetched_at ASC LIMIT 1) AS first_etr
+        FROM lwbu_incident_events oe
+        WHERE UPPER(oe.county) = UPPER(?) AND oe.end_time IS NOT NULL
+    ''', (county,))
+    rows = cursor.fetchall()
+
+    errors = []
+    for end_time, first_etr in rows:
+        if not first_etr:
+            continue
+        try:
+            etr_dt = _parse_flexible_isoformat(first_etr)
+            if etr_dt.tzinfo is not None:
+                etr_dt = etr_dt.astimezone(timezone.utc).replace(tzinfo=None)
+            error_hours = (datetime.fromisoformat(end_time) - etr_dt).total_seconds() / 3600
         except (TypeError, ValueError):
             continue
         errors.append(error_hours)

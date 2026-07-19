@@ -691,6 +691,120 @@ class TestTecoEtrAccuracy:
         assert result is None
 
 
+def _lwbu_incident(incident_id, county="Palm Beach", customer_count=2, estimated_restoration="2026-01-01T06:00:00"):
+    return {
+        "incident_id": incident_id, "utility": "Lake Worth Beach Utilities",
+        "customer_count": customer_count, "lat": 26.6, "lon": -80.1, "county": county,
+        "cause": "Material or equipment fault/failure", "cause_category": "other",
+        "crew_assigned": False, "work_status": "Crew in Route", "streets_affected": "PENNY LN",
+        "is_planned": False, "verified": True,
+        "reported_start_time": "2026-01-01T00:00:00", "estimated_restoration": estimated_restoration,
+    }
+
+
+def _open_and_close_lwbu_incident(db, incident_id, county, first_etr, actual_end, open_at="2026-01-01T00:00:00"):
+    db.log_lwbu_incidents([_lwbu_incident(incident_id, county=county, estimated_restoration=first_etr)])
+    db.sync_lwbu_incident_events([_lwbu_incident(incident_id, county=county, estimated_restoration=first_etr)], timestamp=open_at)
+    db.sync_lwbu_incident_events([], timestamp=actual_end)
+
+
+class TestLwbuEtrAccuracy:
+    """
+    lwbu_etr_accuracy() - added 2026-07-18, the same accuracy-check
+    shape as teco_etr_accuracy(). Real bug found and fixed while
+    building this: LWBU's raw ETR always carries a real UTC offset
+    (e.g. "...-04:00"), unlike TECO's naive format, and this project's
+    own end_time is naive-but-actually-UTC (the server's own clock runs
+    in UTC, confirmed via timedatectl) - a naive subtraction would have
+    raised TypeError on every single real row, so this would have always
+    returned None, indistinguishable from "no data." Also real: LWBU's
+    API doesn't zero-pad fractional seconds (".74" vs ".967" vs none at
+    all in the same field), which datetime.fromisoformat() rejects
+    outright on Python <3.11 (this runs on 3.9) - caught by testing
+    against the real messy VM data, not just clean local fixtures.
+    """
+
+    def test_no_data_for_county_returns_none(self, db_path):
+        db = OutageDatabase(db_path)
+        result = cs.lwbu_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result is None
+
+    def test_resolved_earlier_than_etr_is_a_negative_error(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_lwbu_incident(
+            db, "L1", "Palm Beach",
+            first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T03:00:00",
+        )
+
+        result = cs.lwbu_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result["n"] == 1
+        assert result["median_error_hours"] == -3.0
+        assert result["on_time_pct"] == 100.0
+        assert result["limited"] is True
+
+    def test_offset_aware_etr_is_converted_to_match_naive_utc_end_time(self, db_path):
+        # The real bug: LWBU's raw ETR carries a real timezone offset
+        # ("-04:00", real Eastern time) while end_time is this project's
+        # own naive-but-actually-UTC timestamp. "06:00:00-04:00" is
+        # 10:00:00 UTC - closing at "2026-01-01T11:00:00" (naive UTC) is
+        # 1 real hour late, not the wildly wrong number a naive
+        # subtraction (or a crash) would have produced.
+        db = OutageDatabase(db_path)
+        _open_and_close_lwbu_incident(
+            db, "L1", "Palm Beach",
+            first_etr="2026-01-01T06:00:00-04:00", actual_end="2026-01-01T11:00:00",
+        )
+
+        result = cs.lwbu_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result["median_error_hours"] == 1.0
+
+    def test_non_zero_padded_fractional_seconds_do_not_break_parsing(self, db_path):
+        # The other real bug: LWBU's API sends inconsistent fractional-
+        # second digit counts (".74" seen in real data, not the 3 or 6
+        # digits datetime.fromisoformat() requires pre-3.11).
+        db = OutageDatabase(db_path)
+        _open_and_close_lwbu_incident(
+            db, "L1", "Palm Beach",
+            first_etr="2026-01-01T06:00:00.74", actual_end="2026-01-01T09:00:00",
+        )
+
+        result = cs.lwbu_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result["n"] == 1
+        assert round(result["median_error_hours"], 2) == 3.0
+
+    def test_county_name_match_is_case_insensitive(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_lwbu_incident(db, "L1", "PALM BEACH", first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T03:00:00")
+
+        result = cs.lwbu_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result is not None
+
+    def test_reaching_the_confident_threshold_clears_the_limited_flag(self, db_path):
+        db = OutageDatabase(db_path)
+        for i in range(cs.MIN_EVENTS_FOR_CONFIDENT_RANGE):
+            _open_and_close_lwbu_incident(
+                db, f"L{i}", "Palm Beach",
+                first_etr=f"2026-01-0{i + 1}T06:00:00", actual_end=f"2026-01-0{i + 1}T05:00:00",
+                open_at=f"2026-01-0{i + 1}T00:00:00",
+            )
+
+        result = cs.lwbu_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result["n"] == cs.MIN_EVENTS_FOR_CONFIDENT_RANGE
+        assert result["limited"] is False
+
+
 def _open_and_close_duke_incident(db, incident_id, county, start, end, customers=50):
     record = {
         "incident_id": incident_id, "utility": "Duke Energy", "county": county,

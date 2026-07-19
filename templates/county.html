@@ -357,6 +357,37 @@
     </div>
     {% endif %}
 
+    {% if lwbu_accuracy %}
+    <h2>Restoration Estimate Accuracy (LWBU)</h2>
+    <p class="section-note">
+      Only shown while a real LWBU outage is currently open in this county. Same shape as TECO's accuracy
+      check - LWBU already reports a real per-incident restoration estimate, so this compares each resolved
+      incident's first stated ETR against when it actually closed.
+    </p>
+    <div class="wrap">
+      {% if lwbu_accuracy.limited %}
+        <div class="empty">
+          Only {{ lwbu_accuracy.n }} real incident{{ "s" if lwbu_accuracy.n != 1 }} on file for this county - not
+          enough precedent yet to call this a reliable pattern.
+        </div>
+      {% endif %}
+      <table>
+        <tr><th>Real Incidents On File</th><th>Resolved On Time Or Early</th><th>Median Difference</th></tr>
+        <tr>
+          <td>{{ lwbu_accuracy.n }}</td>
+          <td>{{ "%.0f"|format(lwbu_accuracy.on_time_pct) }}%</td>
+          <td>
+            {% if lwbu_accuracy.median_error_hours <= 0 %}
+              {{ "%.1f"|format(-lwbu_accuracy.median_error_hours) }}h earlier than first estimated
+            {% else %}
+              {{ "%.1f"|format(lwbu_accuracy.median_error_hours) }}h later than first estimated
+            {% endif %}
+          </td>
+        </tr>
+      </table>
+    </div>
+    {% endif %}
+
     <h2>Combined-Territory Sources Also Covering This Area{{ ' (' ~ combined_events|length ~ ')' if combined_events else '' }}</h2>
     <p class="section-note">
       These utilities report one combined total across several counties at once, not a number specific to

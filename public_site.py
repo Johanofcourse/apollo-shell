@@ -16,6 +16,7 @@ from county_status import (
     _row_tier, fpl_ordinary_restoration_stats,
     teco_etr_accuracy, TECO_UTILITY_NAME,
     duke_restoration_precedent, DUKE_UTILITY_NAME,
+    lwbu_etr_accuracy,
 )
 from storm_history import (
     available_history_counties, load_history_for_county,
@@ -320,6 +321,27 @@ def index():
         jea_open_now = any(r["utility"] == JEA_UTILITY_NAME for r in real_events)
         jea_precedent = jea_restoration_precedent(selected_county) if jea_open_now else None
 
+        # LWBU gets the same accuracy-check shape as TECO - real,
+        # individually-tracked incidents with a real ETR field. Judged
+        # too thin to build when TECO's version shipped (8 closed
+        # incidents); revisited once it reached 12. See
+        # county_status.lwbu_etr_accuracy().
+        #
+        # Gating deliberately checks db.get_lwbu_open_incidents() directly,
+        # NOT real_events - real_events is built from get_lwbu_open_events()
+        # (the county-rollup table), which _real_per_county_open_events()
+        # uses for LWBU by design (see its own docstring), while this
+        # feature is about the SEPARATE per-incident table. The two can
+        # genuinely disagree (confirmed live 2026-07-18: an open incident
+        # existed with zero open rollup rows at the same moment) - gating
+        # on the wrong one would have silently hidden this feature every
+        # time that happened.
+        lwbu_open_now = any(
+            (i["county"] or "").upper() == selected_county.upper()
+            for i in db.get_lwbu_open_incidents()
+        )
+        lwbu_accuracy = lwbu_etr_accuracy(selected_county, db) if lwbu_open_now else None
+
         # This project's own directly-observed outage history for this
         # county (real start/end pairs from the live poller, running
         # since 2026-04) - a genuinely different dataset from Storm
@@ -356,6 +378,7 @@ def index():
             "teco_accuracy": teco_accuracy,
             "duke_precedent": duke_precedent,
             "jea_precedent": jea_precedent,
+            "lwbu_accuracy": lwbu_accuracy,
         }
 
     db.close()
