@@ -131,6 +131,18 @@ precision for the earliest items in this list.
 - [x] **Dashboard control buttons made real UI, not plain text links**,
       plus a color scheme fix after an earlier accent color read as an
       unintended resemblance to an unrelated brand.
+- [x] **Continuous Integration - shipped 2026-07-19.** GitHub Actions
+      now runs the full 562-test suite automatically on every push to
+      `main`, no new tests written - just guaranteeing the existing
+      suite can't quietly get skipped. Pinned to Python 3.9 specifically
+      to match the VM's real production interpreter rather than the
+      older local dev version, the same kind of version gap that let
+      LWBU's fractional-seconds bug (above) slip past local testing
+      before it hit the VM. Deliberately narrow: covers one of the eight
+      categories in a full audit sweep (the automated test suite
+      itself) - data integrity, live smoke tests, and infra hygiene all
+      still need real running access a public repo's CI shouldn't be
+      handed, so those stay a manual ask.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration, ~2026-07-05 onward)
 - [x] Visual direction settled on, explored entirely in an isolated

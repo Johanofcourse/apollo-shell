@@ -57,6 +57,8 @@ detective instead. No regrets.
   live outage can now surface which of its counties are actually
   affected
 - Outage History pages, and the public map on narrow screens
+- A real CI pipeline (GitHub Actions) running the full test suite on
+  every push, so that specific check can't quietly get skipped
 
 ## The plot twist (July 2, 2026)
 Same night, different rabbit hole: went looking at whether other
@@ -962,3 +964,21 @@ ops hygiene) run once already this week - and it's what caught the
 street-resolver network-failure bug above before it could quietly
 mismark more streets. 562 tests passing by the end of it, up from 474
 at the start of this whole stretch.
+
+## A test suite that stops relying on memory (July 19, 2026)
+The 562-test suite had one real gap left, process rather than code:
+nothing forced it to actually run. Wired up GitHub Actions to run the
+exact same suite automatically on every push to `main` - no new tests
+written, just guaranteeing the existing ones can't quietly get skipped
+on a rushed night. Pinned to Python 3.9 specifically, to match the VM's
+real production interpreter rather than the older local dev version -
+the same kind of version gap that let LWBU's fractional-seconds bug
+slip past local testing earlier this same stretch.
+
+Deliberately narrow, on purpose: this covers exactly one of the eight
+categories in a full audit sweep, the automated test suite itself.
+Data integrity checks, live smoke tests, and infrastructure/ops hygiene
+all still need real running access - the live database, live URLs, the
+actual VM - that a public repo's CI shouldn't be handed secrets or SSH
+access to reach. Those stay a manual ask, same as always; CI just means
+the one piece that *can* run in a clean sandbox now always does.
