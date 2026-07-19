@@ -27,6 +27,17 @@ _REQUEST_INTERVAL_SECONDS = 1.1
 _USER_AGENT = "apollo-shell-outage-tracker/1.0 (street-to-county resolution for known utility territories)"
 
 
+class _LookupFailed(Exception):
+    """A real request failure (network/timeout/HTTP error) - genuinely
+    inconclusive, distinct from Nominatim successfully responding with
+    zero results. Conflating the two was a real bug: caching a network
+    hiccup as a confident "this street isn't in this county" is the
+    same class of mistake as the county-overwrite bug found earlier this
+    session (a transient failure treated as a confident, permanent
+    answer) - here it would have permanently mis-marked a street as
+    unresolvable instead of letting a later cycle retry it."""
+
+
 def _query_nominatim(street_name, county):
     query = f"{street_name}, {county} County, Florida, USA"
     params = {"q": query, "format": "json", "addressdetails": 1, "limit": 1, "countrycodes": "us"}
@@ -37,7 +48,7 @@ def _query_nominatim(street_name, county):
         results = response.json()
     except requests.exceptions.RequestException as e:
         print(f"Street lookup failed for '{street_name}' in {county}: {e}")
-        return False
+        raise _LookupFailed(str(e))
     return bool(results)
 
 
@@ -49,7 +60,9 @@ def resolve_street(utility, street_name):
     to Nominatim's real usage policy, so this is slow by design (up to
     len(candidate counties) real HTTP round trips, ~1 second apart) -
     callers should cache the result (see OutageDatabase.
-    save_street_county()) and never call this for a street more than once.
+    save_street_county()) and never call this for a street more than once
+    - UNLESS this raises _LookupFailed (see below), which callers should
+    treat as "try again next cycle," not a real answer to cache.
 
     Returns the matched county name, or None if the street matched zero
     of the utility's known counties (no match at all) or more than one
@@ -58,6 +71,12 @@ def resolve_street(utility, street_name):
     report, consistent with this project's honesty-over-polish standard
     elsewhere (see e.g. lwbu_etr_accuracy()/fpl_ordinary_restoration_stats()
     handling of thin/ambiguous real data).
+
+    Raises _LookupFailed if any candidate county's request itself failed
+    (network/timeout/HTTP error) - genuinely inconclusive, not the same
+    as a confirmed zero-result response. A caller that caught this and
+    cached None anyway would permanently mark a street unresolvable
+    based on a technical hiccup instead of a real answer.
     """
     candidates = KNOWN_TERRITORIES.get(utility, [])
     matches = []
@@ -98,7 +117,13 @@ def resolve_streets(utility, street_names, db, max_new_lookups=None):
     Returns a dict of {street_name: county_or_None} for every CACHED or
     newly-resolved name - a name beyond max_new_lookups with no prior
     cache entry is simply absent from the result, not present with a
-    None value (which would incorrectly claim "checked, no match").
+    None value (which would incorrectly claim "checked, no match"). A
+    street whose lookup hit a real request failure (see resolve_street()'s
+    _LookupFailed) is also absent, not cached as None - a technical
+    hiccup isn't a confident "no match," and caching it as one would
+    permanently mark a real, resolvable street unresolvable. It still
+    counts against max_new_lookups for this cycle (real rate-limited
+    time was spent on it) and will be retried on a future cycle.
     """
     cached = db.get_cached_street_counties(utility, street_names)
     result = {}
@@ -109,10 +134,13 @@ def resolve_streets(utility, street_names, db, max_new_lookups=None):
             continue
         if max_new_lookups is not None and new_lookups >= max_new_lookups:
             continue
-        county = resolve_street(utility, street_name)
+        new_lookups += 1
+        try:
+            county = resolve_street(utility, street_name)
+        except _LookupFailed:
+            continue
         db.save_street_county(utility, street_name, county)
         result[street_name] = county
-        new_lookups += 1
     return result
 
 

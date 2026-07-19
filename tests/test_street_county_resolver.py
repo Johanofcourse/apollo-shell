@@ -83,7 +83,15 @@ class TestResolveStreet:
 
         assert scr.resolve_street(CHELCO, "Main St") is None
 
-    def test_a_request_exception_counts_as_no_match_for_that_county(self, monkeypatch):
+    def test_a_request_exception_raises_lookup_failed_not_a_silent_none(self, monkeypatch):
+        # Real bug found and fixed 2026-07-19: a network/HTTP failure
+        # used to collapse into the same False as a genuine zero-result
+        # response, so resolve_streets() would cache a technical hiccup
+        # as a confident "this street isn't in this county" - the same
+        # class of mistake as the county-overwrite bug found earlier
+        # this session (a transient failure treated as a confident,
+        # permanent answer). A real failure must be distinguishable so
+        # the caller can retry instead of caching a false negative.
         import requests as real_requests
 
         def fake_get(url, params, headers, timeout):
@@ -91,7 +99,8 @@ class TestResolveStreet:
 
         monkeypatch.setattr(scr.requests, "get", fake_get)
 
-        assert scr.resolve_street(CHELCO, "Howell Bluff Rd") is None
+        with pytest.raises(scr._LookupFailed):
+            scr.resolve_street(CHELCO, "Howell Bluff Rd")
 
     def test_unknown_utility_has_no_candidates_and_returns_none(self, monkeypatch):
         monkeypatch.setattr(scr.requests, "get", lambda *a, **kw: _FakeResponse([{"display_name": "match"}]))
@@ -180,6 +189,59 @@ class TestResolveStreets:
         db.close()
 
         assert cached_after == {"Fake Rd": None}
+
+    def test_a_request_failure_is_not_cached_as_a_confirmed_negative(self, db_path, monkeypatch):
+        db = OutageDatabase(db_path)
+        import requests as real_requests
+
+        def fake_get(url, params, headers, timeout):
+            raise real_requests.exceptions.RequestException("boom")
+        monkeypatch.setattr(scr.requests, "get", fake_get)
+
+        result = scr.resolve_streets(CHELCO, ["Real Rd"], db)
+        cached_after = db.get_cached_street_counties(CHELCO, ["Real Rd"])
+        db.close()
+
+        assert result == {}
+        assert cached_after == {}
+
+    def test_a_request_failure_still_counts_against_the_cap(self, db_path, monkeypatch):
+        # Real rate-limited time was spent on the failed attempt, so it
+        # should still count toward this cycle's budget even though
+        # nothing got cached for it.
+        db = OutageDatabase(db_path)
+        import requests as real_requests
+        call_count = {"n": 0}
+
+        def fake_get(url, params, headers, timeout):
+            call_count["n"] += 1
+            raise real_requests.exceptions.RequestException("boom")
+        monkeypatch.setattr(scr.requests, "get", fake_get)
+
+        scr.resolve_streets(CHELCO, ["A Rd", "B Rd"], db, max_new_lookups=1)
+        db.close()
+
+        # Only the first street's candidate-county loop should have run -
+        # the second street never got attempted because the cap was hit.
+        assert call_count["n"] == 1
+
+    def test_a_later_call_retries_a_previously_failed_street(self, db_path, monkeypatch):
+        db = OutageDatabase(db_path)
+        import requests as real_requests
+
+        def failing_get(url, params, headers, timeout):
+            raise real_requests.exceptions.RequestException("boom")
+        monkeypatch.setattr(scr.requests, "get", failing_get)
+        scr.resolve_streets(CHELCO, ["Real Rd"], db)
+
+        def succeeding_get(url, params, headers, timeout):
+            county = params["q"].split(",")[1].strip()
+            return _FakeResponse([{"display_name": "match"}] if county == "Walton County" else [])
+        monkeypatch.setattr(scr.requests, "get", succeeding_get)
+        result = scr.resolve_streets(CHELCO, ["Real Rd"], db)
+        db.close()
+
+        assert result == {"Real Rd": "Walton"}
 
 
 class TestActiveCounties:
