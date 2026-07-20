@@ -4,7 +4,7 @@ Started as a "shell." Somewhere along the way it became an outage
 detective instead. No regrets.
 
 ## Done
-- Live outage data flows in continuously from sixteen independent
+- Live outage data flows in continuously from seventeen independent
   Florida utilities, alongside National Weather Service alerts, now
   covering every one of Florida's 67 counties with a real, verified
   live source
@@ -59,6 +59,10 @@ detective instead. No regrets.
 - Outage History pages, and the public map on narrow screens
 - A real CI pipeline (GitHub Actions) running the full test suite on
   every push, so that specific check can't quietly get skipped
+- A seventeenth utility, added the honest way - ranked by real
+  footprint in this project's own historical storm archive rather than
+  guessed at, with real native per-county granularity across 15
+  counties, no combined-territory blur at all
 
 ## The plot twist (July 2, 2026)
 Same night, different rabbit hole: went looking at whether other
@@ -94,7 +98,7 @@ and ruling out a few dead-end or fabricated sources — to confirm as
 real and usable.
 
 ## Live right now
-- The poller runs unattended from sixteen independent Florida
+- The poller runs unattended from seventeen independent Florida
   utilities now, up from the original one, with a real live source
   covering every one of Florida's 67 counties
 - Real weather alerts are correlating with real outages statewide, each
@@ -992,3 +996,38 @@ change, the "test" status check has to pass before that PR can merge,
 and force-pushes/deletions on `main` are blocked outright. Required
 approvals set to 0 on purpose - solo repo, no second person to ever
 approve a PR, so the real gate is the passing test suite, not a review.
+
+Verified for real, not just trusted: a direct push to `main` was tried
+first and actually rejected by GitHub before anything got redone
+properly as a branch, a real pull request, and a real merge click.
+
+## A seventeenth utility, ranked instead of guessed (July 19, 2026)
+The same honest question came up again - who else out there is a real,
+live Florida utility this project isn't tracking yet - but answered a
+new way this time: cross-referencing every utility that's ever
+appeared in this project's own 17-storm historical archive and ranking
+what's left by real footprint (records, storms, counties, peak
+customers), the same method that found the fifteenth and sixteenth
+utilities. One candidate stood out clearly - more than double the next
+real option by record count, present in 13 of the 17 storms, real
+coverage across 15 counties.
+
+Its real live feed turned out to be the richest shape confirmed yet:
+genuine native per-county numbers (no combined-territory blur at all,
+unlike four of this project's existing sources), on the exact same
+public, unauthenticated platform the sixteenth utility already runs
+on - same JSON shape, same lack of any tracking code or WAF gate,
+just a different per-county grouping key confirmed against its own
+real response rather than assumed identical. Its feed also carries a
+real per-incident array with what looks like a genuine restoration
+estimate - noted and left deliberately out of scope for this pass,
+the same honest disclosure the sixteenth utility's own unused array
+already got.
+
+Built the same way as every integration before it: its own dedicated
+tables, its own lifecycle tracking, its own weather-correlation
+function, wired into the same live severity map and historical
+confidence tally every other real per-county source feeds - nothing
+shared or blended with an existing utility's numbers. Verified against
+the real live endpoint before and after building, not assumed to
+still match a captured example.

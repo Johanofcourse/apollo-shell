@@ -22,6 +22,7 @@ from correlate import (
     find_lwbu_correlations,
     find_ouc_correlations,
     find_lcec_correlations,
+    find_clay_correlations,
 )
 from county_status import (
     COUNTY_PICKER_CHOICES, _duration_since, _percentage_tier,
@@ -57,6 +58,7 @@ from fetch_gcec_outages import UTILITY_NAME as GCEC_UTILITY_NAME
 from fetch_lwbu_outages import UTILITY_NAME as LWBU_UTILITY_NAME
 from fetch_ouc_outages import UTILITY_NAME as OUC_UTILITY_NAME
 from fetch_lcec_outages import UTILITY_NAME as LCEC_UTILITY_NAME
+from fetch_clay_outages import UTILITY_NAME as CLAY_UTILITY_NAME
 
 
 app = Flask(__name__)
@@ -106,6 +108,7 @@ PIPELINE_SOURCE_DISPLAY_NAMES = {
     "lwbu": "Lake Worth Beach Utilities",
     "ouc": "Orlando Utilities Commission",
     "lcec": "Lee County Electric Cooperative",
+    "clay": "Clay Electric Cooperative",
     "correlation": "Correlation",
     "historical_tally": "Historical Confidence Tally",
 }
@@ -209,6 +212,7 @@ def _get_cached_correlations(db_path, days):
         find_lwbu_correlations(db_path, days=days),
         find_ouc_correlations(db_path, days=days),
         find_lcec_correlations(db_path, days=days),
+        find_clay_correlations(db_path, days=days),
     )
     _correlation_cache[days] = {"data": data, "computed_at": now}
     return data
@@ -323,7 +327,7 @@ def _combine_confidence_breakdowns(*match_lists):
 # _percentage_tier now lives in county_status.py (imported above).
 
 
-def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, fpuc_open_incidents, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events, lwbu_open_events, ouc_open_events, lcec_open_events):
+def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, fpuc_open_incidents, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events, lwbu_open_events, ouc_open_events, lcec_open_events, clay_open_events):
     """
     Normalize FPL's/JEA's county-level outage_events-shaped tables and
     TECO's/Duke's incident-level *_incident_events into one common shape
@@ -522,6 +526,16 @@ def _build_unified_view(open_events, teco_open_events, duke_open_events, jea_ope
             "duration": e["duration"],
         })
 
+    for e in clay_open_events:
+        unified.append({
+            "utility": e["utility"],
+            "county": e["county"],
+            "customers": e["current_customers_out"],
+            "peak_customers": e["peak_customers_out"],
+            "start_time": e["start_time"],
+            "duration": e["duration"],
+        })
+
     unified.sort(key=lambda row: row["customers"] or 0, reverse=True)
     return unified
 
@@ -583,8 +597,10 @@ def index():
     ouc_closed_events = db.get_ouc_recent_closed_events(limit=10)
     lcec_open_events = db.get_lcec_open_events()
     lcec_closed_events = db.get_lcec_recent_closed_events(limit=10)
+    clay_open_events = db.get_clay_open_events()
+    clay_closed_events = db.get_clay_recent_closed_events(limit=10)
 
-    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "lcec", "correlation", "historical_tally"])
+    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "lcec", "clay", "correlation", "historical_tally"])
     heat_summary = db.get_heat_advisory_summary()
 
     db.close()
@@ -661,8 +677,12 @@ def index():
         event["duration"] = _duration_since(event["start_time"])
     for event in lcec_closed_events:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
+    for event in clay_open_events:
+        event["duration"] = _duration_since(event["start_time"])
+    for event in clay_closed_events:
+        event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
-    matches, teco_matches, duke_matches, jea_matches, tallahassee_matches, talquin_matches, fpuc_matches, preco_matches, fkec_matches, tcec_matches, erec_matches, chelco_matches, gcec_matches, lwbu_matches, ouc_matches, lcec_matches = _get_cached_correlations(db_path, window_days)
+    matches, teco_matches, duke_matches, jea_matches, tallahassee_matches, talquin_matches, fpuc_matches, preco_matches, fkec_matches, tcec_matches, erec_matches, chelco_matches, gcec_matches, lwbu_matches, ouc_matches, lcec_matches, clay_matches = _get_cached_correlations(db_path, window_days)
 
     correlation = correlation_summary(matches)
     for stats in correlation.values():
@@ -760,7 +780,13 @@ def index():
         stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
         stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
 
-    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, fpuc_open_incidents, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events, lwbu_open_events, ouc_open_events, lcec_open_events)
+    clay_correlation = correlation_summary(clay_matches)
+    for stats in clay_correlation.values():
+        stats["alert_types_display"] = _format_alert_types(stats["alert_types"])
+        stats["confidence_display"] = _format_confidence(stats["confidence_breakdown"])
+        stats["confidence_bar"] = _confidence_bar_segments(stats["confidence_breakdown"])
+
+    unified_open = _build_unified_view(open_events, teco_open_events, duke_open_events, jea_open_events, tallahassee_open_events, talquin_open_events, fpuc_open_events, fpuc_open_incidents, preco_open_events, fkec_open_events, tcec_open_events, erec_open_events, chelco_open_events, gcec_open_events, lwbu_open_events, ouc_open_events, lcec_open_events, clay_open_events)
 
     for event in open_events:
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
@@ -814,6 +840,10 @@ def index():
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
     for event in lcec_closed_events:
         event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
+    for event in clay_open_events:
+        event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
+    for event in clay_closed_events:
+        event["severity_tier"] = _percentage_tier(event["peak_percentage_out"])
 
     # Pipeline health strip - surfaces caught fetch/correlation failures
     # (see OutageDatabase.log_pipeline_error/get_pipeline_health) that
@@ -834,7 +864,7 @@ def index():
     # read before scrolling into the detailed per-utility tables below.
     total_customers_affected = sum(row["customers"] or 0 for row in unified_open)
     worst_row = unified_open[0] if unified_open else None
-    combined_confidence = _combine_confidence_breakdowns(matches, teco_matches, duke_matches, jea_matches, tallahassee_matches, talquin_matches, fpuc_matches, preco_matches, fkec_matches, tcec_matches, erec_matches, chelco_matches, gcec_matches, lwbu_matches, ouc_matches, lcec_matches)
+    combined_confidence = _combine_confidence_breakdowns(matches, teco_matches, duke_matches, jea_matches, tallahassee_matches, talquin_matches, fpuc_matches, preco_matches, fkec_matches, tcec_matches, erec_matches, chelco_matches, gcec_matches, lwbu_matches, ouc_matches, lcec_matches, clay_matches)
     combined_confidence_bar = _confidence_bar_segments(combined_confidence)
     combined_confidence_display = _format_confidence(combined_confidence)
 
@@ -894,6 +924,9 @@ def index():
         lcec_open_events=lcec_open_events,
         lcec_closed_events=lcec_closed_events,
         lcec_correlation=lcec_correlation,
+        clay_open_events=clay_open_events,
+        clay_closed_events=clay_closed_events,
+        clay_correlation=clay_correlation,
         unified_open=unified_open,
         total_customers_affected=total_customers_affected,
         worst_row=worst_row,
@@ -1366,7 +1399,7 @@ def incident():
             raw_detail = detail_fns[source](incident_id)
             if raw_detail["events"] or raw_detail["history"]:
                 detail = raw_detail
-    elif source in ("fpl", "jea", "talquin", "tallahassee", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "lcec"):
+    elif source in ("fpl", "jea", "talquin", "tallahassee", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "lcec", "clay"):
         county = request.args.get("county", "").strip()
         start_time = request.args.get("start_time", "").strip()
         if county and start_time:
@@ -1385,6 +1418,7 @@ def incident():
                 "lwbu": (LWBU_UTILITY_NAME, db.get_lwbu_outage_detail),
                 "ouc": (OUC_UTILITY_NAME, db.get_ouc_outage_detail),
                 "lcec": (LCEC_UTILITY_NAME, db.get_lcec_outage_detail),
+                "clay": (CLAY_UTILITY_NAME, db.get_clay_outage_detail),
             }
             utility, get_fn = utility_fns[source]
             detail = get_fn(utility, county, start_time)

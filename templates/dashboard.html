@@ -958,6 +958,34 @@
   {% endif %}
   </div>
 
+  <h3>Clay Electric Cooperative — Currently Open Outages ({{ clay_open_events|length }})</h3>
+  <p class="section-note">
+    Same platform and shape as LCEC's - a fully public, unauthenticated static JSON file with real
+    native per-county granularity across 15 real counties. A real per-incident array also exists on
+    this feed (with real start/estimated-restoration times) and genuinely has live data - just not
+    integrated here yet, same honest disclosure as LCEC's own unused array.
+  </p>
+  <div class="wrap">
+  {% if clay_open_events %}
+    <table>
+      <tr><th>County</th><th>Current % Out</th><th>Current Customers Out</th><th>Peak % Out</th><th>Peak Customers Out</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in clay_open_events %}
+      <tr>
+        <td><a href="/incident?source=clay&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td>{{ "%.2f"|format(e.current_percentage_out or 0) }}%</td>
+        <td>{{ "{:,}".format(e.current_customers_out or 0) }}</td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ "{:,}".format(e.peak_customers_out) }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open Clay outages right now.</div>
+  {% endif %}
+  </div>
+
     </div>
   </details>
 
@@ -1318,6 +1346,26 @@
       {% for e in lcec_closed_events %}
       <tr>
         <td><a href="/incident?source=lcec&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
+        <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>Clay Electric Cooperative — Recently Resolved</h3>
+  <div class="wrap">
+  {% if clay_closed_events %}
+    <table>
+      <tr><th>County</th><th>Peak % Out</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in clay_closed_events %}
+      <tr>
+        <td><a href="/incident?source=clay&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.end_time | humanize }}</td>
@@ -1821,6 +1869,35 @@
     </table>
   {% else %}
     <div class="empty">No correlated LCEC outage/weather events right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>Weather / Outage Correlation (Clay Electric Cooperative) &mdash; last {{ window_days }} days</h3>
+  <div class="wrap">
+  {% if clay_correlation %}
+    <table>
+      <tr><th>County</th><th>Correlated Outages</th><th>Peak % Out</th><th>Alert Types</th><th>Confidence</th></tr>
+      {% for county, stats in clay_correlation.items() %}
+      <tr>
+        <td>{{ county }}</td>
+        <td>{{ stats.outage_count }}</td>
+        <td>{{ "%.2f"|format(stats.max_percentage_out) }}%</td>
+        <td>{{ stats.alert_types_display }}</td>
+        <td>
+          {% if stats.confidence_bar %}
+          <div class="conf-bar">
+            {% for seg in stats.confidence_bar %}
+            <div class="conf-seg-{{ seg.tier }}" style="width: {{ seg.pct }}%;" title="{{ seg.tier }} ×{{ seg.count }}"></div>
+            {% endfor %}
+          </div>
+          <div class="conf-caption">{{ stats.confidence_display }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No correlated Clay outage/weather events right now.</div>
   {% endif %}
   </div>
     </div>
