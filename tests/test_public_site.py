@@ -387,3 +387,99 @@ class TestOutageHistoryPaginationRoute:
         client = public_site.app.test_client()
         r = client.get("/?county=Palm+Beach&history_page=abc")
         assert r.status_code == 200
+
+
+def _fake_alert(n):
+    return {
+        "id": n, "alert_id": f"test-alert-{n}", "timestamp": "2026-01-01T00:00:00",
+        "event_type": f"Test Alert {n}", "severity": "Moderate", "urgency": "Expected",
+        "areas": "Hillsborough; Pinellas", "effective": "2026-01-01T00:00:00",
+        "expires": "2099-01-01T00:00:00", "headline": "test", "description": "test",
+    }
+
+
+class TestWeatherAlertsPaginationRoute:
+    """
+    Real gap found and fixed 2026-07-20: the statewide Current Weather
+    Alerts section had no cap at all, unlike Outage History which was
+    already paginated - a real active storm (confirmed live the same
+    day, 29 real active alerts statewide with Hillsborough getting hit)
+    made this a genuine long scroll, not a hypothetical. Same fix, same
+    page size, same _paginate() helper - just applied to a source that
+    changes constantly (live weather), unlike Outage History's stable
+    historical data, so these tests fake a known count rather than
+    relying on however many real alerts happen to be active right now.
+    """
+
+    def test_more_than_one_page_worth_shows_real_pagination_controls(self, monkeypatch):
+        monkeypatch.setattr(
+            OutageDatabase, "get_active_weather_alerts",
+            lambda self: [_fake_alert(n) for n in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert r.status_code == 200
+        assert b"Page 1 of 2" in r.data
+        assert b"12 active alerts statewide" in r.data
+
+    def test_page_two_shows_different_alerts_than_page_one(self, monkeypatch):
+        monkeypatch.setattr(
+            OutageDatabase, "get_active_weather_alerts",
+            lambda self: [_fake_alert(n) for n in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r1 = client.get("/")
+        r2 = client.get("/?alerts_page=2")
+
+        assert b"Test Alert 0" in r1.data
+        assert b"Test Alert 0" not in r2.data
+        assert b"Test Alert 11" in r2.data
+
+    def test_seven_or_fewer_alerts_show_no_pagination_controls(self, monkeypatch):
+        monkeypatch.setattr(
+            OutageDatabase, "get_active_weather_alerts",
+            lambda self: [_fake_alert(n) for n in range(7)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert r.status_code == 200
+        assert b"Page 1 of" not in r.data
+
+    def test_out_of_range_alerts_page_does_not_error(self, monkeypatch):
+        monkeypatch.setattr(
+            OutageDatabase, "get_active_weather_alerts",
+            lambda self: [_fake_alert(n) for n in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?alerts_page=9999")
+        assert r.status_code == 200
+
+    def test_non_numeric_alerts_page_does_not_error(self, monkeypatch):
+        monkeypatch.setattr(
+            OutageDatabase, "get_active_weather_alerts",
+            lambda self: [_fake_alert(n) for n in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?alerts_page=abc")
+        assert r.status_code == 200
+
+    def test_paginating_alerts_preserves_selected_county_link(self, monkeypatch):
+        # The alerts section sits above the county detail section on
+        # the same page - paging through alerts shouldn't silently lose
+        # whichever county's own detail panel is currently showing.
+        monkeypatch.setattr(
+            OutageDatabase, "get_active_weather_alerts",
+            lambda self: [_fake_alert(n) for n in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Palm+Beach")
+
+        assert b"alerts_page=2&amp;county=Palm" in r.data or b"alerts_page=2&county=Palm" in r.data

@@ -548,6 +548,14 @@ empty rather than fake a match it can't actually verify.
       against real production-scale data, a 412-outage county
       (59 real pages) and a 13-outage county (2 pages), confirming page
       2 actually shows different, older events, not a repeat of page 1.
+- [x] **Current Weather Alerts paginated the same way - shipped
+      2026-07-20.** A real active storm (Hillsborough taking the worst
+      of it) pushed the statewide active-alert count well past a
+      comfortable single scroll - same fix, same page size, same real
+      pagination helper Outage History already uses, reused rather than
+      reinvented. Verified against the real live moment: 28 real active
+      alerts, a real Tropical Cyclone Local Statement among them, and a
+      real narrow-mobile-viewport screenshot, not just the desktop view.
 - [x] **Real per-county activity signal for TCEC/EREC/CHELCO/GCEC -
       shipped 2026-07-18.** These four report one combined total with no
       per-county split - but a real active outage that same night
