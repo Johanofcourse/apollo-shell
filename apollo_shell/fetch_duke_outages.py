@@ -33,6 +33,18 @@ def _headers():
 
 
 def _get(path):
+    """
+    Shared GET helper behind fetch_duke_outages()/fetch_duke_counties()/
+    fetch_duke_system_alerts()/fetch_duke_map_status().
+
+    Raises the real request exception on a genuine fetch failure rather
+    than swallowing it into None - real bug found and fixed 2026-07-20,
+    same class as TECO's: Duke's incident feed can legitimately report
+    zero active incidents on a quiet cycle, so a caught-and-returned
+    None here was indistinguishable from "nothing wrong," meaning a
+    real network failure never reached main.py's pipeline-health
+    logging at all.
+    """
     url = f"{DUKE_API_BASE}/{path}"
     try:
         response = requests.get(url, headers=_headers(), timeout=15)
@@ -41,7 +53,7 @@ def _get(path):
         return body.get("data", body)
     except requests.exceptions.RequestException as e:
         print(f"Error fetching Duke Energy data ({path}): {e}")
-        return None
+        raise
 
 
 def fetch_duke_outages():

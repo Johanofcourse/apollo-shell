@@ -67,6 +67,10 @@ detective instead. No regrets.
   statewide restoration-accuracy check) - honestly built without a
   county attached to any of it, after a real coordinate mystery
   confirmed unsolvable for now rather than guessed around
+- A real blind spot in failure detection closed for four sources
+  (TECO, Duke, Tallahassee, weather) - a genuine network failure used
+  to look identical to "nothing's currently wrong" and never reached
+  the poller's own error logging at all, not just unalerted
 
 ## The plot twist (July 2, 2026)
 Same night, different rabbit hole: went looking at whether other
@@ -1061,6 +1065,32 @@ shipped too, in an honestly different shape: one statewide number
 instead of the usual per-county read, since there's no county to gate
 it on. Starts at zero real data tonight, the same as every accuracy
 check here has at launch.
+
+## A real blind spot in failure detection itself (July 20, 2026)
+A known, real gap finally got checked and closed - four sources (TECO,
+Duke, Tallahassee, weather) had a genuine hole in failure detection,
+not just alerting. Each one's own fetch code caught its own network
+failures and quietly returned an empty result, indistinguishable from
+the source legitimately having nothing to report that cycle - unlike
+the county-rollup sources (FPL, Talquin, PRECO), which always report
+something for every serviced county, so an empty result there reliably
+means the request failed. For these four, a real outage in the data
+pipeline itself could disappear completely - not unalerted, genuinely
+never logged anywhere. FPUC's own incident view, once flagged as a
+fifth candidate for this same gap, turned out to already be covered -
+its "fetch once, update both trackers" design (built for an unrelated
+reason, keeping one response from getting split across two network
+calls) already raises when the whole response comes back empty, as a
+real side effect, not a dedicated fix. Verified directly rather than
+assumed either way.
+
+The fix didn't need a new mechanism - the poller's own per-utility
+error logging already existed and already worked correctly for every
+other source. The gap was that these five caught the real failure
+before it ever reached that existing safety net. Removed the catch, let
+the real exception surface, and the already-proven logging picked it up
+immediately - the simplest kind of fix, once the actual blind spot was
+found and confirmed rather than assumed.
 
 ## A real storm, and a real scroll (July 20, 2026)
 A live storm hitting Hillsborough surfaced a real gap the honest way -

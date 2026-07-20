@@ -8,7 +8,14 @@ from database import OutageDatabase
 def fetch_florida_alerts():
     """
     Fetches active weather alerts for Florida from National Weather Service API
-    Returns list of active alerts
+    Returns list of active alerts.
+
+    Raises the real request exception on a genuine fetch failure,
+    rather than swallowing it into an empty list - real bug found and
+    fixed 2026-07-20, same class as TECO's/Duke's/Tallahassee's: a
+    quiet weather day (zero active alerts) is completely legitimate, so
+    an empty list was never a reliable failure signal, and a real NWS
+    API outage was never reaching main.py's pipeline-health logging.
     """
     url = "https://api.weather.gov/alerts/active?area=FL"
     
@@ -33,7 +40,7 @@ def fetch_florida_alerts():
     
     except requests.exceptions.RequestException as e:
         print(f"Error fetching weather data: {e}")
-        return []
+        raise
 
 
 def parse_alert(alert):
