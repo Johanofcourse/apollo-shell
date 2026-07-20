@@ -80,7 +80,8 @@ precision for the earliest items in this list.
       threshold (still failing next cycle too, not just once) rather
       than the single-failure trigger the two fragile sources use -
       otherwise routine self-healing blips would generate noise. Not
-      started.
+      started - deliberately deferred to just before Phase 6's public
+      launch (see there), not sooner.
 - [x] **Closed a real blind spot in failure detection itself - shipped
       2026-07-20, for TECO, Duke, Tallahassee, and weather.** These four
       each caught their own network failures internally and returned an
@@ -605,6 +606,13 @@ this project's traffic never justifies one.
 - [ ] A real choice on analytics: self-hosted/privacy-respecting (e.g.
       Plausible, Umami) vs. a hosted third-party tool - decide
       deliberately, don't default
+- [ ] Extend real email alerting to every real source, not just
+      Talquin/PRECO (see Phase 2) - deliberately deferred here rather
+      than done now, decided 2026-07-20: a dashboard strip only someone
+      running the poller happens to check is an acceptable gap for a
+      personal/internal tool, but stops being acceptable the moment
+      real strangers depend on this data being right. Do this before
+      Phase 6 actually ships, not after.
 
 The internal dashboard stays SSH-tunnel-only regardless - never
 publicly exposed, a firm decision, not just the current state.
