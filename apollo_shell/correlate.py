@@ -940,6 +940,42 @@ def find_lcec_correlations(db_path="outages.db", days=None):
     return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
 
 
+def find_clay_correlations(db_path="outages.db", days=None):
+    """
+    Match Clay Electric Cooperative's raw per-county snapshots to
+    weather alerts active in that same county at the same time. Same
+    logic/shape as find_lcec_correlations() - a real per-county rollup
+    source, reads clay_outages rather than outages, kept as its own
+    dedicated table per the same one-utility-per-table convention used
+    everywhere else in this project.
+
+    Only rows with a real outage (customers_out > 0) are considered -
+    same reasoning as find_lcec_correlations().
+
+    days: same windowing as find_correlations().
+
+    Returns a list of {"outage": {...}, "alert": {...}} dicts - reuse
+    correlation_summary() below directly, since the shape matches FPL's.
+    """
+    db = OutageDatabase(db_path)
+    conn = db.connect()
+    cursor = conn.cursor()
+
+    cutoff = _window_cutoff(days)
+    if cutoff is not None:
+        cursor.execute('SELECT * FROM clay_outages WHERE customers_out > 0 AND timestamp >= ?', (cutoff,))
+    else:
+        cursor.execute('SELECT * FROM clay_outages WHERE customers_out > 0')
+    outages = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute('SELECT * FROM weather_alerts')
+    alerts = [dict(row) for row in cursor.fetchall()]
+
+    db.close()
+
+    return _match_items_to_alerts(outages, alerts, timestamp_key='timestamp', item_label='outage')
+
+
 def find_fpuc_incident_correlations(db_path="outages.db", days=None):
     """
     Match FPUC's real per-incident markers to weather alerts active in

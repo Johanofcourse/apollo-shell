@@ -22,6 +22,7 @@ from correlate import (
     find_lwbu_correlations,
     find_ouc_correlations,
     find_lcec_correlations,
+    find_clay_correlations,
 )
 from database import OutageDatabase
 
@@ -704,3 +705,38 @@ class TestFindLcecCorrelations:
         db.close()
 
         assert find_lcec_correlations(db_path, days=None) == []
+
+
+class TestFindClayCorrelations:
+    """
+    find_clay_correlations() reuses the exact same matching helpers
+    already proven via find_correlations()/find_lcec_correlations()
+    above - a real per-county rollup source, not a combined-territory
+    label.
+    """
+
+    def test_matches_a_clay_outage_to_an_overlapping_alert(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Alachua"))
+        db.log_clay_outages(
+            [{"county": "Alachua", "customers_out": 3, "customers_served": 26955}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        matches = find_clay_correlations(db_path, days=None)
+        assert len(matches) == 1
+
+        summary = correlation_summary(matches)
+        assert summary["Alachua"]["outage_count"] == 1
+
+    def test_zero_customer_snapshots_are_not_matched(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts(_weather_alert("Alachua"))
+        db.log_clay_outages(
+            [{"county": "Alachua", "customers_out": 0, "customers_served": 26955}],
+            timestamp="2026-01-01T12:00:00",
+        )
+        db.close()
+
+        assert find_clay_correlations(db_path, days=None) == []

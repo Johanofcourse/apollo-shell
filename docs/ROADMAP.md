@@ -425,10 +425,10 @@ Talquin, FPUC (combined), and Peace River Electric all 2026-07-13, the
 same day as Florida Keys Electric. TCEC, EREC, CHELCO, GCEC, and Lake
 Worth Beach Utilities all 2026-07-14 (GCEC's real per-county coverage
 milestone below is also this date). Orlando Utilities Commission
-2026-07-16, same day as Lee County Electric Cooperative, the 16th and
-(so far) last.
+2026-07-16, same day as Lee County Electric Cooperative, the 16th. Clay
+Electric Cooperative, the 17th and (so far) last, followed 2026-07-19.
 
-Grew from one utility (FPL) to sixteen live sources across this
+Grew from one utility (FPL) to seventeen live sources across this
 project's life, each one closing a real, verified county-coverage gap
 rather than being added for its own sake. In rough order: a second and
 third utility added genuinely richer per-incident detail (real cause,
@@ -467,7 +467,13 @@ existed before building anything. Runs on the same shared vendor
 platform JEA's feed does. A sixteenth (Lee County Electric Cooperative)
 was the same ranking's #2 candidate, added once OUC was done - a real
 per-county source (five counties) on a fully public, unauthenticated
-data platform, no tracking code or WAF gate required.
+data platform, no tracking code or WAF gate required. A seventeenth
+(Clay Electric Cooperative) topped the same historical-storm ranking
+by a clear margin once run again - a real per-county source across 15
+counties, on the identical platform LCEC already runs on, the richest
+shape confirmed yet (a genuine per-incident array with a real
+restoration estimate exists on the same feed, noted and deliberately
+left out of scope for this pass, same as LCEC's own).
 
 Every combined-territory source (where one number covers multiple real
 counties rather than a true per-county breakdown) is disclosed as such

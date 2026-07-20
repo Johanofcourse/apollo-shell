@@ -46,7 +46,7 @@ class TestBuildUnifiedView:
             customers_key="current_customer_count", peak_key="peak_customer_count",
         )
         unified = _build_unified_view(
-            [], [], [], [], [], [], [], [fpuc_incident_row], [], [], [], [], [], [], [], [], [],
+            [], [], [], [], [], [], [], [fpuc_incident_row], [], [], [], [], [], [], [], [], [], [],
         )
 
         assert len(unified) == 1
@@ -63,14 +63,14 @@ class TestBuildUnifiedView:
             customers_key="current_customer_count", peak_key="peak_customer_count",
         )
         unified = _build_unified_view(
-            [], [], [], [], [], [], [combined_row], [incident_row], [], [], [], [], [], [], [], [], [],
+            [], [], [], [], [], [], [combined_row], [incident_row], [], [], [], [], [], [], [], [], [], [],
         )
 
         assert len(unified) == 2
         assert sum(row["customers"] for row in unified) == 20
 
     def test_empty_everything_returns_empty_list(self):
-        unified = _build_unified_view([], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [])
+        unified = _build_unified_view([], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [])
         assert unified == []
 
 

@@ -44,6 +44,7 @@ from fetch_lwbu_outages import (
 )
 from fetch_ouc_outages import get_ouc_records, OUC_INSTANCE_ID
 from fetch_lcec_outages import get_lcec_records, LCEC_API_URL
+from fetch_clay_outages import get_clay_records, CLAY_API_URL
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -61,6 +62,7 @@ from correlate import (
     find_lwbu_correlations,
     find_ouc_correlations,
     find_lcec_correlations,
+    find_clay_correlations,
 )
 from county_status import historical_confidence_tally
 
@@ -520,6 +522,34 @@ def run_lcec_cycle(db):
     db.sync_lcec_outage_events(records, timestamp=timestamp)
 
 
+def run_clay_cycle(db):
+    """
+    Fetch Clay Electric Cooperative's live outage data, save the raw
+    snapshot, and update clay_outage_events lifecycle tracking
+    (start/end) - a real per-county rollup source (Columbia, Bradford,
+    Gilchrist, Marion, Levy, Duval, Suwannee, Alachua, Union, Clay,
+    Volusia, Flagler, Lake, Putnam, Baker), same shape as LCEC, not an
+    incident list. Clay's own real per-incident array (outages[], with
+    real start/estimated-restoration times) is confirmed to exist and
+    genuinely has live data - not integrated here yet, same honest
+    disclosure as LCEC's own array.
+
+    Raises only when CLAY_API_URL is actually configured but the fetch
+    still came back empty - same reasoning/config-check pattern as
+    run_lcec_cycle() above.
+    """
+    records = get_clay_records()
+    if not records:
+        if CLAY_API_URL:
+            raise RuntimeError("Clay fetch returned no records - see the poller's own log for the underlying request error")
+        print("Skipping Clay save - no data fetched")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_clay_outages(records, timestamp=timestamp)
+    db.sync_clay_outage_events(records, timestamp=timestamp)
+
+
 def run_fpuc_cycle(db):
     """
     Fetch FPUC's live outage data once, then update both trackers from
@@ -767,6 +797,19 @@ def run_correlation_cycle():
                 f"confidence={stats['confidence_breakdown']}"
             )
 
+    clay_matches = find_clay_correlations()
+    if not clay_matches:
+        print("Clay correlation: no matches this cycle")
+    else:
+        clay_summary = correlation_summary(clay_matches)
+        print(f"Clay correlation: {len(clay_matches)} matches across {len(clay_summary)} counties")
+        for county, stats in clay_summary.items():
+            print(
+                f"  {county}: {stats['outage_count']} outage(s), "
+                f"peak {stats['max_percentage_out']:.2f}%, alerts={stats['alert_types']}, "
+                f"confidence={stats['confidence_breakdown']}"
+            )
+
 
 def run_historical_tally_cycle(db):
     """
@@ -919,6 +962,12 @@ def main():
             except Exception as e:
                 print(f"LCEC fetch cycle failed: {e}")
                 db.log_pipeline_error("lcec", str(e))
+
+            try:
+                run_clay_cycle(db)
+            except Exception as e:
+                print(f"Clay fetch cycle failed: {e}")
+                db.log_pipeline_error("clay", str(e))
 
             try:
                 run_correlation_cycle()
