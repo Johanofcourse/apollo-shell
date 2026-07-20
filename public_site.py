@@ -288,6 +288,15 @@ def index():
     for a in all_active_alerts:
         a["areas_list"] = [part.strip() for part in a["areas"].split(";") if part.strip()]
 
+    # Real pagination for the statewide Current Weather Alerts section,
+    # same principle/page size as Outage History's - a real active
+    # storm can push the active-alert count well past a comfortable
+    # single scroll (confirmed real 2026-07-20, Hillsborough). Paginate
+    # a copy (alerts_page_rows), not all_active_alerts itself - the
+    # per-county filter just below still needs the real, complete list.
+    active_alerts_total = len(all_active_alerts)
+    alerts_page_rows, alerts_page, alerts_total_pages = _paginate(all_active_alerts, "alerts_page")
+
     selected_county = request.args.get("county", "").strip()
     county_detail = None
 
@@ -429,7 +438,10 @@ def index():
         tracked_utility_count=TRACKED_UTILITY_COUNT,
         sentinel_version=SENTINEL_VERSION,
         heat_summary=heat_summary,
-        active_alerts=all_active_alerts,
+        active_alerts=alerts_page_rows,
+        active_alerts_total=active_alerts_total,
+        alerts_page=alerts_page,
+        alerts_total_pages=alerts_total_pages,
         available_counties=COUNTY_PICKER_CHOICES,
         available_counties_json=json.dumps(COUNTY_PICKER_CHOICES),
         selected_county=selected_county,

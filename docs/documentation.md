@@ -1061,3 +1061,21 @@ shipped too, in an honestly different shape: one statewide number
 instead of the usual per-county read, since there's no county to gate
 it on. Starts at zero real data tonight, the same as every accuracy
 check here has at launch.
+
+## A real storm, and a real scroll (July 20, 2026)
+A live storm hitting Hillsborough surfaced a real gap the honest way -
+by actually being inconvenient to use. The public page's statewide
+Current Weather Alerts section had no cap at all, unlike Outage History
+(already paginated for exactly this reason); a real active weather event
+pushed the active-alert count well past a comfortable scroll. Fixed with
+the same real pagination Outage History already uses - same page size,
+same helper function, reused rather than reinvented - applied to a
+source that changes constantly (live weather) instead of stable
+historical data, so the tests fake a known count rather than betting on
+however many real alerts happen to be active whenever the suite runs.
+
+Verified against the real live moment that prompted it, not a synthetic
+one: 28 real active alerts statewide at the time, a real Tropical
+Cyclone Local Statement among them, Hillsborough genuinely leading the
+state in customers out. Checked on a real narrow mobile viewport too,
+not just assumed to inherit the desktop layout correctly.

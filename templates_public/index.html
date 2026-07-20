@@ -506,6 +506,17 @@
         </div>
       </div>
       {% endfor %}
+      {% if alerts_total_pages > 1 %}
+        <div class="history-pagination">
+          {% if alerts_page > 1 %}
+            <a href="/?alerts_page={{ alerts_page - 1 }}{% if selected_county %}&county={{ selected_county | urlencode }}{% endif %}#alertsSection">&larr; Newer</a>
+          {% endif %}
+          <span>Page {{ alerts_page }} of {{ alerts_total_pages }} ({{ active_alerts_total }} active alerts statewide)</span>
+          {% if alerts_page < alerts_total_pages %}
+            <a href="/?alerts_page={{ alerts_page + 1 }}{% if selected_county %}&county={{ selected_county | urlencode }}{% endif %}#alertsSection">Older &rarr;</a>
+          {% endif %}
+        </div>
+      {% endif %}
     {% else %}
       <div class="history-empty">No active weather alerts for Florida right now.</div>
     {% endif %}
