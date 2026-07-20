@@ -621,6 +621,17 @@ this project's traffic never justifies one.
       personal/internal tool, but stops being acceptable the moment
       real strangers depend on this data being right. Do this before
       Phase 6 actually ships, not after.
+- [ ] Real automated deployment (CI exists - tests run on every push;
+      CD doesn't - getting a merged commit onto the VM is still a fully
+      manual pull + restart). Prompted by a real, honest surprise
+      2026-07-20: merging a PR and expecting the live site to reflect
+      it immediately, when it didn't until someone (or Claude) manually
+      synced the VM. Deliberately deferred, not fixed on the spot -
+      worth having before real strangers are the ones hitting a stale
+      deploy, less urgent while it's still just the two of us who'd
+      notice. Real tradeoff to weigh when this comes up again: automatic
+      deploy means it can never be forgotten, but also means nobody's
+      watching that specific deploy happen before real visitors see it.
 
 The internal dashboard stays SSH-tunnel-only regardless - never
 publicly exposed, a firm decision, not just the current state.
