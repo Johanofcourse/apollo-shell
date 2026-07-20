@@ -33,6 +33,7 @@ from county_status import (
     teco_etr_accuracy, TECO_UTILITY_NAME,
     duke_restoration_precedent, DUKE_UTILITY_NAME,
     lwbu_etr_accuracy,
+    clay_etr_accuracy,
     attach_active_counties as _attach_active_counties,
 )
 from storm_history import (
@@ -599,6 +600,9 @@ def index():
     lcec_closed_events = db.get_lcec_recent_closed_events(limit=10)
     clay_open_events = db.get_clay_open_events()
     clay_closed_events = db.get_clay_recent_closed_events(limit=10)
+    clay_open_incidents = db.get_clay_open_incidents()
+    clay_closed_incidents = db.get_clay_recent_closed_incidents(limit=10)
+    clay_etr_accuracy_stats = clay_etr_accuracy(db)
 
     pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "lcec", "clay", "correlation", "historical_tally"])
     heat_summary = db.get_heat_advisory_summary()
@@ -680,6 +684,10 @@ def index():
     for event in clay_open_events:
         event["duration"] = _duration_since(event["start_time"])
     for event in clay_closed_events:
+        event["duration"] = _duration_since(event["start_time"], event["end_time"])
+    for event in clay_open_incidents:
+        event["duration"] = _duration_since(event["start_time"])
+    for event in clay_closed_incidents:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
 
     matches, teco_matches, duke_matches, jea_matches, tallahassee_matches, talquin_matches, fpuc_matches, preco_matches, fkec_matches, tcec_matches, erec_matches, chelco_matches, gcec_matches, lwbu_matches, ouc_matches, lcec_matches, clay_matches = _get_cached_correlations(db_path, window_days)
@@ -927,6 +935,9 @@ def index():
         clay_open_events=clay_open_events,
         clay_closed_events=clay_closed_events,
         clay_correlation=clay_correlation,
+        clay_open_incidents=clay_open_incidents,
+        clay_closed_incidents=clay_closed_incidents,
+        clay_etr_accuracy_stats=clay_etr_accuracy_stats,
         unified_open=unified_open,
         total_customers_affected=total_customers_affected,
         worst_row=worst_row,
@@ -1387,7 +1398,7 @@ def incident():
     db = OutageDatabase()
 
     detail = None
-    if source in ("teco", "duke", "fpuc_incident", "lwbu_incident"):
+    if source in ("teco", "duke", "fpuc_incident", "lwbu_incident", "clay_incident"):
         incident_id = request.args.get("incident_id", "").strip()
         if incident_id:
             detail_fns = {
@@ -1395,6 +1406,7 @@ def incident():
                 "duke": db.get_duke_incident_detail,
                 "fpuc_incident": db.get_fpuc_incident_detail,
                 "lwbu_incident": db.get_lwbu_incident_detail,
+                "clay_incident": db.get_clay_incident_detail,
             }
             raw_detail = detail_fns[source](incident_id)
             if raw_detail["events"] or raw_detail["history"]:
@@ -1426,7 +1438,7 @@ def incident():
     db.close()
 
     if detail:
-        if source in ("teco", "duke", "fpuc_incident", "lwbu_incident"):
+        if source in ("teco", "duke", "fpuc_incident", "lwbu_incident", "clay_incident"):
             for ev in detail["events"]:
                 ev["duration"] = _duration_since(ev["start_time"], ev["end_time"])
         else:

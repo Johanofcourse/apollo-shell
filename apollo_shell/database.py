@@ -918,6 +918,54 @@ class OutageDatabase:
             )
         ''')
 
+        # Clay's real per-incident raw snapshots - a genuinely different
+        # shape from clay_outages above (individual outages with a real
+        # customer count, a real start time (timeOff), and a real
+        # restoration estimate). No county field - checked directly
+        # 2026-07-19 whether the raw x/y could be resolved to one (a
+        # real ground-truth point, a coordinate transform, a dig through
+        # the site's own JS) and confirmed it isn't reliably solvable
+        # right now, not assumed impossible. raw_x/raw_y kept anyway so
+        # a future session that does solve it doesn't need to re-fetch
+        # anything. No per-incident "last updated" field in Clay's feed
+        # (unlike TECO's update_time), so - same as duke_incidents -
+        # this logs one fresh row per incident per poll cycle.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS clay_incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                utility TEXT,
+                customer_count INTEGER,
+                start_time TEXT,
+                estimated_restoration TEXT,
+                crew_assigned INTEGER,
+                planned INTEGER,
+                raw_x REAL,
+                raw_y REAL
+            )
+        ''')
+
+        # Clay incident lifecycle tracking - same approach as
+        # teco_incident_events/duke_incident_events: an event opens the
+        # first time an incident_id is seen and closes when that id stops
+        # appearing in a poll. start_time here is Clay's own real timeOff
+        # (passed straight through), not the poll-observed time TECO/Duke
+        # fall back to - a real improvement available only because Clay's
+        # feed happens to report a true start time at all.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS clay_incident_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                utility TEXT,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customer_count INTEGER,
+                crew_assigned INTEGER,
+                planned INTEGER
+            )
+        ''')
+
         # Precomputed all-time historical weather-match confidence tally
         # (see county_status.historical_confidence_tally()) - a real,
         # expensive nested-loop correlation query across every real
@@ -1021,6 +1069,11 @@ class OutageDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_clay_outage_events_open
             ON clay_outage_events(utility, county, end_time)
+        ''')
+
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_clay_incident_events_open
+            ON clay_incident_events(incident_id, end_time)
         ''')
 
         cursor.execute('''
@@ -1252,6 +1305,16 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_clay_outage_events_unique
             ON clay_outage_events(utility, county, start_time)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_clay_incidents_unique
+            ON clay_incidents(incident_id, fetched_at)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_clay_incident_events_unique
+            ON clay_incident_events(incident_id, start_time)
         ''')
 
         cursor.execute('''
@@ -4414,6 +4477,59 @@ class OutageDatabase:
 
         return {"event": event, "history": history}
 
+    def get_clay_open_incidents(self):
+        """
+        Return currently open clay_incident_events (end_time IS NULL),
+        worst (by peak customer count) first. Includes
+        current_customer_count and current_estimated_restoration from
+        the latest clay_incidents row fetched for that incident_id - same
+        "peak vs. right now" reasoning as get_teco_open_events(). No
+        county on these rows at all - see clay_incident_events' own
+        table comment for why.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT oe.*,
+                   cur.customer_count AS current_customer_count,
+                   cur.estimated_restoration AS current_estimated_restoration
+            FROM clay_incident_events oe
+            LEFT JOIN clay_incidents cur
+                ON cur.incident_id = oe.incident_id
+                AND cur.fetched_at = (
+                    SELECT MAX(fetched_at) FROM clay_incidents c2
+                    WHERE c2.incident_id = oe.incident_id
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_customer_count DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_clay_recent_closed_incidents(self, limit=10):
+        """
+        Return the most recently closed clay_incident_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM clay_incident_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_clay_incident_detail(self, incident_id):
+        """
+        Same as get_teco_incident_detail(), for a Clay incident_id.
+        """
+        return {
+            "events": self._get_incident_events("clay_incident_events", incident_id),
+            "history": self._get_incident_raw_history("clay_incidents", incident_id),
+        }
+
     def get_lwbu_incident_detail(self, incident_id):
         """
         Same as get_teco_incident_detail(), for an LWBU incident_id.
@@ -4759,6 +4875,123 @@ class OutageDatabase:
 
         conn.commit()
         print(f"Duke incident events: {opened} opened, {closed} closed this cycle")
+
+
+    def log_clay_incidents(self, records):
+        """
+        Insert Clay Electric Cooperative live outage incidents (from
+        fetch_clay_outages.py's incidents_to_records()).
+
+        Args:
+            records: list of dicts with keys: incident_id, utility,
+                     customer_count, start_time, estimated_restoration,
+                     crew_assigned, planned, raw_x, raw_y
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        fetched_at = datetime.now().isoformat()
+
+        rows = [
+            (
+                r['incident_id'], fetched_at, r.get('utility'),
+                r.get('customer_count'), r.get('start_time'),
+                r.get('estimated_restoration'),
+                int(bool(r.get('crew_assigned'))), int(bool(r.get('planned'))),
+                r.get('raw_x'), r.get('raw_y'),
+            )
+            for r in records
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO clay_incidents
+                (incident_id, fetched_at, utility, customer_count, start_time,
+                 estimated_restoration, crew_assigned, planned, raw_x, raw_y)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+
+        conn.commit()
+        print(f"Logged {len(rows)} Clay incident records")
+
+
+    def sync_clay_incident_events(self, records, timestamp=None):
+        """
+        Track Clay incident lifecycle. Same approach as
+        sync_duke_incident_events/sync_teco_incident_events: an event
+        opens the first time an incident_id is seen, stays updated with
+        the latest known values while still being reported, and closes
+        once an incident_id that was open stops appearing in a poll at
+        all (Clay's feed, like TECO's/Duke's, only lists currently-active
+        incidents).
+
+        One real difference from TECO/Duke: start_time here is Clay's
+        own reported start (r['start_time'], from the raw timeOff field),
+        not the poll timestamp - Clay's feed happens to report a true
+        start time, so the event's real duration is accurate from the
+        moment it's first seen, not just from whenever this project's
+        own 15-minute poll happened to catch it.
+
+        NOT SAFE TO REPLAY - same characteristic as every other
+        incident-lifecycle sync function in this project (see
+        sync_teco_incident_events's docstring for the full reasoning).
+
+        Args:
+            records: list of dicts as returned by
+                     fetch_clay_outages.incidents_to_records()
+            timestamp: ISO timestamp for this poll (used only for
+                       end_time on closure); defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        current_ids = {r['incident_id'] for r in records}
+
+        opened = 0
+        closed = 0
+
+        for r in records:
+            cursor.execute('''
+                SELECT id, peak_customer_count FROM clay_incident_events
+                WHERE incident_id = ? AND end_time IS NULL
+            ''', (r['incident_id'],))
+            open_event = cursor.fetchone()
+
+            if open_event is None:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO clay_incident_events
+                        (incident_id, utility, start_time, end_time,
+                         peak_customer_count, crew_assigned, planned)
+                    VALUES (?, ?, ?, NULL, ?, ?, ?)
+                ''', (
+                    r['incident_id'], r.get('utility'),
+                    r.get('start_time') or timestamp,
+                    r.get('customer_count'),
+                    int(bool(r.get('crew_assigned'))), int(bool(r.get('planned'))),
+                ))
+                if cursor.rowcount > 0:
+                    opened += 1
+            else:
+                peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
+                cursor.execute('''
+                    UPDATE clay_incident_events
+                    SET peak_customer_count = ?, crew_assigned = ?, planned = ?
+                    WHERE id = ?
+                ''', (
+                    peak, int(bool(r.get('crew_assigned'))), int(bool(r.get('planned'))),
+                    open_event['id'],
+                ))
+
+        cursor.execute('SELECT id, incident_id FROM clay_incident_events WHERE end_time IS NULL')
+        for row in cursor.fetchall():
+            if row['incident_id'] not in current_ids:
+                cursor.execute('''
+                    UPDATE clay_incident_events SET end_time = ? WHERE id = ?
+                ''', (timestamp, row['id']))
+                closed += 1
+
+        conn.commit()
+        print(f"Clay incident events: {opened} opened, {closed} closed this cycle")
 
 
     def log_duke_counties(self, records):

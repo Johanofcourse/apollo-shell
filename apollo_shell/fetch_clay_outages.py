@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 
 import requests
 from dotenv import load_dotenv
@@ -50,11 +51,8 @@ def outages_to_records(data):
     detail not currently used here.
 
     The response also includes a top-level "outages" array with real
-    per-incident detail (id, nbrOut, timeOff/estimateTime as epoch-ms
-    timestamps, crewAssigned, planned) - not read here either, same
-    deliberate scope limit as LCEC's own module: a real candidate for
-    incident-level tracking later, just out of scope for this pass,
-    which sticks to the same rollup-only shape as FKEC/GCEC/OUC/LCEC.
+    per-incident detail - see incidents_to_records() below, which reads
+    the same raw response this function does.
     """
     records = []
     region_datasets = (data or {}).get("regionDataSets", [])
@@ -71,12 +69,68 @@ def outages_to_records(data):
     return records
 
 
+def _epoch_ms_to_iso(value):
+    """
+    Clay's own timeOff/estimateTime fields are epoch milliseconds, not
+    ISO strings like every other timestamp in this project - converted
+    here once, at the source, rather than carrying raw epoch-ms deeper
+    into the codebase. Returns None for a missing/invalid value rather
+    than raising, since estimateTime in particular isn't always present
+    (no crew assigned yet, no estimate to give).
+    """
+    if not value:
+        return None
+    try:
+        return datetime.fromtimestamp(value / 1000, tz=timezone.utc).replace(tzinfo=None).isoformat()
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def incidents_to_records(data):
+    """
+    Convert Clay's raw "outages" array into real per-incident records:
+    incident_id, customer_count, start_time (Clay's own real timeOff -
+    more accurate than the "first time we happened to poll it"
+    fallback TECO/Duke need, since their feeds don't give a true start
+    time at all), estimated_restoration, crew_assigned, planned.
+
+    Deliberately NO county field. Clay's raw x/y turned out not to be
+    resolvable to a real county - checked directly (a real ground-truth
+    point, a live coordinate transform, and a dig through the site's
+    own JS for the actual rendering logic), not assumed impossible.
+    Carrying raw_x/raw_y through anyway, unused for now, so a future
+    session that does solve the transform doesn't need to re-fetch
+    anything - the raw values are already sitting in the database.
+    """
+    records = []
+    for o in (data or {}).get("outages", []):
+        records.append({
+            "incident_id": o.get("id"),
+            "utility": UTILITY_NAME,
+            "customer_count": o.get("nbrOut") or 0,
+            "start_time": _epoch_ms_to_iso(o.get("timeOff")),
+            "estimated_restoration": _epoch_ms_to_iso(o.get("estimateTime")),
+            "crew_assigned": bool(o.get("crewAssigned")),
+            "planned": bool(o.get("planned")),
+            "raw_x": o.get("x"),
+            "raw_y": o.get("y"),
+        })
+    return records
+
+
 def get_clay_records():
     """
     Fetch and parse current Clay county-level outage records in one
     call.
     """
     return outages_to_records(fetch_clay_outages())
+
+
+def get_clay_incident_records():
+    """
+    Fetch and parse current Clay per-incident records in one call.
+    """
+    return incidents_to_records(fetch_clay_outages())
 
 
 def main():

@@ -752,6 +752,74 @@ def lwbu_etr_accuracy(county, db):
     }
 
 
+CLAY_UTILITY_NAME = "Clay Electric Cooperative"
+
+
+def clay_etr_accuracy(db):
+    """
+    Same real accuracy-check shape as teco_etr_accuracy()/
+    lwbu_etr_accuracy() - Clay reports a real per-incident ETR too
+    (clay_incidents.estimated_restoration), already stored as a plain
+    naive ISO string (converted from epoch-ms at the source in
+    fetch_clay_outages._epoch_ms_to_iso(), so no LWBU-style timezone
+    handling needed here).
+
+    One real, deliberate difference from every other ETR-accuracy
+    function in this project: no `county` parameter. Clay's incidents
+    have no county at all - checked directly 2026-07-19 whether the raw
+    x/y could be resolved to one and confirmed it isn't reliably
+    solvable right now (see clay_incident_events' own table comment in
+    database.py for the full story). Rather than withhold this feature
+    entirely until that's solved, or fake a per-county gate that isn't
+    real, this is a genuine statewide aggregate - "how trustworthy is
+    Clay's own restoration estimate, across every incident, anywhere in
+    its territory." Gated differently on the display side too: shown
+    once, not per-county, since there's no county to gate it on.
+
+    Returns None if there's no usable data yet (real tonight, at launch
+    - starts at zero, same as every ETR-accuracy feature does when
+    first shipped). Otherwise the same n/median_error_hours/
+    on_time_pct/limited shape as every other ETR-accuracy function.
+    """
+    conn = db.connect()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT oe.end_time,
+               (SELECT ci.estimated_restoration FROM clay_incidents ci
+                WHERE ci.incident_id = oe.incident_id AND ci.estimated_restoration IS NOT NULL
+                ORDER BY ci.fetched_at ASC LIMIT 1) AS first_etr
+        FROM clay_incident_events oe
+        WHERE oe.end_time IS NOT NULL
+    ''')
+    rows = cursor.fetchall()
+
+    errors = []
+    for end_time, first_etr in rows:
+        if not first_etr:
+            continue
+        try:
+            error_hours = (datetime.fromisoformat(end_time) - datetime.fromisoformat(first_etr)).total_seconds() / 3600
+        except (TypeError, ValueError):
+            continue
+        errors.append(error_hours)
+
+    if not errors:
+        return None
+
+    errors.sort()
+    n = len(errors)
+    mid = n // 2
+    median = errors[mid] if n % 2 == 1 else (errors[mid - 1] + errors[mid]) / 2
+    on_time = sum(1 for e in errors if e <= 0)
+
+    return {
+        "n": n,
+        "median_error_hours": median,
+        "on_time_pct": on_time / n * 100,
+        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
+    }
+
+
 DUKE_UTILITY_NAME = "Duke Energy"
 
 
