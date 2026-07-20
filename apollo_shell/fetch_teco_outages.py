@@ -95,8 +95,18 @@ def fetch_teco_outages(bounding_box=None):
     Query TECO's live outage-incidents feed (their public map's own
     backend API, not officially documented).
 
-    Returns the raw list of "hits" (each one a single outage incident),
-    or an empty list on failure.
+    Returns the raw list of "hits" (each one a single outage incident).
+
+    Raises the real request exception on a genuine fetch failure,
+    rather than swallowing it into an empty list - real bug found and
+    fixed 2026-07-20: TECO's own feed can legitimately report zero
+    active incidents on a quiet cycle, unlike the county-rollup sources
+    (FPL, Talquin, etc.) that always report something for every
+    serviced county, so an empty list here was never a reliable failure
+    signal the way it is for them. Collapsing "the request failed" and
+    "nothing is currently wrong" into the same return value meant a
+    real network failure never reached main.py's pipeline-health
+    logging at all - not just unalerted, genuinely undetected.
     """
     if not TECO_OUTAGE_TILES_URL or not TECO_API_ORIGIN:
         raise RuntimeError(
@@ -142,7 +152,7 @@ def fetch_teco_outages(bounding_box=None):
 
     except requests.exceptions.RequestException as e:
         print(f"Error fetching TECO outage data: {e}")
-        return []
+        raise
 
 
 def lookup_county(lat, lon):

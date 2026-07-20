@@ -81,6 +81,21 @@ precision for the earliest items in this list.
       than the single-failure trigger the two fragile sources use -
       otherwise routine self-healing blips would generate noise. Not
       started.
+- [x] **Closed a real blind spot in failure detection itself - shipped
+      2026-07-20, for TECO, Duke, Tallahassee, and weather.** These four
+      each caught their own network failures internally and returned an
+      empty result - indistinguishable from the source legitimately
+      having nothing to report, unlike the county-rollup sources
+      (FPL/Talquin/PRECO) that always report something for every
+      serviced county. A real fetch failure for any of these four could
+      vanish completely - not unalerted, never logged to
+      pipeline_errors at all. Fix needed no new mechanism: removed the
+      internal catch so the real exception reaches the poller's own
+      per-utility error logging, which already worked correctly for
+      every other source. FPUC's incident view, flagged as a possible
+      fifth case, checked out already covered - its existing
+      fetch-once-update-both-trackers design (built for an unrelated
+      reason) already raises on a real empty response.
 - [x] **Real bug hunt following an earlier data-gap fix, plus a first
       real test suite.** Asking "what else might be quietly wrong"
       turned up a couple more small, real issues, both fixed. Also

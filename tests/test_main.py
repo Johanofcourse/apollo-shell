@@ -30,8 +30,14 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "apollo_shell"))
 
+import requests
+
 from database import OutageDatabase
 import main
+import fetch_teco_outages
+import fetch_duke_outages
+import fetch_tallahassee_outages
+import fetch_weather
 
 
 @pytest.fixture
@@ -65,6 +71,98 @@ class TestRunOutageCycleFplFailureVisibility:
         open_events = db.get_open_events()
         assert len(open_events) == 1
         assert open_events[0]["county"] == "Alachua"
+
+
+class TestRunTecoCycleFailureVisibility:
+    """
+    Real pipeline-health blind spot found and fixed 2026-07-20:
+    fetch_teco_outages() used to catch its own RequestException and
+    return an empty list - indistinguishable from TECO's feed
+    legitimately reporting zero active incidents on a quiet cycle, so a
+    real network failure never reached main.py's pipeline-health
+    logging at all, not just unalerted. These tests patch the real,
+    lowest-level fetch function (not get_incidents_summary(), which
+    main.py actually imports) to prove the exception genuinely
+    propagates through the whole real chain, not just that a mock
+    raises.
+    """
+
+    def test_a_real_request_failure_propagates_to_the_cycle(self, db, monkeypatch):
+        def boom():
+            raise requests.exceptions.RequestException("boom")
+        monkeypatch.setattr(fetch_teco_outages, "fetch_teco_outages", boom)
+
+        with pytest.raises(requests.exceptions.RequestException):
+            main.run_teco_cycle(db)
+
+    def test_a_genuinely_empty_result_does_not_raise(self, db, monkeypatch):
+        monkeypatch.setattr(fetch_teco_outages, "fetch_teco_outages", lambda: [])
+        main.run_teco_cycle(db)  # should not raise
+
+
+class TestRunDukeCycleFailureVisibility:
+    """
+    Same real blind spot, same fix, 2026-07-20 - Duke's shared _get()
+    helper (behind incidents/counties/system alerts) used to catch its
+    own RequestException and return None.
+    """
+
+    def test_a_real_request_failure_propagates_to_the_cycle(self, db, monkeypatch):
+        def boom(path):
+            raise requests.exceptions.RequestException("boom")
+        monkeypatch.setattr(fetch_duke_outages, "_get", boom)
+
+        with pytest.raises(requests.exceptions.RequestException):
+            main.run_duke_cycle(db)
+
+    def test_a_genuinely_empty_result_does_not_raise(self, db, monkeypatch):
+        monkeypatch.setattr(fetch_duke_outages, "_get", lambda path: [])
+        main.run_duke_cycle(db)  # should not raise
+
+
+class TestRunTallahasseeCycleFailureVisibility:
+    """
+    Same real blind spot, same fix, 2026-07-20. Tallahassee's own
+    get_rollup_summary() docstring used to explicitly document this as
+    an accepted tradeoff ("comes back indistinguishable from
+    'genuinely nothing happening'") - no longer true.
+    """
+
+    def test_a_real_request_failure_propagates_to_the_cycle(self, db, monkeypatch):
+        def boom():
+            raise requests.exceptions.RequestException("boom")
+        monkeypatch.setattr(fetch_tallahassee_outages, "fetch_tallahassee_outages", boom)
+        monkeypatch.setattr(main, "TALLAHASSEE_API_URL", "https://example.com/real-endpoint")
+
+        with pytest.raises(requests.exceptions.RequestException):
+            main.run_tallahassee_cycle(db)
+
+    def test_a_genuinely_empty_result_does_not_raise(self, db, monkeypatch):
+        monkeypatch.setattr(fetch_tallahassee_outages, "fetch_tallahassee_outages", lambda: [])
+        monkeypatch.setattr(main, "TALLAHASSEE_API_URL", "https://example.com/real-endpoint")
+        main.run_tallahassee_cycle(db)  # should not raise
+
+
+class TestRunWeatherCycleFailureVisibility:
+    """
+    Same real blind spot, same fix, 2026-07-20 - a quiet weather day
+    (zero active alerts statewide) is completely legitimate, so an
+    empty list from fetch_florida_alerts() was never a reliable failure
+    signal, and a real NWS API outage was never reaching pipeline
+    health at all.
+    """
+
+    def test_a_real_request_failure_propagates_to_the_cycle(self, db, monkeypatch):
+        def boom():
+            raise requests.exceptions.RequestException("boom")
+        monkeypatch.setattr(fetch_weather, "fetch_florida_alerts", boom)
+
+        with pytest.raises(requests.exceptions.RequestException):
+            main.run_weather_cycle(db)
+
+    def test_a_genuinely_empty_result_does_not_raise(self, db, monkeypatch):
+        monkeypatch.setattr(fetch_weather, "fetch_florida_alerts", lambda: [])
+        main.run_weather_cycle(db)  # should not raise
 
 
 class TestRunJeaCycleFailureVisibility:

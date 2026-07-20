@@ -51,8 +51,17 @@ COUNTY = "Leon"
 def fetch_tallahassee_outages():
     """
     Fetch raw individual outage incidents from Tallahassee's public
-    outage-map feed. Returns a list of raw "feature" dicts,
-    or an empty list on failure/missing config.
+    outage-map feed. Returns a list of raw "feature" dicts, or an empty
+    list if not configured.
+
+    Raises the real request exception on a genuine fetch failure,
+    rather than swallowing it into an empty list - real bug found and
+    fixed 2026-07-20, same class as TECO's/Duke's. This module's own
+    get_rollup_summary() docstring used to note this as an accepted
+    tradeoff ("a real network/API failure ... comes back
+    indistinguishable from 'genuinely nothing happening'") - no longer
+    true now that the failure actually propagates to main.py's
+    pipeline-health logging instead of being swallowed here.
     """
     if not TALLAHASSEE_API_URL:
         print("TALLAHASSEE_API_URL not set - skipping City of Tallahassee fetch")
@@ -68,7 +77,7 @@ def fetch_tallahassee_outages():
         return features
     except requests.exceptions.RequestException as e:
         print(f"Error fetching Tallahassee data: {e}")
-        return []
+        raise
 
 
 def get_rollup_summary():
