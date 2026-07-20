@@ -20,6 +20,9 @@ shows up in real live data (confirmed 2026-07-18), not one of the five
 named zones.
 """
 
+import pytest
+import requests
+
 import fetch_tallahassee_outages as tally
 
 
@@ -64,12 +67,32 @@ class TestGetRollupSummary:
         assert summary == [{"county": "Leon", "customers_out": 181}]
 
     def test_always_returns_leon_county_even_with_zero_features(self, monkeypatch):
-        # A real, legitimate state (no active outages), distinct from a
-        # fetch failure - both look the same from here since
-        # fetch_tallahassee_outages() already collapses failure/empty
-        # to [] itself and logs its own error message.
+        # A real, legitimate state (no active outages) - genuinely
+        # distinguishable from a fetch failure since 2026-07-20,
+        # fetch_tallahassee_outages() raises on a real request failure
+        # instead of returning [] for both cases (see
+        # TestFetchTallahasseeOutagesFailureVisibility below).
         monkeypatch.setattr(tally, "fetch_tallahassee_outages", lambda: [])
         assert tally.get_rollup_summary() == [{"county": "Leon", "customers_out": 0}]
+
+
+class TestFetchTallahasseeOutagesFailureVisibility:
+    """
+    Real pipeline-health blind spot found and fixed 2026-07-20:
+    fetch_tallahassee_outages() used to catch its own RequestException
+    and return an empty list, indistinguishable from a genuinely quiet
+    cycle - a real network failure never reached main.py's
+    pipeline-health logging at all, not just unalerted.
+    """
+
+    def test_a_real_request_failure_raises_instead_of_returning_empty(self, monkeypatch):
+        def boom(*args, **kwargs):
+            raise requests.exceptions.RequestException("boom")
+        monkeypatch.setattr(tally.requests, "get", boom)
+        monkeypatch.setattr(tally, "TALLAHASSEE_API_URL", "https://example.com/real-endpoint")
+
+        with pytest.raises(requests.exceptions.RequestException):
+            tally.fetch_tallahassee_outages()
 
     def test_missing_customers_field_counts_as_zero(self, monkeypatch):
         feature = _feature(customers=None)

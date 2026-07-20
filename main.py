@@ -194,15 +194,17 @@ def run_tallahassee_cycle(db):
     replaced 2026-07-18).
 
     Unlike run_talquin_cycle(), there's no "empty means the request
-    failed" case to detect here: Tallahassee genuinely has zero active
+    failed" case to build here: Tallahassee genuinely has zero active
     outages plenty of cycles (get_rollup_summary() always returns
     exactly one record for Leon County, customers_out=0 included), so
     an empty result isn't a distinguishable failure signal the way it
-    is for Talquin's always-full 10-county feed. A real network/API
-    failure already prints its own message inside
-    fetch_tallahassee_outages() and comes back indistinguishable from
-    "genuinely nothing happening" - the same tradeoff every incident-
-    level source here already has.
+    is for Talquin's always-full 10-county feed. That's fine, though -
+    a real network/API failure doesn't need to be distinguishable from
+    "nothing wrong" via the return value at all, since
+    fetch_tallahassee_outages() now raises on a genuine fetch failure
+    instead of swallowing it (fixed 2026-07-20) - this function doesn't
+    need its own try/except, the exception propagates straight to the
+    main loop's existing pipeline-health logging.
     """
     if not TALLAHASSEE_API_URL:
         print("Skipping Tallahassee save - TALLAHASSEE_API_URL not configured")
