@@ -961,9 +961,7 @@
   <h3>Clay Electric Cooperative — Currently Open Outages ({{ clay_open_events|length }})</h3>
   <p class="section-note">
     Same platform and shape as LCEC's - a fully public, unauthenticated static JSON file with real
-    native per-county granularity across 15 real counties. A real per-incident array also exists on
-    this feed (with real start/estimated-restoration times) and genuinely has live data - just not
-    integrated here yet, same honest disclosure as LCEC's own unused array.
+    native per-county granularity across 15 real counties.
   </p>
   <div class="wrap">
   {% if clay_open_events %}
@@ -985,6 +983,57 @@
     <div class="empty">No open Clay outages right now.</div>
   {% endif %}
   </div>
+
+  <h3>Clay Electric Cooperative — Currently Open Incidents ({{ clay_open_incidents|length }})</h3>
+  <p class="section-note">
+    Real per-incident detail from the same feed - individual outages with a real customer count, a
+    real start time (Clay's own, not just when we happened to poll), a live restoration estimate, and
+    whether a crew is assigned. Deliberately no County column - Clay's raw incident coordinates
+    couldn't be resolved to a real county (checked directly, not assumed impossible), so these are
+    tracked by their own real identity only, not attributed to a location.
+  </p>
+  <div class="wrap">
+  {% if clay_open_incidents %}
+    <table>
+      <tr><th>Incident</th><th>Current</th><th>Peak</th><th>Crew Assigned</th><th>Planned</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in clay_open_incidents %}
+      <tr>
+        <td><a href="/incident?source=clay_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ "Yes" if e.crew_assigned else "No" }}</td>
+        <td>{{ "Yes" if e.planned else "No" }}</td>
+        <td>{{ e.current_estimated_restoration | humanize if e.current_estimated_restoration else "—" }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open Clay incidents right now.</div>
+  {% endif %}
+  </div>
+
+  <h3>Clay Electric Cooperative — Restoration Estimate Accuracy</h3>
+  <p class="section-note">
+    Statewide, not per-county - Clay's incidents have no county attribution (see above), so this is
+    aggregated across every incident, anywhere in its territory, the same "how trustworthy is the
+    utility's own number" question teco_etr_accuracy()/lwbu_etr_accuracy() answer per-county elsewhere.
+  </p>
+  {% if clay_etr_accuracy_stats %}
+  <div class="wrap">
+    <table>
+      <tr><th>Closed Incidents</th><th>Median Error</th><th>On-Time-or-Early</th></tr>
+      <tr>
+        <td>{{ clay_etr_accuracy_stats.n }}{% if clay_etr_accuracy_stats.limited %} <span style="color: var(--muted)">(limited sample)</span>{% endif %}</td>
+        <td>{{ "%.1f"|format(clay_etr_accuracy_stats.median_error_hours) }}h {{ "early" if clay_etr_accuracy_stats.median_error_hours < 0 else "late" }}</td>
+        <td>{{ "%.0f"|format(clay_etr_accuracy_stats.on_time_pct) }}%</td>
+      </tr>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">No closed Clay incidents with a restoration estimate yet.</div>
+  {% endif %}
 
     </div>
   </details>
@@ -1367,6 +1416,28 @@
       <tr>
         <td><a href="/incident?source=clay&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>Clay Electric Cooperative — Incidents Recently Resolved</h3>
+  <div class="wrap">
+  {% if clay_closed_incidents %}
+    <table>
+      <tr><th>Incident</th><th>Peak</th><th>Crew Assigned</th><th>Planned</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in clay_closed_incidents %}
+      <tr>
+        <td><a href="/incident?source=clay_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
+        <td>{{ e.peak_customer_count }}</td>
+        <td>{{ "Yes" if e.crew_assigned else "No" }}</td>
+        <td>{{ "Yes" if e.planned else "No" }}</td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.end_time | humanize }}</td>
         <td>{{ e.duration }}</td>

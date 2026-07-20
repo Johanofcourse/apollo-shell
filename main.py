@@ -44,7 +44,11 @@ from fetch_lwbu_outages import (
 )
 from fetch_ouc_outages import get_ouc_records, OUC_INSTANCE_ID
 from fetch_lcec_outages import get_lcec_records, LCEC_API_URL
-from fetch_clay_outages import get_clay_records, CLAY_API_URL
+from fetch_clay_outages import (
+    fetch_clay_outages, CLAY_API_URL,
+    outages_to_records as clay_outages_to_records,
+    incidents_to_records as clay_incidents_to_records,
+)
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -524,30 +528,38 @@ def run_lcec_cycle(db):
 
 def run_clay_cycle(db):
     """
-    Fetch Clay Electric Cooperative's live outage data, save the raw
-    snapshot, and update clay_outage_events lifecycle tracking
-    (start/end) - a real per-county rollup source (Columbia, Bradford,
-    Gilchrist, Marion, Levy, Duval, Suwannee, Alachua, Union, Clay,
-    Volusia, Flagler, Lake, Putnam, Baker), same shape as LCEC, not an
-    incident list. Clay's own real per-incident array (outages[], with
-    real start/estimated-restoration times) is confirmed to exist and
-    genuinely has live data - not integrated here yet, same honest
-    disclosure as LCEC's own array.
+    Fetch Clay Electric Cooperative's live outage data once, then update
+    both trackers from that same response - same "one fetch, two derived
+    views" principle as run_fpuc_cycle(): the real per-county rollup
+    (Columbia, Bradford, Gilchrist, Marion, Levy, Duval, Suwannee,
+    Alachua, Union, Clay, Volusia, Flagler, Lake, Putnam, Baker) AND
+    Clay's real per-incident array. No county on the incident side -
+    checked directly 2026-07-19 whether the raw x/y could be resolved to
+    one and confirmed it isn't reliably solvable right now, so incidents
+    are tracked by their own real identity only (customer count, real
+    start time, live restoration estimate, crew/planned status).
 
     Raises only when CLAY_API_URL is actually configured but the fetch
     still came back empty - same reasoning/config-check pattern as
-    run_lcec_cycle() above.
+    run_fpuc_cycle().
     """
-    records = get_clay_records()
-    if not records:
+    data = fetch_clay_outages()
+    if not data:
         if CLAY_API_URL:
-            raise RuntimeError("Clay fetch returned no records - see the poller's own log for the underlying request error")
+            raise RuntimeError("Clay fetch returned no data - see the poller's own log for the underlying request error")
         print("Skipping Clay save - no data fetched")
         return
 
     timestamp = datetime.now().isoformat()
-    db.log_clay_outages(records, timestamp=timestamp)
-    db.sync_clay_outage_events(records, timestamp=timestamp)
+
+    records = clay_outages_to_records(data)
+    if records:
+        db.log_clay_outages(records, timestamp=timestamp)
+        db.sync_clay_outage_events(records, timestamp=timestamp)
+
+    incidents = clay_incidents_to_records(data)
+    db.log_clay_incidents(incidents)
+    db.sync_clay_incident_events(incidents, timestamp=timestamp)
 
 
 def run_fpuc_cycle(db):

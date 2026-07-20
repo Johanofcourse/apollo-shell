@@ -342,23 +342,53 @@ class TestRunLcecCycleFailureVisibility:
 
 
 class TestRunClayCycleFailureVisibility:
+    """
+    run_clay_cycle() switched 2026-07-19 to the same "fetch once, update
+    both trackers" pattern run_fpuc_cycle() already established, once
+    Clay's real per-incident array got integrated alongside the
+    county-rollup that shipped first.
+    """
+
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_clay_records", lambda: [])
+        monkeypatch.setattr(main, "fetch_clay_outages", lambda: None)
         monkeypatch.setattr(main, "CLAY_API_URL", "https://example.com/real-endpoint")
         with pytest.raises(RuntimeError):
             main.run_clay_cycle(db)
 
     def test_does_not_raise_when_not_configured(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_clay_records", lambda: [])
+        monkeypatch.setattr(main, "fetch_clay_outages", lambda: None)
         monkeypatch.setattr(main, "CLAY_API_URL", None)
         main.run_clay_cycle(db)  # should not raise
 
-    def test_does_not_raise_when_records_present(self, db, monkeypatch):
-        monkeypatch.setattr(main, "get_clay_records", lambda: [
-            {"county": "Alachua", "customers_out": 3, "customers_served": 26955}
-        ])
+    def test_does_not_raise_when_data_present(self, db, monkeypatch):
+        monkeypatch.setattr(main, "fetch_clay_outages", lambda: {"regionDataSets": [], "outages": []})
         monkeypatch.setattr(main, "CLAY_API_URL", "https://example.com/real-endpoint")
         main.run_clay_cycle(db)  # should not raise
+
+    def test_real_response_updates_both_county_rollup_and_incidents(self, db, monkeypatch):
+        # Real shape captured 2026-07-19: one response, both a county
+        # rollup and a real per-incident array - confirms one fetch
+        # really does drive both trackers, not just that neither raises.
+        data = {
+            "regionDataSets": [{"id": "Counties", "description": "Counties", "regions": [
+                {"id": "Marion", "description": "Counties", "numberOut": 1, "numberServed": 17081},
+            ]}],
+            "outages": [{
+                "id": "472456", "nbrOut": 1, "timeOff": 1784513967890,
+                "estimateTime": 1784521167967, "crewAssigned": False, "planned": False,
+                "x": 154175, "y": 105483,
+            }],
+        }
+        monkeypatch.setattr(main, "fetch_clay_outages", lambda: data)
+        monkeypatch.setattr(main, "CLAY_API_URL", "https://example.com/real-endpoint")
+        main.run_clay_cycle(db)
+
+        open_events = db.get_clay_open_events()
+        open_incidents = db.get_clay_open_incidents()
+        assert len(open_events) == 1
+        assert open_events[0]["county"] == "Marion"
+        assert len(open_incidents) == 1
+        assert open_incidents[0]["incident_id"] == "472456"
 
 
 class TestRunFpucCycleFailureVisibility:

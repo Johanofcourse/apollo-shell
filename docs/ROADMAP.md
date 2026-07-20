@@ -471,9 +471,13 @@ data platform, no tracking code or WAF gate required. A seventeenth
 (Clay Electric Cooperative) topped the same historical-storm ranking
 by a clear margin once run again - a real per-county source across 15
 counties, on the identical platform LCEC already runs on, the richest
-shape confirmed yet (a genuine per-incident array with a real
-restoration estimate exists on the same feed, noted and deliberately
-left out of scope for this pass, same as LCEC's own).
+shape confirmed yet. Its real per-incident array shipped too, the same
+night - live restoration estimate, crew/planned status, a statewide
+accuracy check - but honestly without a county attached to any of it,
+after a real coordinate transform investigation (a documented
+reference system, an empirical calibration against a real live
+incident, a look at the platform's own rendering logic) confirmed
+unsolvable for now rather than guessed around.
 
 Every combined-territory source (where one number covers multiple real
 counties rather than a true per-county breakdown) is disclosed as such

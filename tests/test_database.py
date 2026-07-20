@@ -189,6 +189,17 @@ def _lwbu_incident(incident_id, customer_count=2, streets_affected="PENNY LN",
     }
 
 
+def _clay_incident(incident_id, customer_count=1, start_time="2026-01-01T00:00:00",
+                    estimated_restoration=None, crew_assigned=False, planned=False):
+    return {
+        "incident_id": incident_id, "utility": "Clay Electric Cooperative",
+        "customer_count": customer_count, "start_time": start_time,
+        "estimated_restoration": estimated_restoration,
+        "crew_assigned": crew_assigned, "planned": planned,
+        "raw_x": 154175, "raw_y": 105483,
+    }
+
+
 class TestIncidentDetailLookup:
     """
     Tests for the incident-detail DB methods added 2026-07-12 for the
@@ -563,6 +574,27 @@ class TestIncidentDetailLookup:
         db.close()
 
         assert detail is None
+
+    def test_clay_incident_detail_has_one_episode_and_raw_history(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_clay_incidents([_clay_incident("472456")])
+        db.sync_clay_incident_events([_clay_incident("472456")], timestamp="2026-01-01T00:00:00")
+        db.sync_clay_incident_events([], timestamp="2026-01-01T03:00:00")
+
+        detail = db.get_clay_incident_detail("472456")
+        db.close()
+
+        assert len(detail["events"]) == 1
+        assert detail["events"][0]["end_time"] == "2026-01-01T03:00:00"
+        assert len(detail["history"]) == 1
+
+    def test_clay_incident_detail_empty_for_unknown_id(self, db_path):
+        db = OutageDatabase(db_path)
+        detail = db.get_clay_incident_detail("nonexistent")
+        db.close()
+
+        assert detail["events"] == []
+        assert detail["history"] == []
 
     def test_lwbu_incident_detail_has_one_episode_and_raw_history(self, db_path):
         db = OutageDatabase(db_path)
@@ -1069,6 +1101,62 @@ class TestOpenEventsCurrentVsPeak:
         assert len(open_events) == 1
         assert open_events[0]["peak_customers_out"] == 500
         assert open_events[0]["current_customers_out"] == 50
+
+    def test_clay_open_incident_reports_current_alongside_peak(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_clay_incidents([_clay_incident("472456", customer_count=1)])
+        db.sync_clay_incident_events([_clay_incident("472456", customer_count=1)], timestamp="2026-01-01T00:00:00")
+        db.log_clay_incidents([_clay_incident("472456", customer_count=50)])
+        db.sync_clay_incident_events([_clay_incident("472456", customer_count=50)], timestamp="2026-01-01T00:15:00")
+        db.log_clay_incidents([_clay_incident("472456", customer_count=10)])
+        db.sync_clay_incident_events([_clay_incident("472456", customer_count=10)], timestamp="2026-01-01T00:30:00")
+
+        open_incidents = db.get_clay_open_incidents()
+        db.close()
+
+        assert len(open_incidents) == 1
+        assert open_incidents[0]["peak_customer_count"] == 50
+        assert open_incidents[0]["current_customer_count"] == 10
+
+    def test_clay_incident_start_time_is_the_real_reported_time_not_poll_time(self, db_path):
+        # The one real, deliberate difference from TECO/Duke: Clay's own
+        # feed reports a true start time, so the event's start_time
+        # should be that real value, not whatever poll timestamp first
+        # observed it.
+        db = OutageDatabase(db_path)
+        db.log_clay_incidents([_clay_incident("472456", start_time="2026-01-01T09:00:00")])
+        db.sync_clay_incident_events(
+            [_clay_incident("472456", start_time="2026-01-01T09:00:00")],
+            timestamp="2026-01-01T09:14:59",  # poll happened ~15 min after the real start
+        )
+
+        open_incidents = db.get_clay_open_incidents()
+        db.close()
+
+        assert open_incidents[0]["start_time"] == "2026-01-01T09:00:00"
+
+    def test_clay_incident_closes_when_it_stops_appearing(self, db_path):
+        db = OutageDatabase(db_path)
+        db.sync_clay_incident_events([_clay_incident("472456")], timestamp="2026-01-01T00:00:00")
+        db.sync_clay_incident_events([], timestamp="2026-01-01T00:15:00")
+
+        open_incidents = db.get_clay_open_incidents()
+        closed_incidents = db.get_clay_recent_closed_incidents()
+        db.close()
+
+        assert open_incidents == []
+        assert len(closed_incidents) == 1
+        assert closed_incidents[0]["end_time"] == "2026-01-01T00:15:00"
+
+    def test_clay_incident_events_have_no_county_field(self, db_path):
+        # The real, checked reason - see clay_incident_events' own table
+        # comment in database.py.
+        db = OutageDatabase(db_path)
+        db.sync_clay_incident_events([_clay_incident("472456")], timestamp="2026-01-01T00:00:00")
+        open_incidents = db.get_clay_open_incidents()
+        db.close()
+
+        assert "county" not in open_incidents[0]
 
 
 class TestPipelineErrorHistory:

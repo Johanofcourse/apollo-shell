@@ -871,6 +871,106 @@ class TestLwbuEtrAccuracy:
         assert result["limited"] is False
 
 
+def _clay_incident(incident_id, customer_count=1, start_time="2026-01-01T00:00:00", estimated_restoration=None):
+    return {
+        "incident_id": incident_id, "utility": "Clay Electric Cooperative",
+        "customer_count": customer_count, "start_time": start_time,
+        "estimated_restoration": estimated_restoration,
+        "crew_assigned": False, "planned": False, "raw_x": 154175, "raw_y": 105483,
+    }
+
+
+def _open_and_close_clay_incident(db, incident_id, first_etr, actual_end, open_at="2026-01-01T00:00:00"):
+    db.log_clay_incidents([_clay_incident(incident_id, start_time=open_at, estimated_restoration=first_etr)])
+    db.sync_clay_incident_events([_clay_incident(incident_id, start_time=open_at, estimated_restoration=first_etr)], timestamp=open_at)
+    db.sync_clay_incident_events([], timestamp=actual_end)
+
+
+class TestClayEtrAccuracy:
+    """
+    clay_etr_accuracy() - added 2026-07-19, the same accuracy-check
+    shape as teco_etr_accuracy()/lwbu_etr_accuracy(), with one real,
+    deliberate difference: no `county` parameter. Clay's incidents
+    have no county attribution at all (checked directly whether the
+    raw x/y could be resolved to one and confirmed it isn't reliably
+    solvable right now - see clay_incident_events' own table comment
+    in database.py), so this is a genuine statewide aggregate instead
+    of a per-county gate.
+    """
+
+    def test_no_data_returns_none(self, db_path):
+        db = OutageDatabase(db_path)
+        result = cs.clay_etr_accuracy(db)
+        db.close()
+
+        assert result is None
+
+    def test_resolved_earlier_than_etr_is_a_negative_error(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_clay_incident(
+            db, "472456",
+            first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T03:00:00",
+        )
+
+        result = cs.clay_etr_accuracy(db)
+        db.close()
+
+        assert result["n"] == 1
+        assert result["median_error_hours"] == -3.0
+        assert result["on_time_pct"] == 100.0
+        assert result["limited"] is True
+
+    def test_resolved_later_than_etr_is_a_positive_error(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_clay_incident(
+            db, "472456",
+            first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T09:00:00",
+        )
+
+        result = cs.clay_etr_accuracy(db)
+        db.close()
+
+        assert result["median_error_hours"] == 3.0
+        assert result["on_time_pct"] == 0.0
+
+    def test_incident_with_no_etr_is_skipped_not_treated_as_zero_error(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_clay_incident(db, "472456", first_etr=None, actual_end="2026-01-01T03:00:00")
+
+        result = cs.clay_etr_accuracy(db)
+        db.close()
+
+        assert result is None
+
+    def test_aggregates_across_incidents_with_no_county_grouping(self, db_path):
+        # The real point of this function being statewide, not
+        # per-county - two incidents, no shared location, still
+        # combined into one real aggregate.
+        db = OutageDatabase(db_path)
+        _open_and_close_clay_incident(db, "1", first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T03:00:00", open_at="2026-01-01T00:00:00")
+        _open_and_close_clay_incident(db, "2", first_etr="2026-01-02T06:00:00", actual_end="2026-01-02T09:00:00", open_at="2026-01-02T00:00:00")
+
+        result = cs.clay_etr_accuracy(db)
+        db.close()
+
+        assert result["n"] == 2
+
+    def test_reaching_the_confident_threshold_clears_the_limited_flag(self, db_path):
+        db = OutageDatabase(db_path)
+        for i in range(cs.MIN_EVENTS_FOR_CONFIDENT_RANGE):
+            _open_and_close_clay_incident(
+                db, str(i),
+                first_etr=f"2026-01-0{i + 1}T06:00:00", actual_end=f"2026-01-0{i + 1}T05:00:00",
+                open_at=f"2026-01-0{i + 1}T00:00:00",
+            )
+
+        result = cs.clay_etr_accuracy(db)
+        db.close()
+
+        assert result["n"] == cs.MIN_EVENTS_FOR_CONFIDENT_RANGE
+        assert result["limited"] is False
+
+
 def _open_and_close_duke_incident(db, incident_id, county, start, end, customers=50):
     record = {
         "incident_id": incident_id, "utility": "Duke Energy", "county": county,

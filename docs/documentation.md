@@ -62,7 +62,11 @@ detective instead. No regrets.
 - A seventeenth utility, added the honest way - ranked by real
   footprint in this project's own historical storm archive rather than
   guessed at, with real native per-county granularity across 15
-  counties, no combined-territory blur at all
+  counties, no combined-territory blur at all, plus real per-incident
+  tracking (live restoration estimate, crew/planned status, and a
+  statewide restoration-accuracy check) - honestly built without a
+  county attached to any of it, after a real coordinate mystery
+  confirmed unsolvable for now rather than guessed around
 
 ## The plot twist (July 2, 2026)
 Same night, different rabbit hole: went looking at whether other
@@ -1031,3 +1035,29 @@ confidence tally every other real per-county source feeds - nothing
 shared or blended with an existing utility's numbers. Verified against
 the real live endpoint before and after building, not assumed to
 still match a captured example.
+
+## A real coordinate mystery, and what shipped anyway (July 19, 2026)
+The seventeenth utility's real per-incident array was worth a second
+look the same night - genuinely richer than almost anything else here,
+but its raw location fields turned out not to be plain latitude/
+longitude. What followed was a real, honest investigation rather than
+a guess: a documented coordinate system that looked promising failed
+its first real test (transforming a known live incident landed
+hundreds of miles off), a second hypothesis got closer but still
+couldn't reliably tell two real, adjacent counties apart even with a
+genuine ground-truth point checked by hand against the live map, and a
+direct look for the platform's own rendering logic turned up nothing
+usable either. Confirmed as a real dead end for now, not assumed - the
+same standard every other honest gap in this project gets held to.
+
+Shipped what's real instead of forcing the rest: full per-incident
+lifecycle tracking (a genuine identity per outage, not folded into the
+county-level total), a live restoration-estimate display, and a crew-
+assigned/planned-vs-unplanned flag no other source here exposes - all
+without a county attached to any of it. The eventual accuracy check
+this utility's own restoration estimate deserves (the same "how
+trustworthy is this number" question already answered for TECO/LWBU)
+shipped too, in an honestly different shape: one statewide number
+instead of the usual per-county read, since there's no county to gate
+it on. Starts at zero real data tonight, the same as every accuracy
+check here has at launch.
