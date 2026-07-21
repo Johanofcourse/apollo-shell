@@ -1173,3 +1173,13 @@ spelling" one meant for names this project doesn't actually recognize -
 conflating the two would have told a real, valid county it might not
 exist, just because its real storm history happens to predate the
 default window. Verified both paths independently before shipping.
+
+CI caught a real gap right after: the new tests read the real
+`historical_consolidated.db` directly instead of a seeded temp
+database, which passes locally (the file genuinely exists here) but
+fails on a fresh checkout, where that gitignored file never exists at
+all - the same isolation pattern `test_storm_history.py` already uses
+for exactly this reason. Rewrote the tests to seed and monkeypatch
+`storm_history.HISTORICAL_DB_PATH` like every other test in this
+project that touches the historical archive, confirmed green with the
+real file deliberately hidden to reproduce CI's exact condition.
