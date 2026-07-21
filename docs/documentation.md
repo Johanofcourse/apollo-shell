@@ -1219,3 +1219,22 @@ border (the same hazard color already used elsewhere on the page,
 not a new one) with no reliance on glow to be seen, and moved the
 focus state off blue entirely, over to lime. Same shared rule, same
 two locations.
+
+## A real live bug, caught by a real live storm (July 21, 2026)
+While checking the yellow-border deploy, the public page and the
+internal dashboard were briefly showing two different "customers out
+right now" numbers - a real, active weather event was moving the real
+totals fast enough to notice. Traced all the way down: the two pages'
+math is provably identical (verified by computing both from the same
+database connection in one script - they matched exactly), so this
+wasn't a logic bug. It was the running public-site process itself -
+Flask's own built-in server, which explicitly documents itself as not
+meant for real use, had gotten stuck serving one frozen snapshot long
+after the real data had moved on. A restart fixed it instantly, which
+is itself the tell: the numbers were never wrong, the process just
+stopped updating.
+
+Real fix, not a workaround: both `public_site.py` and `dashboard.py`
+move from Flask's own dev server to gunicorn, with multiple worker
+processes so one getting stuck can't freeze the whole site, and
+periodic worker recycling so it can't quietly happen again unnoticed.
