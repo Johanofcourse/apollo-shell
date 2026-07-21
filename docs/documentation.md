@@ -71,6 +71,11 @@ detective instead. No regrets.
   (TECO, Duke, Tallahassee, weather) - a genuine network failure used
   to look identical to "nothing's currently wrong" and never reached
   the poller's own error logging at all, not just unalerted
+- A real early-warning signal - counties with no outage yet but an
+  active weather alert and a genuine historical track record of
+  outages following weather like this, honestly scoped (thin or
+  low-leaning history stays unflagged, never guessed into a false
+  signal)
 
 ## The plot twist (July 2, 2026)
 Same night, different rabbit hole: went looking at whether other
@@ -1120,3 +1125,32 @@ one-line summary by default (event type, severity, a short area
 preview), full detail one click away. Extreme-severity alerts default
 open rather than collapsed - the most urgent ones shouldn't cost an
 extra click to actually read.
+
+## The long-deferred at-risk signal, finally real (July 21, 2026)
+The one Phase 3 idea that had been sitting on the roadmap the whole
+time as "not blocked, just not built yet" finally shipped, right below
+Current Weather Alerts on the public page. The idea was always simple:
+cross-reference currently active weather alerts against each county's
+own real historical track record of weather-correlated outages, and
+flag "this county has no outage yet, but its history says outages have
+often followed a moment like this one." Both real inputs - live alerts,
+the historical confidence tally - already existed; this was purely
+about connecting two things this project already had.
+
+Scoped honestly, the same way every other confidence signal here has
+been: a county only gets flagged if it's genuinely clear right now (an
+already-broken county doesn't need a maybe-label, it already has the
+real thing), a real alert actually covers it, and its historical record
+has enough real events with a high-or-medium-dominant pattern - a thin
+or low-leaning history stays silently unflagged rather than getting
+guessed into a false signal. Not broken down by alert type yet either -
+the underlying tally is one blended number across every alert type,
+not per-type - a real, small, honestly-scoped first version, not the
+sharper read a future pass could give it.
+
+Verified against the real live moment, not a synthetic one: 13 real
+counties flagged during the same live tropical system already showing
+up elsewhere on the page, Madison leading at high confidence off 7 real
+historical events. Paginated from the start, same helper as Outage
+History and Current Weather Alerts - a widespread real event could
+plausibly flag a lot more than a page's worth of counties.

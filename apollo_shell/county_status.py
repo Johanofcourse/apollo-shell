@@ -447,6 +447,83 @@ def historical_confidence_tally(db_path="outages.db"):
     return tally
 
 
+def at_risk_counties(db):
+    """
+    Real, honest early-signal: counties with no outage right now but a
+    real active weather alert AND a real historical track record of
+    outages correlating with weather here - "this county's own history
+    says outages have often followed a moment like this one." A
+    heuristic built on this project's own correlation strength, not a
+    real meteorological or grid-load forecast - same honesty standard
+    as every other confidence label in this project (see
+    historical_confidence_tally()'s own docstring for the underlying
+    data this reads, precomputed - db.get_historical_confidence_tally()
+    is instant, unlike calling historical_confidence_tally() itself
+    live on every page view).
+
+    Deliberately not broken down by alert type yet - the persisted
+    tally is one county-wide high/medium/low blend across every alert
+    type, not per-type, so this flags "an alert is active and this
+    county has a real weather-correlated outage history in general,"
+    not "this specific alert type has historically caused outages
+    here." A real, small, honestly-scoped first version, not the
+    sharper read a per-type tally would eventually allow.
+
+    A county is flagged only if: it currently shows "clear" (no open
+    outage at all - an already-broken county doesn't need an at-risk
+    label, it's already the real thing), at least one active alert's
+    areas covers it, and its precomputed historical tally has at least
+    MIN_EVENTS_FOR_CONFIDENT_RANGE real events with "high" or "medium"
+    as the plurality tier - a thin or low-dominant history isn't a real
+    signal worth surfacing.
+
+    Returns a list of dicts (worst confidence tier first, then by real
+    event count descending): county, alert_types (sorted, deduplicated
+    real active alert event types touching this county),
+    confidence_tier ("high" or "medium"), n (total real historical
+    events behind that tier call).
+    """
+    active_alerts = db.get_active_weather_alerts()
+    if not active_alerts:
+        return []
+
+    verdicts = all_county_verdicts(db)
+    tally = db.get_historical_confidence_tally()
+
+    flagged = []
+    for county in COUNTY_PICKER_CHOICES:
+        if verdicts.get(county) != "clear":
+            continue
+
+        alert_types = sorted({
+            a["event_type"] for a in active_alerts if _county_in_alert(county, a["areas"])
+        })
+        if not alert_types:
+            continue
+
+        stats = tally.get(county)
+        if not stats:
+            continue
+        n = stats["high"] + stats["medium"] + stats["low"]
+        if n < MIN_EVENTS_FOR_CONFIDENT_RANGE:
+            continue
+
+        dominant = max(("high", "medium", "low"), key=lambda tier: stats[tier])
+        if dominant == "low":
+            continue
+
+        flagged.append({
+            "county": county,
+            "alert_types": alert_types,
+            "confidence_tier": dominant,
+            "n": n,
+        })
+
+    tier_order = {"high": 0, "medium": 1}
+    flagged.sort(key=lambda row: (tier_order[row["confidence_tier"]], -row["n"]))
+    return flagged
+
+
 def explain_missing_historical_data(county, db):
     """
     Real, computed explanation for why a county has no entry in the
