@@ -1210,3 +1210,12 @@ panel), a real cyan border with a soft glow instead of the invisible
 default, and a brighter glow on focus. One shared CSS rule, so both
 places this input appears (under the map, and again under Storm
 History) picked up the same treatment automatically.
+
+First pass didn't land, once seen live rather than in a screenshot:
+the cyan read as just another soft "blue" focus glow, and at rest -
+before anyone clicked into it - still didn't grab the eye the way a
+real hazard placard should. Swapped to a bold static 3px yellow
+border (the same hazard color already used elsewhere on the page,
+not a new one) with no reliance on glow to be seen, and moved the
+focus state off blue entirely, over to lime. Same shared rule, same
+two locations.
