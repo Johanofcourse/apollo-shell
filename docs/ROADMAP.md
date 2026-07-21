@@ -186,33 +186,35 @@ precision for the earliest items in this list.
       Not scoped yet, deliberately - revisit once the desktop version
       is actually settled and ported.
 
-## Phase 3: Predictive (Restoration signal shipped for every utility with real usable data - FPL, TECO, Duke, JEA, and LWBU; only the at-risk-counties idea and FPUC's still-too-thin sample remain)
-- [ ] **Weather-based "at-risk counties" signal - a real idea, not yet
-      built, and NOT blocked the way the rest of this phase is.**
-      Everything else here needs data that only accumulates with time;
-      this one only needs data already being collected today. Idea: cross-
-      reference currently active NWS alerts (including Watches, which
-      already carry real advance notice, not just imminent Warnings)
-      against each county's own historical weather-match confidence
-      tally (already computed - see
-      county_status.historical_confidence_tally()) to flag "this county
-      has no reported outage yet, but its real history says outages here
-      have often followed this kind of alert." A heuristic built on this
-      project's own historical correlation strength, not a real
-      meteorological or grid-load forecast - same honesty standard as
-      every other confidence label already in this project.
+## Phase 3: Predictive (Restoration signal shipped for every utility with real usable data - FPL, TECO, Duke, JEA, and LWBU; the at-risk-counties signal shipped too; only FPUC's still-too-thin sample remains)
+- [x] **Weather-based "at-risk counties" signal - shipped 2026-07-21,
+      on the public page right below Current Weather Alerts.** Cross-
+      references currently active NWS alerts against each county's own
+      precomputed historical weather-match confidence tally
+      (db.get_historical_confidence_tally() - instant, not a live
+      recomputation of historical_confidence_tally() itself) to flag
+      "this county has no reported outage yet, but its real history says
+      outages here have often followed this kind of alert." A heuristic
+      built on this project's own historical correlation strength, not a
+      real meteorological or grid-load forecast - same honesty standard
+      as every other confidence label in this project, stated plainly in
+      the section's own explainer.
 
-      No new external data source needed for a first version - the two
-      real inputs (live alerts, the historical confidence tally) already
-      flow through this project. The one real gap: the persisted tally
-      only stores a county-wide high/medium/low blend right now, not a
-      breakdown by alert type, so a sharper "this county specifically
-      reacts to Hurricane Warnings" signal would mean extending that
-      table - real but small work, not a new pipeline. A genuinely new
-      data source would only matter for a more sophisticated version
-      later - real storm-track/forecast-cone data (e.g. NOAA's National
-      Hurricane Center advisories) instead of just "is an alert active
-      right now" - not needed to ship a first pass.
+      A county is only flagged if it's currently genuinely clear (an
+      already-broken county doesn't need an at-risk label), a real active
+      alert covers it, and its historical tally has at least
+      MIN_EVENTS_FOR_CONFIDENT_RANGE real events with "high" or "medium"
+      as the plurality tier - a thin or low-dominant history stays
+      unflagged rather than guessed into a false signal. Verified against
+      the real live moment: 13 real counties flagged during the same
+      active tropical system already surfacing elsewhere on the page,
+      Madison leading at "high" confidence off 7 real historical events.
+      No new external data source needed, as scoped - not broken down by
+      alert type yet (the persisted tally is one county-wide blend across
+      every alert type), a real, small, honestly-scoped first version.
+      Paginated the same way as Outage History/Current Weather Alerts,
+      since a widespread event could plausibly flag more than a page's
+      worth of counties.
 - [x] **Restoration-time signal for FPL - shipped 2026-07-17, as two
       deliberately separate, distinctly-labeled numbers, never merged
       into one.** FPL can never get a live incident-level model (its

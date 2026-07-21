@@ -19,6 +19,7 @@ from county_status import (
     duke_restoration_precedent, DUKE_UTILITY_NAME,
     lwbu_etr_accuracy,
     attach_active_counties,
+    at_risk_counties,
 )
 from storm_history import (
     available_history_counties, load_history_for_county,
@@ -308,6 +309,10 @@ def index():
     active_alerts_total = len(all_active_alerts)
     alerts_page_rows, alerts_page, alerts_total_pages = _paginate(all_active_alerts, "alerts_page")
 
+    all_at_risk = at_risk_counties(db)
+    at_risk_total = len(all_at_risk)
+    at_risk_page_rows, at_risk_page, at_risk_total_pages = _paginate(all_at_risk, "at_risk_page")
+
     selected_county = request.args.get("county", "").strip()
     county_detail = None
 
@@ -474,6 +479,10 @@ def index():
         active_alerts_total=active_alerts_total,
         alerts_page=alerts_page,
         alerts_total_pages=alerts_total_pages,
+        at_risk=at_risk_page_rows,
+        at_risk_total=at_risk_total,
+        at_risk_page=at_risk_page,
+        at_risk_total_pages=at_risk_total_pages,
         available_counties=COUNTY_PICKER_CHOICES,
         available_counties_json=json.dumps(COUNTY_PICKER_CHOICES),
         selected_county=selected_county,
