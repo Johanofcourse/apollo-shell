@@ -1154,3 +1154,32 @@ up elsewhere on the page, Madison leading at high confidence off 7 real
 historical events. Paginated from the start, same helper as Outage
 History and Current Weather Alerts - a widespread real event could
 plausibly flag a lot more than a page's worth of counties.
+
+## The same lesson, a third time: Storm History (July 21, 2026)
+The full real 17-storm archive, listed in full for every county, hit
+the identical wall Current Weather Alerts and Outage History already
+had - a genuinely busy real county (Miami-Dade, 9 of its 17 storms
+falling in a real 4-year window alone) meant scrolling past a lot of
+2018-2019 history just to see anything recent. Narrowed the default
+view to a rolling last-4-years window - off the real current year, not
+a fixed range, so it stays honestly "recent" as real time passes rather
+than quietly meaning something else years from now - and paginated the
+remainder the same way as everything else here.
+
+One real edge case worth getting right, checked directly rather than
+assumed: a genuinely known Florida county whose filtered window happens
+to come back empty needed its own honest message, not the "check your
+spelling" one meant for names this project doesn't actually recognize -
+conflating the two would have told a real, valid county it might not
+exist, just because its real storm history happens to predate the
+default window. Verified both paths independently before shipping.
+
+CI caught a real gap right after: the new tests read the real
+`historical_consolidated.db` directly instead of a seeded temp
+database, which passes locally (the file genuinely exists here) but
+fails on a fresh checkout, where that gitignored file never exists at
+all - the same isolation pattern `test_storm_history.py` already uses
+for exactly this reason. Rewrote the tests to seed and monkeypatch
+`storm_history.HISTORICAL_DB_PATH` like every other test in this
+project that touches the historical archive, confirmed green with the
+real file deliberately hidden to reproduce CI's exact condition.

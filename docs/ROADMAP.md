@@ -568,6 +568,18 @@ empty rather than fake a match it can't actually verify.
       2 more") by default, full detail one click away. Extreme-severity
       alerts default open rather than collapsed, on purpose - the most
       urgent ones shouldn't need an extra click to read in full.
+- [x] **Storm History narrowed to a rolling last-4-years window, and
+      paginated - shipped 2026-07-21.** The full real archive (17
+      storms, 2018-2025) listed in full for every county was getting
+      long enough to scroll past just to see anything recent. A rolling
+      window off the real current year (not a fixed range, so "last 4
+      years" stays true as time passes) plus the same real pagination
+      already used elsewhere on the page. One real edge case handled on
+      purpose: a genuinely known county whose filtered window comes back
+      empty gets an honest "no storms in the last 4 years" message, not
+      the "check your spelling" one reserved for actually-unrecognized
+      county names - verified directly, not assumed, that the two stay
+      distinguishable. Older storms aren't gone, just not the default.
 - [x] **Real per-county activity signal for TCEC/EREC/CHELCO/GCEC -
       shipped 2026-07-18.** These four report one combined total with no
       per-county split - but a real active outage that same night

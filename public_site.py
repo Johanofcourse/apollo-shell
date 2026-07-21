@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime
 
 from flask import Flask, render_template, request
 
@@ -51,6 +52,16 @@ app.jinja_env.filters['severity_icon'] = _severity_icon
 # separate query-side cap). Real pagination, not a hard display
 # ceiling - see history_page/combined_history_page below.
 OUTAGE_HISTORY_PAGE_SIZE = 7
+
+# Storm History originally listed the full real archive (17 storms,
+# 2018-2025) for every county - once that archive got long enough, a
+# genuinely busy county's list was a lot of scrolling to reach anything
+# recent. A rolling window off the real current year, not a fixed
+# storm count - "the last 4 years" stays true as time passes rather
+# than quietly meaning something else. Older storms aren't gone, just
+# not the default view - a real user asking "what happened here
+# recently" shouldn't have to scroll past 2018 to find out.
+STORM_HISTORY_YEARS_SHOWN = 4
 
 
 def _paginate(rows, page_param_name):
@@ -408,7 +419,24 @@ def index():
 
         has_history = selected_county.upper() in {c.upper() for c in available_history_counties()}
         storms = load_history_for_county(selected_county) if has_history else []
+        # Real, deliberate cutoff - the full 8-year archive (2018-2025)
+        # got long enough that a genuinely busy county's list was a lot
+        # of scrolling to reach anything recent. Rolling window off the
+        # real current year, not a fixed range, so this stays "the last
+        # 4 years" as time actually passes rather than quietly going
+        # stale. "X of Y storms" below now describes this real window,
+        # not the full archive, so the two numbers stay honestly
+        # consistent with each other.
+        storms_cutoff_year = datetime.now().year - STORM_HISTORY_YEARS_SHOWN
+        storms = [s for s in storms if s["storm_year"] >= storms_cutoff_year]
         storms_with_data_count = sum(1 for s in storms if s["has_data"])
+        # Newest first, same convention as Outage History/Current Weather
+        # Alerts - done here in Python now rather than the template's own
+        # `| reverse` filter, since pagination needs to slice off the
+        # real front of an already-correctly-ordered list.
+        storms.sort(key=lambda s: s["storm_year"], reverse=True)
+        storms_total = len(storms)
+        storms, storms_page, storms_total_pages = _paginate(storms, "storms_page")
 
         county_detail = {
             "real_events": real_events,
@@ -422,8 +450,12 @@ def index():
             "combined_closed_events_total": combined_closed_events_total,
             "combined_closed_events_page": combined_closed_events_page,
             "combined_closed_events_total_pages": combined_closed_events_total_pages,
+            "has_history": has_history,
             "storms": storms,
             "storms_with_data_count": storms_with_data_count,
+            "storms_total": storms_total,
+            "storms_page": storms_page,
+            "storms_total_pages": storms_total_pages,
             "major_storm_precedent": major_storm_precedent,
             "major_storm_by_severity": major_storm_by_severity,
             "everyday_precedent": everyday_precedent,

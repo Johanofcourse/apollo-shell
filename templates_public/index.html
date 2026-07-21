@@ -872,9 +872,11 @@
     <details class="tele-explain section-explain">
       <summary>What is this section?</summary>
       <p>
-        Real reports from 17 storms, 2018&ndash;2025. Search your county below &mdash; every storm we have data for
-        shows up here, including the ones where we don't have a report for your county, so you can see the real
-        gaps instead of assuming "no data" means "not affected."
+        Real reports from 17 storms, 2018&ndash;2025 — showing the last 4 years by default below, since the full
+        archive got long enough to be a lot of scrolling. Older storms aren't gone, just not the default view.
+        Search your county below &mdash; every storm we have data for shows up here, including the ones where we
+        don't have a report for your county, so you can see the real gaps instead of assuming "no data" means
+        "not affected."
       </p>
     </details>
     <form class="history-search" action="/#historySection" method="get" autocomplete="off">
@@ -887,13 +889,15 @@
 
     {% if not selected_county %}
       <div class="history-empty">Search a county above, or click one on the map, to see its real storm history.</div>
-    {% elif not county_detail.storms %}
+    {% elif not county_detail.has_history %}
       <div class="history-empty">No match for "{{ selected_county }}" &mdash; check the spelling against a real Florida county name.</div>
+    {% elif not county_detail.storms %}
+      <div class="history-empty">No storms on file for {{ selected_county }} in the last 4 years.</div>
     {% else %}
       <div class="history-county-title">{{ selected_county }}</div>
-      <div class="history-county-sub">{{ county_detail.storms_with_data_count }} of {{ county_detail.storms | length }} storms have a real report for this county</div>
+      <div class="history-county-sub">{{ county_detail.storms_with_data_count }} of {{ county_detail.storms_total }} storms (last 4 years) have a real report for this county</div>
       <div class="timeline">
-        {% for s in county_detail.storms | reverse %}
+        {% for s in county_detail.storms %}
           {% if s.has_data %}
           <div class="storm-entry">
             <div class="storm-year mono">{{ s.storm_year }}</div>
@@ -933,6 +937,17 @@
           {% endif %}
         {% endfor %}
       </div>
+      {% if county_detail.storms_total_pages > 1 %}
+        <div class="history-pagination">
+          {% if county_detail.storms_page > 1 %}
+            <a href="/?county={{ selected_county | urlencode }}&storms_page={{ county_detail.storms_page - 1 }}#historySection">&larr; Newer</a>
+          {% endif %}
+          <span>Page {{ county_detail.storms_page }} of {{ county_detail.storms_total_pages }} ({{ county_detail.storms_total }} storms, last 4 years)</span>
+          {% if county_detail.storms_page < county_detail.storms_total_pages %}
+            <a href="/?county={{ selected_county | urlencode }}&storms_page={{ county_detail.storms_page + 1 }}#historySection">Older &rarr;</a>
+          {% endif %}
+        </div>
+      {% endif %}
     {% endif %}
   </section>
 

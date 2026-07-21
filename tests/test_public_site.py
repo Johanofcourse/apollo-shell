@@ -16,11 +16,14 @@ new pieces of real logic here.
 """
 import os
 import re
+import sqlite3
 import tempfile
+from datetime import datetime
 
 import pytest
 
 import public_site
+import storm_history
 from database import OutageDatabase
 
 
@@ -541,6 +544,139 @@ class TestWeatherAlertsCollapsibleCards:
 
         assert b"Hillsborough" in r.data
         assert b"more" not in r.data.split(b"alert-card")[1][:400]
+
+
+@pytest.fixture
+def storm_history_db(monkeypatch):
+    # Same real pattern as test_storm_history.py's historical_db_path
+    # fixture: a temp, seeded database, monkeypatched in via
+    # storm_history.HISTORICAL_DB_PATH - never the real
+    # historical_consolidated.db, which is gitignored (*.db) and simply
+    # doesn't exist in CI. public_site.py imports load_history_for_county
+    # and available_history_counties by reference, so they still read
+    # this patched path when called through the Flask route.
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    os.remove(path)
+
+    conn = sqlite3.connect(path)
+    conn.execute('''
+        CREATE TABLE historical_outage_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            storm_name TEXT, storm_year INTEGER, utility TEXT, county TEXT,
+            start_time TEXT, end_time TEXT,
+            peak_customers_out INTEGER, peak_percentage_out REAL, customers_served INTEGER
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE historical_storm_severity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            storm_name TEXT, storm_year INTEGER, county TEXT, zone_name TEXT,
+            event_type TEXT, begin_time TEXT, end_time TEXT,
+            reported_wind_mph INTEGER, snow_inches REAL, ice_inches REAL,
+            wind_chill_f REAL, narrative TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(storm_history, "HISTORICAL_DB_PATH", path)
+    yield path
+    if os.path.exists(path):
+        os.remove(path)
+
+
+def _insert_storm(path, county, storm_name, storm_year, peak_customers_out=100, peak_percentage_out=10.0):
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT INTO historical_outage_events "
+        "(storm_name, storm_year, utility, county, start_time, end_time, "
+        "peak_customers_out, peak_percentage_out, customers_served) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (storm_name, storm_year, "Test Utility", county,
+         f"{storm_year}-01-01T00:00:00", f"{storm_year}-01-02T00:00:00",
+         peak_customers_out, peak_percentage_out, 100_000),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _seed_recent_and_old_storms(path, county="Testonia", recent_count=9, old_years_back=5):
+    current_year = datetime.now().year
+    _insert_storm(path, county, "Old Storm", current_year - old_years_back)
+    for i in range(recent_count):
+        _insert_storm(path, county, f"Recent Storm {i}", current_year - (i % 4))
+    return current_year
+
+
+class TestStormHistoryYearFilterAndPagination:
+    """
+    Storm History switched 2026-07-21 from listing the full real
+    archive per county to a rolling "last 4 years" window, paginated
+    the same way as everything else on this page - the full archive had
+    gotten long enough that a genuinely busy real county was a lot of
+    scrolling to reach anything recent. Years here are computed off
+    datetime.now(), not hardcoded, so these tests keep meaning "recent"
+    and "old" correctly no matter when the suite runs - the same
+    rolling-window principle the feature itself is built on.
+    """
+
+    def test_only_recent_storms_are_shown(self, storm_history_db):
+        current_year = _seed_recent_and_old_storms(storm_history_db)
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia")
+
+        assert f'storm-year mono">{current_year - 5}'.encode() not in r.data
+        assert b"9 storms, last 4 years" in r.data
+
+    def test_real_county_with_only_older_storms_gets_an_honest_message_not_a_spelling_error(self, storm_history_db, monkeypatch):
+        # The real edge case this design has to get right: a genuinely
+        # known county whose filtered window comes back empty must not
+        # be told to check its spelling - that's only for actually-
+        # unrecognized county names.
+        current_year = datetime.now().year
+        _insert_storm(storm_history_db, "Testonia", "Past Storm", current_year - 1)
+        monkeypatch.setattr(public_site, "STORM_HISTORY_YEARS_SHOWN", 0)
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia")
+
+        assert b"No storms on file for Testonia in the last" in r.data
+        assert b"check the spelling" not in r.data
+
+    def test_unknown_county_still_gets_the_spelling_message(self, storm_history_db):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Notarealcounty")
+
+        assert b"check the spelling" in r.data
+
+    def test_page_two_shows_different_storms_than_page_one(self, storm_history_db):
+        _seed_recent_and_old_storms(storm_history_db)
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r1 = client.get("/?county=Testonia")
+        r2 = client.get("/?county=Testonia&storms_page=2")
+
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        assert b"Page 1 of 2" in r1.data
+        assert b"Page 2 of 2" in r2.data
+
+    def test_out_of_range_storms_page_does_not_error(self, storm_history_db):
+        _seed_recent_and_old_storms(storm_history_db)
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia&storms_page=9999")
+        assert r.status_code == 200
+
+    def test_non_numeric_storms_page_does_not_error(self, storm_history_db):
+        _seed_recent_and_old_storms(storm_history_db)
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia&storms_page=abc")
+        assert r.status_code == 200
 
 
 def _fake_at_risk_row(n, tier="high"):
