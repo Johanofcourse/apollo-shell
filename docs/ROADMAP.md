@@ -169,6 +169,17 @@ precision for the earliest items in this list.
       scanning a long list. Pagination (20 streaks/page) already
       existed from the Talquin/PRECO sustained-failure work - confirmed
       still doing its job, no change needed there.
+- [x] **Both Flask apps moved off Flask's own dev server, onto
+      gunicorn - shipped 2026-07-21.** Caught live: the public site's
+      "customers out right now" number froze mid-storm while the
+      dashboard's kept updating - verified as a stuck running process,
+      not a math bug (both pages compute the identical number when
+      checked from the same database connection). Flask's own
+      `app.run()` documents itself as not meant for real use; this is
+      exactly that kind of failure. Multiple worker processes now, so
+      one getting stuck can't take the whole site down, plus periodic
+      worker recycling as a safety net against it happening again
+      unnoticed.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration, ~2026-07-05 onward)
 - [x] Visual direction settled on, explored entirely in an isolated
