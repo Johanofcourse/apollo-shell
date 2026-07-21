@@ -556,6 +556,16 @@ empty rather than fake a match it can't actually verify.
       reinvented. Verified against the real live moment: 28 real active
       alerts, a real Tropical Cyclone Local Statement among them, and a
       real narrow-mobile-viewport screenshot, not just the desktop view.
+- [x] **Weather alert cards made collapsible - shipped 2026-07-20,
+      same night as pagination.** Even paginated at 7 per page, a fully
+      expanded card per alert (type, window, full area chip list) still
+      read as a wall of text during a busy storm. Real native
+      `<details>`/`<summary>` collapse now, same mechanism the "What is
+      this section?" explainers already use - a compact one-line summary
+      (event type, severity, a short area preview like "Hillsborough &
+      2 more") by default, full detail one click away. Extreme-severity
+      alerts default open rather than collapsed, on purpose - the most
+      urgent ones shouldn't need an extra click to read in full.
 - [x] **Real per-county activity signal for TCEC/EREC/CHELCO/GCEC -
       shipped 2026-07-18.** These four report one combined total with no
       per-county split - but a real active outage that same night
