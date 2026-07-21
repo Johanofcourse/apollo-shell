@@ -159,6 +159,16 @@ precision for the earliest items in this list.
       itself) - data integrity, live smoke tests, and infra hygiene all
       still need real running access a public repo's CI shouldn't be
       handed, so those stay a manual ask.
+- [x] **Pipeline Error History timestamps made scannable - shipped
+      2026-07-21.** Prompted by a real live incident (Duke Energy's
+      scraped auth token expiring, 88 real 401s over ~22.5h) - reading
+      through the real error history to confirm the fix took hold made
+      it obvious each entry's date/time was the same muted, small text
+      as everything else around it. Now bold, monospace, high-contrast,
+      so a specific timestamp is the thing that jumps out first when
+      scanning a long list. Pagination (20 streaks/page) already
+      existed from the Talquin/PRECO sustained-failure work - confirmed
+      still doing its job, no change needed there.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration, ~2026-07-05 onward)
 - [x] Visual direction settled on, explored entirely in an isolated

@@ -206,6 +206,12 @@
       font-size: 0.8rem;
       white-space: nowrap;
     }
+    .error-timestamp {
+      color: var(--text);
+      font-weight: 700;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.85rem;
+    }
     .error-explanation {
       font-size: 0.95rem;
       line-height: 1.55;
@@ -304,14 +310,14 @@
           {% endif %}
           <span class="error-when">
             {% if e.is_ongoing %}
-              Started {{ e.first_timestamp | humanize }} &middot;
+              Started <span class="error-timestamp">{{ e.first_timestamp | humanize }}</span> &middot;
               {% if e.count > 1 %}
                 ongoing {{ e.duration }} so far ({{ e.count }}&times; and counting)
               {% else %}
                 first occurrence
               {% endif %}
             {% else %}
-              {{ e.first_timestamp | humanize }} &middot;
+              <span class="error-timestamp">{{ e.first_timestamp | humanize }}</span> &middot;
               {% if e.count > 1 %}
                 occurred over {{ e.duration }} ({{ e.count }}&times;)
               {% else %}
@@ -342,14 +348,14 @@
         {% endif %}
         <span class="error-when">
           {% if e.is_ongoing %}
-            Started {{ e.first_timestamp | humanize }} &middot;
+            Started <span class="error-timestamp">{{ e.first_timestamp | humanize }}</span> &middot;
             {% if e.count > 1 %}
               ongoing {{ e.duration }} so far ({{ e.count }}&times; and counting)
             {% else %}
               first occurrence
             {% endif %}
           {% else %}
-            {{ e.first_timestamp | humanize }} &middot;
+            <span class="error-timestamp">{{ e.first_timestamp | humanize }}</span> &middot;
             {% if e.count > 1 %}
               occurred over {{ e.duration }} ({{ e.count }}&times;)
             {% else %}
