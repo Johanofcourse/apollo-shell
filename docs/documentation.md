@@ -1183,3 +1183,17 @@ for exactly this reason. Rewrote the tests to seed and monkeypatch
 `storm_history.HISTORICAL_DB_PATH` like every other test in this
 project that touches the historical archive, confirmed green with the
 real file deliberately hidden to reproduce CI's exact condition.
+
+## A reshuffle, not a rewrite (July 21, 2026)
+Stepped back and looked at the public page's front-to-back order for
+the first time since At-Risk Counties shipped, rather than just adding
+each new section wherever it landed. It already split cleanly into two
+real phases - statewide monitoring up top, then a personal county
+drill-down below (which is why clicking the map jumps straight to
+County Status) - but Heat This Month, the lowest-urgency and most
+ambient item on the page, was sitting above Current Weather Alerts,
+the most time-critical one. Moved it below Current Weather Alerts and
+At-Risk Counties instead, so the statewide-monitoring phase now reads
+in real order of urgency. No new page - splitting one out would cost
+every mobile visitor an extra click just to reach their own county,
+for a page that isn't heavy enough yet to need it.

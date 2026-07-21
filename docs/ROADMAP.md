@@ -580,6 +580,14 @@ empty rather than fake a match it can't actually verify.
       the "check your spelling" one reserved for actually-unrecognized
       county names - verified directly, not assumed, that the two stay
       distinguishable. Older storms aren't gone, just not the default.
+- [x] **Public page section order reshuffled - shipped 2026-07-21.**
+      Heat This Month, the lowest-urgency item on the page, was sitting
+      above Current Weather Alerts, the most time-critical one. Moved it
+      below Current Weather Alerts and At-Risk Counties instead, so the
+      statewide-monitoring half of the page (before the county
+      drill-down half) now reads in real order of urgency. No new page -
+      not enough content yet to justify the extra click that would cost
+      a mobile visitor just reaching their own county.
 - [x] **Real per-county activity signal for TCEC/EREC/CHELCO/GCEC -
       shipped 2026-07-18.** These four report one combined total with no
       per-county split - but a real active outage that same night

@@ -458,42 +458,6 @@
     {% endif %}
   </div>
 
-  <section id="heatSection">
-    <h2 class="section-title">Heat This Month</h2>
-    <details class="tele-explain section-explain">
-      <summary>What is this section?</summary>
-      <p>
-        Heat Advisories and Excessive Heat Warnings are ordinary National Weather Service alerts — the same public
-        feed used for hurricane and tornado warnings — just for sustained extreme heat instead of storms. They're not
-        per-county, either: a single county can get split into multiple independent NWS zones, each with its own
-        advisory.
-      </p>
-    </details>
-    <div class="heat-panel">
-      <div class="heat-stat">
-        <div class="label">Days With An Advisory</div>
-        <div class="big mono">{{ heat_summary.days_with_advisory }} <span class="of">of {{ heat_summary.days_elapsed_this_month }} days</span></div>
-        <div class="sub">{{ heat_summary.month_label }} so far</div>
-      </div>
-      <div class="heat-stat">
-        <div class="label">Heat Advisories Logged</div>
-        <div class="big mono">{{ heat_summary.heat_advisory_count }}</div>
-        <div class="sub">
-          {% if heat_summary.excessive_heat_warning_count > 0 %}
-            plus {{ heat_summary.excessive_heat_warning_count }} Excessive Heat Warning
-          {% else %}
-            no Excessive Heat Warnings yet this month
-          {% endif %}
-        </div>
-      </div>
-      {% if heat_summary.currently_active %}
-        <div class="heat-now"><span class="dot"></span>Active now &mdash; {{ heat_summary.active_area_count }} zones</div>
-      {% else %}
-        <div class="heat-now quiet"><span class="dot"></span>No advisory active right now</div>
-      {% endif %}
-    </div>
-  </section>
-
   <section id="alertsSection">
     <h2 class="section-title">Current Weather Alerts</h2>
     <details class="tele-explain section-explain">
@@ -579,6 +543,42 @@
     {% else %}
       <div class="history-empty">No counties currently flagged.</div>
     {% endif %}
+  </section>
+
+  <section id="heatSection">
+    <h2 class="section-title">Heat This Month</h2>
+    <details class="tele-explain section-explain">
+      <summary>What is this section?</summary>
+      <p>
+        Heat Advisories and Excessive Heat Warnings are ordinary National Weather Service alerts — the same public
+        feed used for hurricane and tornado warnings — just for sustained extreme heat instead of storms. They're not
+        per-county, either: a single county can get split into multiple independent NWS zones, each with its own
+        advisory.
+      </p>
+    </details>
+    <div class="heat-panel">
+      <div class="heat-stat">
+        <div class="label">Days With An Advisory</div>
+        <div class="big mono">{{ heat_summary.days_with_advisory }} <span class="of">of {{ heat_summary.days_elapsed_this_month }} days</span></div>
+        <div class="sub">{{ heat_summary.month_label }} so far</div>
+      </div>
+      <div class="heat-stat">
+        <div class="label">Heat Advisories Logged</div>
+        <div class="big mono">{{ heat_summary.heat_advisory_count }}</div>
+        <div class="sub">
+          {% if heat_summary.excessive_heat_warning_count > 0 %}
+            plus {{ heat_summary.excessive_heat_warning_count }} Excessive Heat Warning
+          {% else %}
+            no Excessive Heat Warnings yet this month
+          {% endif %}
+        </div>
+      </div>
+      {% if heat_summary.currently_active %}
+        <div class="heat-now"><span class="dot"></span>Active now &mdash; {{ heat_summary.active_area_count }} zones</div>
+      {% else %}
+        <div class="heat-now quiet"><span class="dot"></span>No advisory active right now</div>
+      {% endif %}
+    </div>
   </section>
 
   <section id="countyStatusSection">
