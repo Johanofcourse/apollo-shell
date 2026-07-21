@@ -1109,3 +1109,14 @@ one: 28 real active alerts statewide at the time, a real Tropical
 Cyclone Local Statement among them, Hillsborough genuinely leading the
 state in customers out. Checked on a real narrow mobile viewport too,
 not just assumed to inherit the desktop layout correctly.
+
+Same night, a second pass at the same real problem: even paginated,
+seven fully-expanded cards was still a lot of repeated text to scan
+past (a run of near-identical "Rip Current Statement" cards for
+different coastal counties, real and live at the time). Made each card
+collapsible - the same native toggle already used for every "What is
+this section?" explainer on the page, not a new mechanism - a compact
+one-line summary by default (event type, severity, a short area
+preview), full detail one click away. Extreme-severity alerts default
+open rather than collapsed - the most urgent ones shouldn't cost an
+extra click to actually read.

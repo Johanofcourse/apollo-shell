@@ -389,11 +389,11 @@ class TestOutageHistoryPaginationRoute:
         assert r.status_code == 200
 
 
-def _fake_alert(n):
+def _fake_alert(n, severity="Moderate", areas="Hillsborough; Pinellas"):
     return {
         "id": n, "alert_id": f"test-alert-{n}", "timestamp": "2026-01-01T00:00:00",
-        "event_type": f"Test Alert {n}", "severity": "Moderate", "urgency": "Expected",
-        "areas": "Hillsborough; Pinellas", "effective": "2026-01-01T00:00:00",
+        "event_type": f"Test Alert {n}", "severity": severity, "urgency": "Expected",
+        "areas": areas, "effective": "2026-01-01T00:00:00",
         "expires": "2099-01-01T00:00:00", "headline": "test", "description": "test",
     }
 
@@ -483,3 +483,61 @@ class TestWeatherAlertsPaginationRoute:
         r = client.get("/?county=Palm+Beach")
 
         assert b"alerts_page=2&amp;county=Palm" in r.data or b"alerts_page=2&county=Palm" in r.data
+
+
+class TestWeatherAlertsCollapsibleCards:
+    """
+    Alert cards switched from plain divs to real <details>/<summary>
+    elements 2026-07-20, so a busy page (real example: 28+ active
+    statewide alerts during a live storm) reads as a scannable list of
+    collapsed rows instead of a long wall of fully-expanded cards -
+    same native collapsible mechanism already used for "What is this
+    section?" everywhere else on this page, not a new one.
+    """
+
+    def test_extreme_severity_alert_defaults_to_expanded(self, monkeypatch):
+        monkeypatch.setattr(
+            OutageDatabase, "get_active_weather_alerts",
+            lambda self: [_fake_alert(0, severity="Extreme")],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert b"<details class=\"alert-card hz-stripe\" open>" in r.data
+
+    def test_ordinary_severity_alert_defaults_to_collapsed(self, monkeypatch):
+        monkeypatch.setattr(
+            OutageDatabase, "get_active_weather_alerts",
+            lambda self: [_fake_alert(0, severity="Moderate")],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert b"<details class=\"alert-card\">" in r.data
+        assert b"open" not in r.data.split(b"alert-card")[1][:20]
+
+    def test_multiple_areas_show_a_real_count_of_the_rest(self, monkeypatch):
+        monkeypatch.setattr(
+            OutageDatabase, "get_active_weather_alerts",
+            lambda self: [_fake_alert(0, areas="Hillsborough; Pinellas; Manatee")],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert b"Hillsborough" in r.data
+        assert b"&amp; 2 more" in r.data
+
+    def test_single_area_shows_no_more_count(self, monkeypatch):
+        monkeypatch.setattr(
+            OutageDatabase, "get_active_weather_alerts",
+            lambda self: [_fake_alert(0, areas="Hillsborough")],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert b"Hillsborough" in r.data
+        assert b"more" not in r.data.split(b"alert-card")[1][:400]

@@ -212,9 +212,19 @@
 
   .alert-card { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--yellow); padding: 1rem 1.25rem; margin-bottom: 0.85rem; overflow: hidden; }
   .alert-card:last-child { margin-bottom: 0; }
-  .alert-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  .alert-card summary { list-style: none; cursor: pointer; position: relative; padding-right: 1.6rem; }
+  .alert-card summary::-webkit-details-marker { display: none; }
+  .alert-card summary::after {
+    content: "+"; position: absolute; top: -0.1rem; right: 0;
+    font-weight: 700; font-size: 1.2rem; color: var(--ink-soft);
+  }
+  .alert-card[open] summary::after { content: "\2212"; }
+  .alert-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
   .alert-type { font-weight: 700; font-size: 1rem; }
   .alert-severity { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--yellow); display: inline-flex; align-items: center; gap: 0.3rem; }
+  .alert-areas-preview { color: var(--ink-soft); font-size: 0.8rem; margin-top: 0.35rem; }
+  .alert-more { color: var(--cyan); font-weight: 600; }
+  .alert-body { margin-top: 0.7rem; padding-top: 0.6rem; border-top: 1px dotted var(--line); }
   .alert-window { color: var(--ink-soft); font-size: 0.8rem; margin-bottom: 0.6rem; }
   .alert-areas { display: flex; flex-wrap: wrap; gap: 0.4rem; }
   .alert-area-chip { font-size: 0.72rem; font-weight: 600; padding: 0.2rem 0.6rem; border: 1px solid var(--line); color: var(--ink-soft); white-space: nowrap; }
@@ -493,18 +503,25 @@
     {% if active_alerts %}
       {% for a in active_alerts %}
       {% set icon = a.severity | severity_icon %}
-      <div class="alert-card{% if icon == 'critical' %} hz-stripe{% endif %}">
-        <div class="alert-top">
-          <span class="alert-type">{{ a.event_type }}</span>
-          <span class="alert-severity"><svg class="hz-icon"><use href="#hz-{{ icon }}"/></svg>{{ a.severity or "Unknown" }}</span>
+      <details class="alert-card{% if icon == 'critical' %} hz-stripe{% endif %}"{% if icon == 'critical' %} open{% endif %}>
+        <summary>
+          <div class="alert-top">
+            <span class="alert-type">{{ a.event_type }}</span>
+            <span class="alert-severity"><svg class="hz-icon"><use href="#hz-{{ icon }}"/></svg>{{ a.severity or "Unknown" }}</span>
+          </div>
+          <div class="alert-areas-preview">
+            {{ a.areas_list[0] }}{% if a.areas_list|length > 1 %} <span class="alert-more">&amp; {{ a.areas_list|length - 1 }} more</span>{% endif %}
+          </div>
+        </summary>
+        <div class="alert-body">
+          <div class="alert-window">Active until {{ a.expires | humanize }}</div>
+          <div class="alert-areas">
+            {% for area in a.areas_list %}
+              <span class="alert-area-chip">{{ area }}</span>
+            {% endfor %}
+          </div>
         </div>
-        <div class="alert-window">Active until {{ a.expires | humanize }}</div>
-        <div class="alert-areas">
-          {% for area in a.areas_list %}
-            <span class="alert-area-chip">{{ area }}</span>
-          {% endfor %}
-        </div>
-      </div>
+      </details>
       {% endfor %}
       {% if alerts_total_pages > 1 %}
         <div class="history-pagination">
