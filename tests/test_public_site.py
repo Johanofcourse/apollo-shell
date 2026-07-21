@@ -541,3 +541,59 @@ class TestWeatherAlertsCollapsibleCards:
 
         assert b"Hillsborough" in r.data
         assert b"more" not in r.data.split(b"alert-card")[1][:400]
+
+
+def _fake_at_risk_row(n, tier="high"):
+    return {
+        "county": f"TestCounty{n}", "alert_types": ["Tornado Watch"],
+        "confidence_tier": tier, "n": 5,
+    }
+
+
+class TestAtRiskCountiesPaginationRoute:
+    """
+    Same real pagination pattern as Outage History/Current Weather
+    Alerts, applied here too since a widespread event could plausibly
+    flag more than a page's worth of counties (13 real counties were
+    flagged the night this section shipped).
+    """
+
+    def test_more_than_one_page_worth_shows_real_pagination_controls(self, monkeypatch):
+        monkeypatch.setattr(
+            public_site, "at_risk_counties",
+            lambda db: [_fake_at_risk_row(n) for n in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert r.status_code == 200
+        assert b"12 counties flagged" in r.data
+
+    def test_out_of_range_at_risk_page_does_not_error(self, monkeypatch):
+        monkeypatch.setattr(
+            public_site, "at_risk_counties",
+            lambda db: [_fake_at_risk_row(n) for n in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?at_risk_page=9999")
+        assert r.status_code == 200
+
+    def test_non_numeric_at_risk_page_does_not_error(self, monkeypatch):
+        monkeypatch.setattr(
+            public_site, "at_risk_counties",
+            lambda db: [_fake_at_risk_row(n) for n in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?at_risk_page=abc")
+        assert r.status_code == 200
+
+    def test_no_flagged_counties_shows_honest_empty_state(self, monkeypatch):
+        monkeypatch.setattr(public_site, "at_risk_counties", lambda db: [])
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert b"No counties currently flagged" in r.data

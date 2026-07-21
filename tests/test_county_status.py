@@ -11,6 +11,7 @@ rest of this module.
 
 import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -269,6 +270,142 @@ class TestHistoricalConfidenceTally:
         registered_fns = {fn.__name__ for fn, _ in cs._REAL_CORRELATION_SOURCES}
 
         assert all_correlation_fns == registered_fns
+
+
+def _active_alert(event_type, areas, alert_id="test-at-risk-alert"):
+    now = datetime.now(timezone.utc)
+    return {
+        "id": alert_id, "event": event_type, "severity": "Severe",
+        "urgency": "Expected", "areas": areas,
+        "effective": (now - timedelta(hours=1)).isoformat(),
+        "expires": (now + timedelta(hours=1)).isoformat(),
+        "headline": "test", "description": "test",
+    }
+
+
+class TestAtRiskCounties:
+    """
+    at_risk_counties() - a real, honest early-signal: a county with no
+    outage right now but a real active weather alert AND a real
+    historical track record of weather-correlated outages here. Reads
+    the precomputed historical tally (db.get_historical_confidence_tally())
+    directly, not historical_confidence_tally() itself - the same
+    "instant, no recomputation" principle as everywhere else this
+    project reads that table.
+    """
+
+    def test_no_active_alerts_returns_empty(self, db_path):
+        db = OutageDatabase(db_path)
+        db.store_historical_confidence_tally({"Alachua": {"high": 5, "medium": 0, "low": 0}})
+        result = cs.at_risk_counties(db)
+        db.close()
+
+        assert result == []
+
+    def test_county_already_with_an_open_outage_is_excluded(self, db_path):
+        # An already-broken county doesn't need an at-risk label - it's
+        # already the real thing, not a maybe.
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([_active_alert("Tornado Watch", "Alachua")])
+        db.store_historical_confidence_tally({"Alachua": {"high": 5, "medium": 0, "low": 0}})
+        db.log_multiple_outages("FPL", [
+            {"county": "ALACHUA", "customers_out": 50, "customers_served": 1000},
+        ], timestamp="2026-01-01T00:00:00")
+        db.sync_outage_events("FPL", [
+            {"county": "ALACHUA", "customers_out": 50, "customers_served": 1000},
+        ], timestamp="2026-01-01T00:00:00")
+
+        result = cs.at_risk_counties(db)
+        db.close()
+
+        assert not any(r["county"] == "Alachua" for r in result)
+
+    def test_clear_county_with_no_tally_entry_is_excluded(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([_active_alert("Tornado Watch", "Alachua")])
+        # No store_historical_confidence_tally() call at all - genuinely
+        # no history on file for this county.
+
+        result = cs.at_risk_counties(db)
+        db.close()
+
+        assert result == []
+
+    def test_below_minimum_event_count_is_excluded(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([_active_alert("Tornado Watch", "Alachua")])
+        db.store_historical_confidence_tally({"Alachua": {"high": 1, "medium": 0, "low": 0}})
+
+        result = cs.at_risk_counties(db)
+        db.close()
+
+        assert result == []
+
+    def test_low_dominant_tier_is_excluded(self, db_path):
+        # A real history that's mostly "low" confidence isn't a real
+        # signal worth surfacing, even with plenty of raw events.
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([_active_alert("Tornado Watch", "Alachua")])
+        db.store_historical_confidence_tally({"Alachua": {"high": 1, "medium": 1, "low": 10}})
+
+        result = cs.at_risk_counties(db)
+        db.close()
+
+        assert result == []
+
+    def test_real_high_confidence_flag_has_the_right_fields(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([_active_alert("Tropical Storm Watch", "Alachua")])
+        db.store_historical_confidence_tally({"Alachua": {"high": 5, "medium": 1, "low": 1}})
+
+        result = cs.at_risk_counties(db)
+        db.close()
+
+        assert len(result) == 1
+        assert result[0]["county"] == "Alachua"
+        assert result[0]["alert_types"] == ["Tropical Storm Watch"]
+        assert result[0]["confidence_tier"] == "high"
+        assert result[0]["n"] == 7
+
+    def test_multiple_alerts_covering_the_same_county_are_deduplicated(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([
+            _active_alert("Tornado Watch", "Alachua", alert_id="alert-1"),
+            _active_alert("Flood Warning", "Alachua; Baker", alert_id="alert-2"),
+        ])
+        db.store_historical_confidence_tally({"Alachua": {"high": 3, "medium": 0, "low": 0}})
+
+        result = cs.at_risk_counties(db)
+        db.close()
+
+        assert len(result) == 1
+        assert result[0]["alert_types"] == ["Flood Warning", "Tornado Watch"]
+
+    def test_high_tier_sorts_before_medium_tier(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([_active_alert("Tornado Watch", "Alachua; Baker")])
+        db.store_historical_confidence_tally({
+            "Alachua": {"high": 1, "medium": 5, "low": 0},
+            "Baker": {"high": 5, "medium": 1, "low": 0},
+        })
+
+        result = cs.at_risk_counties(db)
+        db.close()
+
+        assert [r["county"] for r in result] == ["Baker", "Alachua"]
+
+    def test_same_tier_sorts_by_event_count_descending(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_weather_alerts([_active_alert("Tornado Watch", "Alachua; Baker")])
+        db.store_historical_confidence_tally({
+            "Alachua": {"high": 3, "medium": 0, "low": 0},
+            "Baker": {"high": 10, "medium": 0, "low": 0},
+        })
+
+        result = cs.at_risk_counties(db)
+        db.close()
+
+        assert [r["county"] for r in result] == ["Baker", "Alachua"]
 
 
 class TestExplainMissingHistoricalData:

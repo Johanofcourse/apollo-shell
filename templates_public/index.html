@@ -230,6 +230,10 @@
   .alert-area-chip { font-size: 0.72rem; font-weight: 600; padding: 0.2rem 0.6rem; border: 1px solid var(--line); color: var(--ink-soft); white-space: nowrap; }
   .alert-card.heat { border-left-color: var(--cyan); }
   .alert-card.heat .alert-severity { color: var(--cyan); }
+  .at-risk-card { border-left-color: var(--cyan); }
+  .at-risk-card .alert-severity.risk-high { color: var(--cyan); }
+  .at-risk-card .alert-severity.risk-medium { color: var(--ink-soft); }
+  .risk-note { color: var(--ink-soft); font-size: 0.75rem; margin-top: 0.4rem; }
 
   .county-title {
     font-family: "Big Shoulders Stencil Text", "Helvetica Neue", sans-serif;
@@ -536,6 +540,44 @@
       {% endif %}
     {% else %}
       <div class="history-empty">No active weather alerts for Florida right now.</div>
+    {% endif %}
+  </section>
+
+  <section id="atRiskSection">
+    <h2 class="section-title">At-Risk Counties</h2>
+    <details class="tele-explain section-explain">
+      <summary>What is this section?</summary>
+      <p>
+        Real, active weather alerts cross-referenced against each county's own historical track record of outages
+        following weather like this — not a forecast, not a prediction of what will happen, just "this county's real
+        history says outages have often followed a moment like this one." A county with a thin or short real history
+        may show nothing here even during real severe weather right now — absence isn't the same as "safe."
+      </p>
+    </details>
+    {% if at_risk %}
+      {% for r in at_risk %}
+      <div class="alert-card at-risk-card">
+        <div class="alert-top">
+          <span class="alert-type">{{ r.county }}</span>
+          <span class="alert-severity risk-{{ r.confidence_tier }}">{{ r.confidence_tier | capitalize }} Confidence</span>
+        </div>
+        <div class="alert-window">Active: {{ r.alert_types | join(", ") }}</div>
+        <div class="risk-note">Based on {{ r.n }} real historically-correlated event{{ "s" if r.n != 1 else "" }} for this county</div>
+      </div>
+      {% endfor %}
+      {% if at_risk_total_pages > 1 %}
+        <div class="history-pagination">
+          {% if at_risk_page > 1 %}
+            <a href="/?at_risk_page={{ at_risk_page - 1 }}{% if selected_county %}&county={{ selected_county | urlencode }}{% endif %}#atRiskSection">&larr; Newer</a>
+          {% endif %}
+          <span>Page {{ at_risk_page }} of {{ at_risk_total_pages }} ({{ at_risk_total }} counties flagged)</span>
+          {% if at_risk_page < at_risk_total_pages %}
+            <a href="/?at_risk_page={{ at_risk_page + 1 }}{% if selected_county %}&county={{ selected_county | urlencode }}{% endif %}#atRiskSection">Older &rarr;</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="history-empty">No counties currently flagged.</div>
     {% endif %}
   </section>
 
