@@ -1197,3 +1197,16 @@ At-Risk Counties instead, so the statewide-monitoring phase now reads
 in real order of urgency. No new page - splitting one out would cost
 every mobile visitor an extra click just to reach their own county,
 for a page that isn't heavy enough yet to need it.
+
+## The county search box finally looks like it does something (July 21, 2026)
+Johan's own words: the county search box under the map was "easy to
+miss." A fair complaint - it was a plain input on a near-black
+background, using the same barely-visible line color as every other
+border on the page, nothing marking it as the interactive centerpiece
+the "click a county, or search below" hint right above it was pointing
+at. Gave it the same diagonal-cut corner treatment already used on
+every card elsewhere on the page (outage cards, alert cards, the heat
+panel), a real cyan border with a soft glow instead of the invisible
+default, and a brighter glow on focus. One shared CSS rule, so both
+places this input appears (under the map, and again under Storm
+History) picked up the same treatment automatically.
