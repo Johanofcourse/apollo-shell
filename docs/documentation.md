@@ -1120,3 +1120,22 @@ one-line summary by default (event type, severity, a short area
 preview), full detail one click away. Extreme-severity alerts default
 open rather than collapsed - the most urgent ones shouldn't cost an
 extra click to actually read.
+
+## The same lesson, a third time: Storm History (July 21, 2026)
+The full real 17-storm archive, listed in full for every county, hit
+the identical wall Current Weather Alerts and Outage History already
+had - a genuinely busy real county (Miami-Dade, 9 of its 17 storms
+falling in a real 4-year window alone) meant scrolling past a lot of
+2018-2019 history just to see anything recent. Narrowed the default
+view to a rolling last-4-years window - off the real current year, not
+a fixed range, so it stays honestly "recent" as real time passes rather
+than quietly meaning something else years from now - and paginated the
+remainder the same way as everything else here.
+
+One real edge case worth getting right, checked directly rather than
+assumed: a genuinely known Florida county whose filtered window happens
+to come back empty needed its own honest message, not the "check your
+spelling" one meant for names this project doesn't actually recognize -
+conflating the two would have told a real, valid county it might not
+exist, just because its real storm history happens to predate the
+default window. Verified both paths independently before shipping.

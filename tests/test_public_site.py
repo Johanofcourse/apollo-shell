@@ -541,3 +541,71 @@ class TestWeatherAlertsCollapsibleCards:
 
         assert b"Hillsborough" in r.data
         assert b"more" not in r.data.split(b"alert-card")[1][:400]
+
+
+class TestStormHistoryYearFilterAndPagination:
+    """
+    Storm History switched 2026-07-21 from listing the full real
+    17-storm/2018-2025 archive per county to a rolling "last 4 years"
+    window, paginated the same way as everything else on this page -
+    the full archive had gotten long enough that a genuinely busy real
+    county was a lot of scrolling to reach anything recent. Real
+    counties with real, verified archive data (not mocked - this reads
+    the actual historical_consolidated.db, a separate connection from
+    OutageDatabase), same as the rest of this file's storm-history
+    tests.
+    """
+
+    def test_only_recent_storms_are_shown(self):
+        # Real, verified directly: Miami-Dade has 17 total storms on
+        # file but only 9 within a 2022+ window as of 2026 - none from
+        # 2018, the archive's real earliest year.
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Miami-Dade")
+
+        assert b'storm-year mono">2018' not in r.data
+        assert b"9 storms, last 4 years" in r.data
+
+    def test_real_county_with_only_older_storms_gets_an_honest_message_not_a_spelling_error(self, monkeypatch):
+        # The real edge case this design has to get right: a genuinely
+        # known, real county whose filtered window comes back empty
+        # must not be told to check its spelling - that's only for
+        # actually-unrecognized county names.
+        monkeypatch.setattr(public_site, "STORM_HISTORY_YEARS_SHOWN", 0)
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Miami-Dade")
+
+        assert b"No storms on file for Miami-Dade in the last" in r.data
+        assert b"check the spelling" not in r.data
+
+    def test_unknown_county_still_gets_the_spelling_message(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Notarealcounty")
+
+        assert b"check the spelling" in r.data
+
+    def test_page_two_shows_different_storms_than_page_one(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r1 = client.get("/?county=Miami-Dade")
+        r2 = client.get("/?county=Miami-Dade&storms_page=2")
+
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        assert b"Page 1 of 2" in r1.data
+        assert b"Page 2 of 2" in r2.data
+
+    def test_out_of_range_storms_page_does_not_error(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Miami-Dade&storms_page=9999")
+        assert r.status_code == 200
+
+    def test_non_numeric_storms_page_does_not_error(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Miami-Dade&storms_page=abc")
+        assert r.status_code == 200
