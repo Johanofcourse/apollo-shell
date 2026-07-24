@@ -76,6 +76,19 @@ detective instead. No regrets.
   outages following weather like this, honestly scoped (thin or
   low-leaning history stays unflagged, never guessed into a false
   signal)
+- Current Weather Alerts, At-Risk Counties, and Storm History all
+  paginated the same way as Outage History - a real active storm or a
+  genuinely busy county no longer means scrolling past everything to
+  reach what's recent. Weather alert cards collapse to a one-line
+  summary by default too, extreme-severity ones left open. Storm
+  History now defaults to a rolling last-4-years window rather than
+  the full 2018-2025 archive.
+- Both Flask apps (`public_site.py`, `dashboard.py`) moved off Flask's
+  own dev server onto gunicorn, after a real live incident where the
+  old server silently froze mid-storm for 15+ minutes. A second
+  self-check now watches whether the apps themselves are even
+  running, separate from `alerting.py`'s existing watch over whether a
+  utility's own data feed is failing.
 
 ## The plot twist (July 2, 2026)
 Same night, different rabbit hole: went looking at whether other
@@ -142,6 +155,13 @@ real and usable.
 - Outage History no longer hard-stops at 15 rows - real Prev/Next
   pagination - and the public page's map and long explainer text
   actually work on a phone screen now, not just desktop
+- The county search box under the map has a real hazard-yellow border
+  now, not the same barely-visible line every other border on the page
+  used - easy to miss no longer applies
+- Both public-facing processes run under gunicorn with multiple
+  workers, so one getting stuck can't freeze the whole site the way
+  the old dev server did; a separate self-check emails if either stops
+  answering at all, distinct from the existing data-feed alerting
 
 ## The honest gaps
 - Real restoration guidance now covers every utility with enough real
