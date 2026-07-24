@@ -1238,3 +1238,28 @@ Real fix, not a workaround: both `public_site.py` and `dashboard.py`
 move from Flask's own dev server to gunicorn, with multiple worker
 processes so one getting stuck can't freeze the whole site, and
 periodic worker recycling so it can't quietly happen again unnoticed.
+
+Real, live proof the fix works, not just a theory: killed a running
+gunicorn worker outright (`kill -9`) on the live public site mid-
+conversation. The site kept answering `200` in the same instant, and
+the master process spawned a fresh replacement worker within about two
+seconds, no restart command, no manual step.
+
+## A second self-check, for the app itself this time (July 22, 2026)
+This project already watches whether a utility's own data feed is
+failing (`alerting.py`) - but nothing watched whether the app itself
+was even running, which is exactly the gap the gunicorn freeze fell
+into. A third-party uptime monitor turned out not to fit yet, either -
+neither app is reachable from the open internet at all right now, only
+through the SSH tunnel or the LAN, so an outside service would have
+nothing to ping.
+
+Added `check_site_health.py` instead: a small self-check that runs on
+the VM itself (always able to reach its own loopback, tunnel or not),
+curling both apps every few minutes via cron, and reusing the exact
+same email channel already built for the Talquin/PRECO alerts. Same
+one-email-per-episode principle too - one "down" email the moment
+either app first stops answering, one "recovered" email once it does
+again, silence in between. State lives in a small local JSON file, not
+memory, since a cron-launched script is a fresh process every single
+run - nothing would survive between runs otherwise.
