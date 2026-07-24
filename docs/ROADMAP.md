@@ -180,6 +180,18 @@ precision for the earliest items in this list.
       one getting stuck can't take the whole site down, plus periodic
       worker recycling as a safety net against it happening again
       unnoticed.
+- [x] **A self-check for the app itself - shipped 2026-07-22.**
+      `alerting.py` already watches whether a utility's own data feed
+      is failing; nothing watched whether the app itself was even
+      running, exactly the gap the gunicorn freeze fell into. A
+      third-party uptime monitor doesn't fit yet either - neither app
+      is reachable from the open internet, only via the SSH tunnel or
+      LAN. `check_site_health.py` runs on the VM itself instead (always
+      able to reach its own loopback), via cron every few minutes,
+      reusing the same email channel already built for Talquin/PRECO.
+      One "down" email per outage, one "recovered" email after, state
+      kept in a small local file since a cron-launched script is a
+      fresh process every run.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration, ~2026-07-05 onward)
 - [x] Visual direction settled on, explored entirely in an isolated
@@ -659,8 +671,13 @@ this project's traffic never justifies one.
 
 - [ ] A real domain name (the one actual recurring cost in this plan)
 - [ ] DNS pointed at the VM's IP
-- [ ] A real production web server in front of Flask (nginx + gunicorn -
-      Flask's own dev server explicitly isn't meant for real traffic)
+- [x] Gunicorn in front of both Flask apps - done early (2026-07-21),
+      for reliability, not launch readiness (see Phase 2's own entry -
+      Flask's dev server froze mid-storm and nobody noticed for 15+
+      minutes). Still need nginx in front of that for real public
+      traffic and TLS termination.
+- [ ] nginx in front of gunicorn, for real public traffic and TLS
+      termination
 - [ ] HTTPS via Let's Encrypt (free)
 - [ ] Firewall opened for real web traffic (80/443) - only SSH is open
       today

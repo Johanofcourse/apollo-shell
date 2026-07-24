@@ -177,6 +177,9 @@ cython_debug/
 outages.db
 *.db
 
+# Runtime state, not code
+site_health_state.json
+
 # Python cache
 __pycache__/
 *.pyc
