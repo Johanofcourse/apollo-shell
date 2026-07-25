@@ -706,6 +706,32 @@ this project's traffic never justifies one.
 The internal dashboard stays SSH-tunnel-only regardless - never
 publicly exposed, a firm decision, not just the current state.
 
+## Phase 7: Monetization (Direction settled 2026-07-25, not started - gated on Phase 6 actually shipping and producing real usage data)
+See `docs/product-review-monetization.md` for the full review. Real
+early thinking, raised well before public launch, deliberately not
+implemented yet - accounts and payment processing don't exist in even
+the earliest form.
+
+- [ ] **The settled principle: paywall archive depth, never live
+      status.** First floated as rate-limiting core lookups (5/hour
+      free, $1.99/mo to remove the cap) - revised once the tradeoff was
+      laid out against Johan's own earlier stance on the crowd-pins
+      idea (paywalling communication during an emergency is a bad
+      look, not a monetization win - the same logic applies directly to
+      rate-limiting "is my power out right now"). Landed on gating
+      archive depth instead: Storm History and Outage History both
+      already paginate, first page free - the agreed plan is everything
+      past page 1 sits behind a subscription, while current/live
+      status, active alerts, At-Risk Counties, and page 1 of both
+      histories stay free unconditionally, forever.
+- [ ] **User accounts** - don't exist at all right now, needed before
+      any paywall can know who's asking.
+- [ ] **Real payment processing** (Stripe, most likely) - subscriptions,
+      webhooks, failed/expired payments, refunds.
+- [ ] **A real business/legal layer** - a registered business entity
+      behind the Stripe account, a terms of service, a refund policy,
+      sales-tax handling depending on where subscribers live.
+
 ## Explicitly not planned
 - **Any public pass-through of the raw live utility feeds** - never
   planned, not up for reconsideration. These are not official public
