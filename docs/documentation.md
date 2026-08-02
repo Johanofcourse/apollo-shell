@@ -1358,3 +1358,31 @@ that disables the limiter for every existing test, plus a dedicated
 new test class that re-enables it deliberately to verify the real
 thing - including that two different IPs are throttled independently,
 not off one shared global counter.
+
+Verified live on the real VM, not just in tests: fired 70 rapid
+requests at the actual running public site, watched it start
+returning 429 around request #27 - a little earlier than a clean 30,
+since gunicorn's two worker processes each keep their own independent
+count (the exact tradeoff already written into the code's own
+comments) - then confirmed it cleanly returned to 200 once the
+1-minute window rolled over.
+
+## Real CD, the safe-by-design version (August 2, 2026)
+CI has run the full test suite on every push since July 19; getting a
+merged commit onto the actual VM has stayed a fully manual pull +
+restart the whole time since, including a real surprise 2026-07-20
+where a merged PR didn't show up live until someone did that by hand.
+Deliberately banked rather than built in the moment - not urgent while
+only the two of us would ever notice a stale deploy.
+
+Built now, ahead of the domain going live, but not as full "deploy on
+every merge" automation. Landed on Continuous *Delivery* instead of
+Continuous *Deployment* - same automated mechanics (pull, install,
+test, restart, verify), but behind a manual button
+(`workflow_dispatch`), not a silent trigger on every push. Directly
+mirrors an already-standing decision: PR merges themselves stay manual
+on purpose, a deliberate human checkpoint Johan wanted to get used to
+before handing off, not a temporary gap. One click now does what used
+to take a real back-and-forth of SSH commands - but it's still a real
+click, not an invisible thing happening the moment code lands on
+`main`.

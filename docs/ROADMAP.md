@@ -719,17 +719,18 @@ this project's traffic never justifies one.
       entry for the full story. Originally planned for right here,
       right before launch; two real incidents in two weeks made the
       case sooner than planned.
-- [ ] Real automated deployment (CI exists - tests run on every push;
-      CD doesn't - getting a merged commit onto the VM is still a fully
-      manual pull + restart). Prompted by a real, honest surprise
+- [x] **Real CD - shipped early (2026-08-02), Continuous Delivery not
+      full Continuous Deployment.** Prompted by a real, honest surprise
       2026-07-20: merging a PR and expecting the live site to reflect
       it immediately, when it didn't until someone (or Claude) manually
-      synced the VM. Deliberately deferred, not fixed on the spot -
-      worth having before real strangers are the ones hitting a stale
-      deploy, less urgent while it's still just the two of us who'd
-      notice. Real tradeoff to weigh when this comes up again: automatic
-      deploy means it can never be forgotten, but also means nobody's
-      watching that specific deploy happen before real visitors see it.
+      synced the VM. `.github/workflows/deploy.yml` automates the exact
+      pull/install/test/restart/verify sequence that used to be run by
+      hand - but behind a manual `workflow_dispatch` button, not a
+      silent trigger on every merge, directly mirroring the standing
+      decision to keep PR merges themselves manual too. Automatic deploy
+      means it can never be forgotten; keeping it button-triggered means
+      a human still watches it happen before real visitors see it -
+      chose not to give up that second thing for the first.
 
 The internal dashboard stays SSH-tunnel-only regardless - never
 publicly exposed, a firm decision, not just the current state.

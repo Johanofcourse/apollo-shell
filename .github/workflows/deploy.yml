@@ -1,0 +1,34 @@
+name: Deploy
+
+# Manual trigger only, deliberately - not "on every merge to main."
+# This is Continuous Delivery, not full Continuous Deployment: the
+# exact SSH-in/pull/install/test/restart sequence that used to be run
+# by hand after every merge, now automated, but still requiring a
+# human to press the button. Same real reason PR merges themselves
+# stay manual (docs/documentation.md, 2026-08-02) - a deliberate
+# checkpoint, not a gap to be closed later.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to the VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 129.213.36.49
+          username: opc
+          key: ${{ secrets.VM_SSH_KEY }}
+          script_stop: true
+          script: |
+            cd ~/apollo-shell
+            git pull origin main
+            pip3 install --user -r requirements.txt
+            python3 -m pytest tests/ -q
+            sudo systemctl restart apollo-poller apollo-dashboard apollo-public-site
+            sleep 3
+            sudo systemctl is-active apollo-poller apollo-dashboard apollo-public-site
+            curl -sf -o /dev/null http://127.0.0.1:5050/
+            curl -sf -o /dev/null http://127.0.0.1:5051/
+            echo "Deploy verified: both apps active and responding."
