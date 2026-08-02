@@ -65,6 +65,18 @@ def _severity_icon(severity):
 
 app.jinja_env.filters['severity_icon'] = _severity_icon
 
+# Self-hosted analytics (Umami), added 2026-08-02 - deliberately over a
+# third-party tool like Google Analytics, matching this project's own
+# non-invasive character (no cookies, no individual tracking, data
+# never leaves the VM). Both unset by default and gracefully skipped
+# in the template (see templates_public/index.html) rather than
+# rendering a script tag pointed at nothing - there's no real publicly
+# reachable URL for the tracking script yet (no nginx, no domain), so
+# this stays inactive until Phase 6's launch infrastructure actually
+# exists, at which point it's a two-env-var flip, not a code change.
+UMAMI_SCRIPT_URL = os.environ.get("UMAMI_SCRIPT_URL")
+UMAMI_WEBSITE_ID = os.environ.get("UMAMI_WEBSITE_ID")
+
 # Resolved outages shown per page in the Outage History section - a
 # high-churn county's full history could otherwise be an unbounded
 # mobile scroll (see county_status._CLOSED_EVENTS_LIMIT for the
@@ -506,6 +518,8 @@ def index():
         available_counties_json=json.dumps(COUNTY_PICKER_CHOICES),
         selected_county=selected_county,
         county_detail=county_detail,
+        umami_script_url=UMAMI_SCRIPT_URL,
+        umami_website_id=UMAMI_WEBSITE_ID,
     )
 
 

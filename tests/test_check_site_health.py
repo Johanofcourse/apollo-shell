@@ -133,6 +133,25 @@ class TestCheckSiteHealth:
         check_site_health.check_site_health()
         assert sent_emails == []
 
+    def test_umami_is_a_checked_service(self):
+        # Real regression guard: self-hosted analytics (added
+        # 2026-08-02) is a real systemd service on the same VM that can
+        # silently die exactly like the other two - make sure it never
+        # quietly drops out of the checked set.
+        assert "umami" in check_site_health.CHECKED_SERVICES
+        assert check_site_health.CHECKED_SERVICES["umami"] == "http://127.0.0.1:3000/"
+
+    def test_umami_down_is_detected_and_alerted(self, state_path, sent_emails, monkeypatch):
+        _mock_reachability(monkeypatch, {
+            "http://127.0.0.1:5050/": True,
+            "http://127.0.0.1:5051/": True,
+            "http://127.0.0.1:3000/": False,
+        })
+        check_site_health.check_site_health()
+
+        assert len(sent_emails) == 1
+        assert "umami" in sent_emails[0]["subject"]
+
 
 class TestIsReachable:
     def test_200_response_is_reachable(self, monkeypatch):

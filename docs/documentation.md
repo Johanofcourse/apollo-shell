@@ -1386,3 +1386,48 @@ before handing off, not a temporary gap. One click now does what used
 to take a real back-and-forth of SSH commands - but it's still a real
 click, not an invisible thing happening the moment code lands on
 `main`.
+
+## Self-hosted analytics, chosen over the third-party default (August 2, 2026)
+The last real launch-prep item raised alongside CD: how to know if
+anyone's actually using this once it's public. Ruled out Google
+Analytics-style tracking deliberately - it collects real visitor-level
+data (cookies, cross-site tracking), sends it to a third party, and
+would likely require a cookie-consent banner depending on who visits.
+None of that matches what this project has been the whole way through:
+honest, non-invasive, no dark patterns.
+
+Landed on Umami instead - self-hosted, right on the same VM as
+everything else, same systemd-service pattern as the rest of the
+stack (no Docker, matching how every other piece here runs). No
+cookies, no individual tracking, nothing ever leaves the VM except
+aggregate counts (visits, top pages, referrers, device type) that
+Johan can look at.
+
+Real setup, not a placeholder: Node.js 20 and PostgreSQL 13 installed
+fresh, Umami built from source, its own systemd unit. Hit the exact
+same SELinux snag gunicorn did back on 2026-07-21 - a shell shim under
+the home directory labeled as non-executable content - fixed the same
+way, pointing systemd at `node` directly against the real entry file
+instead of the mislabeled `.bin/next` shim. A second, separate real
+bug: PostgreSQL 13's actual default password encoding is `md5`, not
+`scram-sha-256` (that only became the default in PG14+) - `pg_hba.conf`
+was set to demand a SCRAM exchange against passwords stored as MD5
+hashes, failing auth with the objectively correct password until
+caught and matched to what PG13 actually stores.
+
+Default admin credentials changed immediately after first boot,
+verified the old ones stopped working. A real end-to-end check before
+calling it done, not just "the service is active": sent an actual
+simulated pageview to Umami's collection endpoint and confirmed it
+showed up in its own stats API - the full loop, not just individual
+pieces assumed to add up correctly.
+
+Deliberately not live yet. The tracking script itself only renders in
+`templates_public/index.html` when both `UMAMI_SCRIPT_URL` and
+`UMAMI_WEBSITE_ID` are set - left unset for now, since there's no real
+publicly reachable URL for real visitors' browsers to load it from
+until nginx and the domain exist. Ready to flip on the moment Phase 6
+actually ships, not a code change away from it. Also added to
+`check_site_health.py`'s watch list - a real systemd service now,
+capable of silently dying exactly like the other two it already
+tracks.

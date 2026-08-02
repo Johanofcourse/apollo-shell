@@ -34,13 +34,16 @@ from alerting import send_alert_email
 
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "site_health_state.json")
 
-# name -> URL. Both loopback-only - this always runs on the VM itself,
+# name -> URL. All loopback-only - this always runs on the VM itself,
 # so it never depends on the SSH tunnel or a real public domain, unlike
-# a third-party uptime monitor, which can't reach either service at all
-# right now (neither is exposed to the public internet).
+# a third-party uptime monitor, which can't reach any of these right
+# now (none are exposed to the public internet). Umami (self-hosted
+# analytics, added 2026-08-02) added here too - a real systemd service
+# on this same VM that can silently die exactly like the other two.
 CHECKED_SERVICES = {
     "dashboard": "http://127.0.0.1:5050/",
     "public_site": "http://127.0.0.1:5051/",
+    "umami": "http://127.0.0.1:3000/",
 }
 
 REQUEST_TIMEOUT_SECONDS = 10

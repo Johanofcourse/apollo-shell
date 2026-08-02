@@ -328,6 +328,9 @@
 
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
+{% if umami_script_url and umami_website_id %}
+<script defer src="{{ umami_script_url }}" data-website-id="{{ umami_website_id }}"></script>
+{% endif %}
 </head>
 <body>
 

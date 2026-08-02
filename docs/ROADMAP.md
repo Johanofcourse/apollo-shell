@@ -711,9 +711,21 @@ this project's traffic never justifies one.
       than one perfectly shared number - good enough for today's real
       scale; Redis is the upgrade path if genuine abuse ever demands
       tighter, not built ahead of a need that doesn't exist yet.
-- [ ] A real choice on analytics: self-hosted/privacy-respecting (e.g.
-      Plausible, Umami) vs. a hosted third-party tool - decide
-      deliberately, don't default
+- [x] **Self-hosted analytics (Umami) - shipped early (2026-08-02).**
+      Chose self-hosted over Google Analytics-style third-party
+      tracking deliberately - no cookies, no individual tracking,
+      nothing leaves the VM, matching this project's whole honest,
+      non-invasive character. Real install, not a stub: Node.js 20 +
+      PostgreSQL 13 + Umami built from source, its own systemd service
+      alongside everything else. Hit the same SELinux exec issue
+      gunicorn did (2026-07-21) and a real PG13-vs-PG14+ password-
+      encoding mismatch, both fixed and verified. Default admin
+      credentials changed immediately; a real simulated pageview sent
+      and confirmed showing up in Umami's own stats before calling it
+      done. Deliberately inactive in the template until
+      `UMAMI_SCRIPT_URL`/`UMAMI_WEBSITE_ID` are set - no real publicly
+      reachable URL exists for it yet, so it's ready to flip on the
+      moment nginx + the domain do, not a code change away.
 - [x] Extend real email alerting to every real source, not just
       Talquin/PRECO - shipped early (2026-08-02), see Phase 2's own
       entry for the full story. Originally planned for right here,

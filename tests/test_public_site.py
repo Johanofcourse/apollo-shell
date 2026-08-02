@@ -351,6 +351,46 @@ class TestIndexRoute:
         assert r.status_code == 200
 
 
+class TestUmamiTrackingScript:
+    """
+    Self-hosted analytics (Umami), added 2026-08-02. Both env vars
+    default unset, meaning no script tag renders at all - there's no
+    real publicly reachable URL for it yet (no nginx, no domain), so
+    shipping this active would mean pointing real visitors' browsers at
+    a URL nothing can serve. Deliberately inactive until Phase 6's
+    launch infrastructure exists.
+    """
+
+    def test_no_script_tag_when_unconfigured(self, monkeypatch):
+        monkeypatch.setattr(public_site, "UMAMI_SCRIPT_URL", None)
+        monkeypatch.setattr(public_site, "UMAMI_WEBSITE_ID", None)
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert b"data-website-id" not in r.data
+
+    def test_no_script_tag_when_only_url_configured(self, monkeypatch):
+        # Both values are required together - a URL with no website id
+        # (or vice versa) can't actually track anything.
+        monkeypatch.setattr(public_site, "UMAMI_SCRIPT_URL", "https://example.com/script.js")
+        monkeypatch.setattr(public_site, "UMAMI_WEBSITE_ID", None)
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert b"data-website-id" not in r.data
+
+    def test_script_tag_renders_when_both_configured(self, monkeypatch):
+        monkeypatch.setattr(public_site, "UMAMI_SCRIPT_URL", "https://example.com/script.js")
+        monkeypatch.setattr(public_site, "UMAMI_WEBSITE_ID", "test-website-id-123")
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/")
+
+        assert b'<script defer src="https://example.com/script.js" data-website-id="test-website-id-123"></script>' in r.data
+
+
 class TestPaginate:
     """
     _paginate() - added 2026-07-18 to replace OUTAGE_HISTORY_DISPLAY_LIMIT's
