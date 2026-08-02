@@ -42,7 +42,7 @@ from fetch_lwbu_outages import (
     get_lwbu_records, LWBU_API_BASE,
     get_incidents_summary as get_lwbu_incidents_summary,
 )
-from fetch_ouc_outages import get_ouc_records, OUC_INSTANCE_ID
+from fetch_ouc_outages import get_ouc_records, OUC_STORMCENTER_ID
 from fetch_lcec_outages import get_lcec_records, LCEC_API_URL
 from fetch_clay_outages import (
     fetch_clay_outages, CLAY_API_URL,
@@ -485,13 +485,13 @@ def run_ouc_cycle(db):
     observed empty (see fetch_ouc_outages.py's module docstring) - not
     integrated here yet.
 
-    Raises only when OUC_INSTANCE_ID is actually configured but the
+    Raises only when OUC_STORMCENTER_ID is actually configured but the
     fetch still came back empty - same reasoning/config-check pattern
     as run_fkec_cycle() above.
     """
     records = get_ouc_records()
     if not records:
-        if OUC_INSTANCE_ID:
+        if OUC_STORMCENTER_ID:
             raise RuntimeError("OUC fetch returned no records - see the poller's own log for the underlying request error")
         print("Skipping OUC save - no data fetched")
         return

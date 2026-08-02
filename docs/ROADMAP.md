@@ -192,6 +192,17 @@ precision for the earliest items in this list.
       One "down" email per outage, one "recovered" email after, state
       kept in a small local file since a cron-launched script is a
       fresh process every run.
+- [x] **OUC's data path fixed for good, not just today - shipped
+      2026-08-02.** A real 404, 108 straight failed cycles over ~27h,
+      caught live comparing the dashboard against OUC's own real map.
+      Root cause: Kubra (the shared vendor platform behind OUC's and
+      JEA's maps) rotates the fixed data-path UUID this fetcher pointed
+      at whenever a utility's map gets redeployed on their end - a
+      different failure shape than Duke's expired token. Fixed by
+      looking the current path up fresh on every fetch via the same
+      endpoint OUC's own map calls, keyed on OUC's actual stable
+      storm-center/view configuration rather than the value that
+      rotates - so this can't quietly break the same way again.
 
 ## Phase 2.5: Dashboard Redesign (In progress — design exploration, ~2026-07-05 onward)
 - [x] Visual direction settled on, explored entirely in an isolated

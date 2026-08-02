@@ -402,20 +402,20 @@ class TestRunLwbuCycleFailureVisibility:
 class TestRunOucCycleFailureVisibility:
     def test_raises_when_configured_but_empty(self, db, monkeypatch):
         monkeypatch.setattr(main, "get_ouc_records", lambda: [])
-        monkeypatch.setattr(main, "OUC_INSTANCE_ID", "some-real-instance-id")
+        monkeypatch.setattr(main, "OUC_STORMCENTER_ID", "some-real-stormcenter-id")
         with pytest.raises(RuntimeError):
             main.run_ouc_cycle(db)
 
     def test_does_not_raise_when_not_configured(self, db, monkeypatch):
         monkeypatch.setattr(main, "get_ouc_records", lambda: [])
-        monkeypatch.setattr(main, "OUC_INSTANCE_ID", None)
+        monkeypatch.setattr(main, "OUC_STORMCENTER_ID", None)
         main.run_ouc_cycle(db)  # should not raise
 
     def test_does_not_raise_when_records_present(self, db, monkeypatch):
         monkeypatch.setattr(main, "get_ouc_records", lambda: [
             {"county": "Orange", "customers_out": 500, "customers_served": 291868}
         ])
-        monkeypatch.setattr(main, "OUC_INSTANCE_ID", "some-real-instance-id")
+        monkeypatch.setattr(main, "OUC_STORMCENTER_ID", "some-real-stormcenter-id")
         main.run_ouc_cycle(db)  # should not raise
 
 

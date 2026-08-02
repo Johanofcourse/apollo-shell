@@ -8,10 +8,11 @@ load_dotenv()
 # OUC's outage map runs on the same shared vendor platform JEA's does -
 # the host below is the vendor's own shared domain (used by many
 # utilities, not OUC-specific), so it's fine to hardcode, same
-# reasoning as fetch_jea_outages.JEA_PLATFORM_HOST. OUC's own instance
-# id is the real secret, kept out of the committed code.
+# reasoning as fetch_jea_outages.JEA_PLATFORM_HOST. OUC's own storm
+# center/view ids are the real secrets, kept out of the committed code.
 OUC_PLATFORM_HOST = "https://kubra.io"
-OUC_INSTANCE_ID = os.environ.get("OUC_INSTANCE_ID")
+OUC_STORMCENTER_ID = os.environ.get("OUC_STORMCENTER_ID")
+OUC_VIEW_ID = os.environ.get("OUC_VIEW_ID")
 
 # Matches the exact string this same real entity is stored as in
 # historical_import.py's PSC-report data ("Orlando (Orlando Utilities
@@ -40,18 +41,51 @@ SERVICE_COUNTY = "Orange"
 # integrated here for now.
 
 
+def _fetch_current_data_path():
+    """
+    Look up OUC's current live data path from Kubra's currentState
+    endpoint, rather than trusting a hardcoded one - real incident
+    2026-08-01/02: the data path Kubra actually serves rotates to a
+    fresh UUID whenever OUC's map gets redeployed on their platform
+    (a real 404, ~27h/108 straight failed cycles before caught), while
+    OUC_STORMCENTER_ID/OUC_VIEW_ID (this utility's actual registered
+    map configuration with the vendor) stayed stable through that same
+    redeploy. Same two-step lookup OUC's own live map itself makes.
+
+    Returns the "data/<uuid>" path segment (e.g.
+    "data/fe479df5-..."), or None on failure/missing config.
+    """
+    if not OUC_STORMCENTER_ID or not OUC_VIEW_ID:
+        print("OUC_STORMCENTER_ID/OUC_VIEW_ID not set - skipping OUC fetch")
+        return None
+
+    url = (
+        f"{OUC_PLATFORM_HOST}/stormcenter/api/v1/stormcenters/{OUC_STORMCENTER_ID}"
+        f"/views/{OUC_VIEW_ID}/currentState?preview=false"
+    )
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        return (response.json().get("data") or {}).get("interval_generation_data")
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching OUC current state: {e}")
+        return None
+
+
 def fetch_ouc_summary():
     """
     Fetch OUC's live city-wide outage summary (current customers
     affected, total customers served) from the shared vendor platform's
-    static data endpoint. Returns the parsed JSON data, or None on
-    failure/missing config.
+    data endpoint. The data path itself is looked up fresh every call
+    (see _fetch_current_data_path()) rather than pointed at a fixed
+    UUID, since that UUID is exactly what rotates on a Kubra redeploy.
+    Returns the parsed JSON data, or None on failure/missing config.
     """
-    if not OUC_INSTANCE_ID:
-        print("OUC_INSTANCE_ID not set - skipping OUC fetch")
+    data_path = _fetch_current_data_path()
+    if not data_path:
         return None
 
-    url = f"{OUC_PLATFORM_HOST}/data/{OUC_INSTANCE_ID}/public/summary-1/data.json"
+    url = f"{OUC_PLATFORM_HOST}/{data_path}/public/summary-1/data.json"
     try:
         print("Fetching OUC outage data...")
         response = requests.get(url, timeout=15)
