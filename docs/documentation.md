@@ -1329,3 +1329,32 @@ test run rather than in production: `teco_incidents`/`duke_incidents`
 stamp their rows `fetched_at`, not `timestamp` like every other table
 here - would have silently broken the consecutive-failure count for
 exactly those two sources if shipped as originally written.
+
+## First real launch-prep item: rate limiting (August 2, 2026)
+Started mapping out what "going public" actually needs beyond the
+domain itself - login (Google/Facebook/etc.) got ruled out early,
+since nothing on the site needs to know who's asking yet; analytics
+got tabled for its own conversation. Rate limiting was the one with an
+immediate yes: right now the public site has zero throttling on its
+own routes at all, and it's the one gap actually worth closing before
+real strangers (or a scraper) can reach it.
+
+Added Flask-Limiter, per-IP, 30 requests/minute and 300/hour - enough
+for a real visitor clicking through several counties, tight enough to
+blunt a bot in a loop. One honest limitation stated plainly rather
+than glossed over: gunicorn runs multiple worker processes, each with
+its own memory, so an in-memory limiter's real ceiling per IP is
+closer to (limit × worker count) than one perfectly shared global
+count. Good enough for this project's actual scale today; a shared
+backend (Redis) is the real upgrade path if genuine abuse ever
+demands a tighter guarantee - not built ahead of a need that doesn't
+exist yet.
+
+Caught immediately by the existing test suite, not shipped blind: the
+many rapid `client.get()` calls across the suite all share one
+"IP" (the test client), and started tripping 429s against each other
+the moment the limiter was wired in. Fixed with an autouse fixture
+that disables the limiter for every existing test, plus a dedicated
+new test class that re-enables it deliberately to verify the real
+thing - including that two different IPs are throttled independently,
+not off one shared global counter.
