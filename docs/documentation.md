@@ -1283,3 +1283,22 @@ either app first stops answering, one "recovered" email once it does
 again, silence in between. State lives in a small local JSON file, not
 memory, since a cron-launched script is a fresh process every single
 run - nothing would survive between runs otherwise.
+
+## A rotating UUID, not an expired one (August 2, 2026)
+OUC's data pipeline caught a real 404 - 108 straight failed cycles over
+~27h - noticed live when Johan spotted "0 outages" on the dashboard
+while OUC's own real map looked fine. Different failure shape than
+Duke's expired token from two weeks earlier: the fixed data-path UUID
+this fetcher pointed at simply stopped existing, because Kubra (the
+shared vendor platform behind both OUC's and JEA's outage maps)
+rotates that path to a fresh UUID whenever a utility's map gets
+redeployed on their end.
+
+Fixed properly rather than just swapping in today's new UUID, which
+would only break again next time Kubra redeploys: `fetch_ouc_outages.py`
+now looks the current data path up fresh on every single fetch, via
+the same `currentState` endpoint OUC's own live map itself calls,
+keyed on OUC's actual stable storm-center/view configuration with the
+vendor rather than the value that rotates. Verified the fix against
+the real live endpoint before shipping, not just against a captured
+response shape.
