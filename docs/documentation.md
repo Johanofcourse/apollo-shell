@@ -1302,3 +1302,30 @@ keyed on OUC's actual stable storm-center/view configuration with the
 vendor rather than the value that rotates. Verified the fix against
 the real live endpoint before shipping, not just against a captured
 response shape.
+
+## Real email alerting, extended past two sources (August 2, 2026)
+Two real incidents in two weeks - Duke's expired token, then OUC's
+rotated UUID - both ran for hours or days before being caught by a
+manual check rather than an alert. Every source besides Talquin/PRECO
+only ever showed up on the dashboard's own health strip, which nobody
+was watching once the two of us weren't actively looking.
+
+Couldn't just reuse Talquin/PRECO's single-failure trigger, though -
+they're known chronically fragile, so any failure there really is real.
+Every other source is normally reliable, so a lone failure (a real NWS
+read-timeout, July 28, that never repeated) is usually an ordinary
+blip that self-heals next cycle - alerting on the first one would be
+noise. Built a second mechanism instead: fires once a source has
+failed **two cycles in a row**, Johan's own number, picked directly off
+what would have caught OUC almost immediately instead of 95 cycles in.
+Same one-email-per-episode shape as the existing Talquin/PRECO
+mechanism (one "down," one "recovered," silence in between), just no
+cooldown or suppression - these sources are supposed to be reliable, so
+every real sustained episode deserves its own fresh email, not a
+known chronic issue to throttle.
+
+One real schema bug caught in the process, by the feature's own first
+test run rather than in production: `teco_incidents`/`duke_incidents`
+stamp their rows `fetched_at`, not `timestamp` like every other table
+here - would have silently broken the consecutive-failure count for
+exactly those two sources if shipped as originally written.

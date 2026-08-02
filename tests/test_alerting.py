@@ -55,9 +55,11 @@ def reset_alert_state():
     # needs to start clean.
     alerting._alerted_sources.clear()
     alerting._last_down_alert_time.clear()
+    alerting._sustained_alerted_sources.clear()
     yield
     alerting._alerted_sources.clear()
     alerting._last_down_alert_time.clear()
+    alerting._sustained_alerted_sources.clear()
 
 
 class TestCheckAndAlertPipelineHealth:
@@ -332,3 +334,199 @@ class TestSendAlertEmail:
         result = alerting.send_alert_email("subject", "body")
 
         assert result is False
+
+
+class TestConsecutiveFailureCount:
+    def test_zero_when_no_failures_logged(self, db):
+        assert alerting._consecutive_failure_count(db, "ouc", "ouc_outages") == 0
+
+    def test_counts_failures_since_last_success(self, db):
+        db.log_ouc_outages(
+            [{"county": "Orange", "customers_out": 0, "customers_served": 292028}],
+            timestamp="2026-01-01T00:00:00",
+        )
+        db.log_pipeline_error("ouc", "failure 1", timestamp="2026-01-01T00:15:00")
+        db.log_pipeline_error("ouc", "failure 2", timestamp="2026-01-01T00:30:00")
+
+        assert alerting._consecutive_failure_count(db, "ouc", "ouc_outages") == 2
+
+    def test_older_failures_before_a_success_are_not_counted(self, db):
+        # Real regression shape this whole mechanism depends on: a
+        # failure predating the most recent success must not count
+        # toward the CURRENT streak, or a source that's actually healthy
+        # right now could still cross the sustained-failure threshold
+        # off old, already-resolved history.
+        db.log_pipeline_error("ouc", "an old failure", timestamp="2026-01-01T00:00:00")
+        db.log_ouc_outages(
+            [{"county": "Orange", "customers_out": 0, "customers_served": 292028}],
+            timestamp="2026-01-01T00:15:00",
+        )
+        db.log_pipeline_error("ouc", "one fresh failure", timestamp="2026-01-01T00:30:00")
+
+        assert alerting._consecutive_failure_count(db, "ouc", "ouc_outages") == 1
+
+    def test_counts_every_failure_when_no_success_ever_logged(self, db):
+        db.log_pipeline_error("ouc", "failure 1", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("ouc", "failure 2", timestamp="2026-01-01T00:15:00")
+        db.log_pipeline_error("ouc", "failure 3", timestamp="2026-01-01T00:30:00")
+
+        assert alerting._consecutive_failure_count(db, "ouc", "ouc_outages") == 3
+
+    def test_respects_a_non_timestamp_success_column(self, db):
+        # Real bug this feature's own first test run caught:
+        # teco_incidents/duke_incidents stamp their rows "fetched_at",
+        # not "timestamp" like every other table here - inserted
+        # directly since log_teco_incidents() doesn't take an
+        # explicit timestamp param to control deterministically.
+        conn = db.connect()
+        conn.execute(
+            "INSERT INTO teco_incidents (incident_id, fetched_at) VALUES (?, ?)",
+            ("INC-1", "2026-01-01T00:15:00"),
+        )
+        conn.commit()
+        db.log_pipeline_error("teco", "an old failure", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("teco", "a fresh failure", timestamp="2026-01-01T00:30:00")
+
+        # The success at 00:15 should cut off the 00:00 failure but not
+        # the 00:30 one - proves success_column="fetched_at" is
+        # actually being read, not silently falling back to a
+        # "timestamp" column that doesn't exist on this table.
+        assert alerting._consecutive_failure_count(db, "teco", "teco_incidents", "fetched_at") == 1
+
+
+class TestCheckAndAlertSustainedFailures:
+    """
+    Built 2026-08-02, prompted by two real incidents (Duke's expired
+    token, OUC's silently-rotated data-path UUID) that each ran for
+    hours/days before being caught manually. Uses OUC as the general
+    example throughout - a real member of SUSTAINED_ALERT_WORTHY_SOURCES,
+    same real incident that motivated building this at all.
+    """
+
+    def test_single_failure_sends_no_email(self, db, monkeypatch):
+        # The whole point of the sustained threshold: one ordinary,
+        # self-healing blip (a real NWS read-timeout, 2026-07-28, that
+        # never repeated) must not fire an email on its own.
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("ouc", "single blip")
+        alerting.check_and_alert_sustained_failures(db)
+
+        assert sent == []
+
+    def test_two_consecutive_failures_sends_exactly_one_down_email(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("ouc", "failure 1", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("ouc", "failure 2", timestamp="2026-01-01T00:15:00")
+        alerting.check_and_alert_sustained_failures(db)
+
+        assert len(sent) == 1
+        assert "Orlando Utilities Commission" in sent[0]
+        assert "down" in sent[0].lower()
+
+    def test_does_not_resend_while_still_failing(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("ouc", "failure 1", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("ouc", "failure 2", timestamp="2026-01-01T00:15:00")
+        alerting.check_and_alert_sustained_failures(db)
+        assert len(sent) == 1
+
+        db.log_pipeline_error("ouc", "failure 3", timestamp="2026-01-01T00:30:00")
+        alerting.check_and_alert_sustained_failures(db)
+
+        assert len(sent) == 1
+
+    def test_sends_recovery_email_once_a_later_success_is_logged(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("ouc", "failure 1", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("ouc", "failure 2", timestamp="2026-01-01T00:15:00")
+        alerting.check_and_alert_sustained_failures(db)
+        assert len(sent) == 1
+
+        db.log_ouc_outages(
+            [{"county": "Orange", "customers_out": 0, "customers_served": 292028}],
+            timestamp="2026-01-01T00:30:00",
+        )
+        alerting.check_and_alert_sustained_failures(db)
+
+        assert len(sent) == 2
+        assert "recovered" in sent[1].lower()
+        assert "ouc" not in alerting._sustained_alerted_sources
+
+    def test_no_cooldown_a_second_real_episode_gets_its_own_down_email(self, db, monkeypatch):
+        # Deliberately different from Talquin/PRECO's cooldown - these
+        # sources are normally reliable, so each real sustained episode
+        # is worth its own fresh email, not throttled as "the same
+        # known issue" the way a chronic vendor problem is.
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("ouc", "failure 1", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("ouc", "failure 2", timestamp="2026-01-01T00:15:00")
+        alerting.check_and_alert_sustained_failures(db)
+
+        db.log_ouc_outages(
+            [{"county": "Orange", "customers_out": 0, "customers_served": 292028}],
+            timestamp="2026-01-01T00:30:00",
+        )
+        alerting.check_and_alert_sustained_failures(db)
+
+        db.log_pipeline_error("ouc", "failure 3", timestamp="2026-01-01T01:00:00")
+        db.log_pipeline_error("ouc", "failure 4", timestamp="2026-01-01T01:15:00")
+        alerting.check_and_alert_sustained_failures(db)
+
+        assert len(sent) == 3
+        assert "down" in sent[0].lower()
+        assert "recovered" in sent[1].lower()
+        assert "down" in sent[2].lower()
+
+    def test_ignores_sources_outside_sustained_alert_worthy_set(self, db, monkeypatch):
+        # talquin/preco keep their own single-failure trigger - not part
+        # of this mechanism at all, even though they're real sources.
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("talquin", "failure 1", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("talquin", "failure 2", timestamp="2026-01-01T00:15:00")
+        alerting.check_and_alert_sustained_failures(db)
+
+        assert sent == []
+
+    def test_internal_derived_sources_are_excluded(self, db, monkeypatch):
+        # correlation/historical_tally are our own computation, not a
+        # real external data source being down - deliberately excluded.
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(subject))
+
+        db.log_pipeline_error("correlation", "failure 1", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("correlation", "failure 2", timestamp="2026-01-01T00:15:00")
+        alerting.check_and_alert_sustained_failures(db)
+
+        assert sent == []
+
+    def test_email_body_reports_the_real_failure_count(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(body))
+
+        db.log_pipeline_error("ouc", "failure 1", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("ouc", "failure 2", timestamp="2026-01-01T00:15:00")
+        alerting.check_and_alert_sustained_failures(db)
+
+        assert "2 times in a row" in sent[0]
+
+    def test_email_body_includes_the_most_recent_error_message(self, db, monkeypatch):
+        sent = []
+        monkeypatch.setattr(alerting, "send_alert_email", lambda subject, body: sent.append(body))
+
+        db.log_pipeline_error("ouc", "failure 1", timestamp="2026-01-01T00:00:00")
+        db.log_pipeline_error("ouc", "404 Client Error: Not Found", timestamp="2026-01-01T00:15:00")
+        alerting.check_and_alert_sustained_failures(db)
+
+        assert "404 Client Error: Not Found" in sent[0]

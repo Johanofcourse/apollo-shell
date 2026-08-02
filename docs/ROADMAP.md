@@ -73,15 +73,20 @@ precision for the earliest items in this list.
       self-heal - fires the moment either has a single failure (more
       sensitive than the standard threshold), one follow-up email on
       recovery, not a repeat every cycle for the whole outage.
-- [ ] **Extend real email alerting to every other real source** -
-      currently scoped to just the two known-fragile ones. The other
-      real sources occasionally hit an ordinary transient blip that
-      resolves on its own next cycle, so this needs a sustained-failure
-      threshold (still failing next cycle too, not just once) rather
-      than the single-failure trigger the two fragile sources use -
-      otherwise routine self-healing blips would generate noise. Not
-      started - deliberately deferred to just before Phase 6's public
-      launch (see there), not sooner.
+- [x] **Extended real email alerting to every other real source -
+      shipped 2026-08-02, earlier than planned.** Was deliberately
+      deferred to just before Phase 6's public launch, but two real
+      incidents in two weeks (Duke's expired token, then OUC's rotated
+      UUID - each running for hours/days before being caught manually)
+      made the case early. Reuses the single-failure trigger for
+      Talquin/PRECO unchanged, adds a real sustained-failure threshold
+      for every other source (2 consecutive cycles, Johan's own number)
+      so an ordinary transient blip that self-heals next cycle (a real
+      NWS read-timeout, July 28) stays quiet while an OUC-shaped
+      failure gets caught almost immediately instead of 95 cycles in.
+      Caught a real schema bug in its own first test run:
+      teco_incidents/duke_incidents stamp rows `fetched_at`, not
+      `timestamp` like every other table here.
 - [x] **Closed a real blind spot in failure detection itself - shipped
       2026-07-20, for TECO, Duke, Tallahassee, and weather.** These four
       each caught their own network failures internally and returned an
@@ -695,13 +700,11 @@ this project's traffic never justifies one.
 - [ ] A real choice on analytics: self-hosted/privacy-respecting (e.g.
       Plausible, Umami) vs. a hosted third-party tool - decide
       deliberately, don't default
-- [ ] Extend real email alerting to every real source, not just
-      Talquin/PRECO (see Phase 2) - deliberately deferred here rather
-      than done now, decided 2026-07-20: a dashboard strip only someone
-      running the poller happens to check is an acceptable gap for a
-      personal/internal tool, but stops being acceptable the moment
-      real strangers depend on this data being right. Do this before
-      Phase 6 actually ships, not after.
+- [x] Extend real email alerting to every real source, not just
+      Talquin/PRECO - shipped early (2026-08-02), see Phase 2's own
+      entry for the full story. Originally planned for right here,
+      right before launch; two real incidents in two weeks made the
+      case sooner than planned.
 - [ ] Real automated deployment (CI exists - tests run on every push;
       CD doesn't - getting a merged commit onto the VM is still a fully
       manual pull + restart). Prompted by a real, honest surprise
