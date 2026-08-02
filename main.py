@@ -6,7 +6,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
 from database import OutageDatabase
-from alerting import check_and_alert_pipeline_health
+from alerting import check_and_alert_pipeline_health, check_and_alert_sustained_failures
 from fetch_fpl_outages import get_combined_fpl_records, UTILITY_NAME as FPL_UTILITY_NAME
 from fetch_weather import get_alerts_summary
 from fetch_teco_outages import get_incidents_summary
@@ -994,6 +994,11 @@ def main():
             except Exception as e:
                 print(f"Historical tally cycle failed: {e}")
                 db.log_pipeline_error("historical_tally", str(e))
+
+            try:
+                check_and_alert_sustained_failures(db)
+            except Exception as e:
+                print(f"Sustained-failure alert check failed: {e}")
 
             print(f"Cycle complete. Sleeping {POLL_INTERVAL_SECONDS}s...")
             time.sleep(POLL_INTERVAL_SECONDS)

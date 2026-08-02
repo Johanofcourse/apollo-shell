@@ -10,7 +10,7 @@ from flask import Flask, render_template, request
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
 from database import OutageDatabase
-from alerting import ALERT_WORTHY_SOURCES
+from alerting import ALERT_WORTHY_SOURCES, PIPELINE_SOURCE_DISPLAY_NAMES
 from correlate import (
     find_correlations, correlation_summary,
     find_teco_correlations, teco_correlation_summary,
@@ -91,29 +91,6 @@ _correlation_cache = {}
 # Shared between the pipeline-health strip on the main dashboard and the
 # /pipeline-errors drill-down page, so a source's display name can't
 # drift between the two.
-PIPELINE_SOURCE_DISPLAY_NAMES = {
-    "fpl": "FPL",
-    "weather": "NWS Weather",
-    "teco": "TECO",
-    "duke": "Duke Energy",
-    "jea": "JEA",
-    "tallahassee": "City of Tallahassee",
-    "talquin": "Talquin Electric Cooperative",
-    "fpuc": "Florida Public Utilities Corporation",
-    "preco": "Peace River Electric Cooperative",
-    "fkec": "Florida Keys Electric Cooperative",
-    "tcec": "Tri-County Electric Cooperative",
-    "erec": "Escambia River Electric Cooperative",
-    "chelco": "Choctawhatchee Electric Cooperative",
-    "gcec": "Gulf Coast Electric Cooperative",
-    "lwbu": "Lake Worth Beach Utilities",
-    "ouc": "Orlando Utilities Commission",
-    "lcec": "Lee County Electric Cooperative",
-    "clay": "Clay Electric Cooperative",
-    "correlation": "Correlation",
-    "historical_tally": "Historical Confidence Tally",
-}
-
 # COUNTY_PICKER_CHOICES now lives in county_status.py (imported above).
 
 # Plain-English translations for the raw exception text landing in
