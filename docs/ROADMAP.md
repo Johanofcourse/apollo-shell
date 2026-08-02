@@ -697,6 +697,20 @@ this project's traffic never justifies one.
 - [ ] HTTPS via Let's Encrypt (free)
 - [ ] Firewall opened for real web traffic (80/443) - only SSH is open
       today
+- [x] **Per-IP rate limiting on the public site - shipped early
+      (2026-08-02).** First real launch-prep item decided: login
+      (Google/Facebook/etc.) got ruled out since nothing on the site
+      needs identity yet, analytics got tabled for its own
+      conversation, but rate limiting was an immediate yes - zero
+      throttling existed on any route before this. Flask-Limiter,
+      30/minute and 300/hour per IP - enough for a real visitor
+      clicking through several counties, tight enough to blunt a
+      scraper in a loop. Honest limitation stated plainly: gunicorn's
+      multiple worker processes each keep their own in-memory count,
+      so the real per-IP ceiling is closer to (limit × worker count)
+      than one perfectly shared number - good enough for today's real
+      scale; Redis is the upgrade path if genuine abuse ever demands
+      tighter, not built ahead of a need that doesn't exist yet.
 - [ ] A real choice on analytics: self-hosted/privacy-respecting (e.g.
       Plausible, Umami) vs. a hosted third-party tool - decide
       deliberately, don't default

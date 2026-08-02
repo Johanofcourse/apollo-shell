@@ -26,6 +26,17 @@ import public_site
 import storm_history
 from database import OutageDatabase
 
+# Real per-IP rate limiting added 2026-08-02 to blunt scraping ahead of
+# the site going public - disabled here so the test suite's many rapid
+# client.get() calls (all from the same test-client "IP") don't start
+# tripping 429s against each other, same real failure this fixture
+# exists to prevent seen the moment the limiter first got wired in.
+@pytest.fixture(autouse=True)
+def disable_rate_limiting():
+    public_site.limiter.enabled = False
+    yield
+    public_site.limiter.enabled = False
+
 
 @pytest.fixture
 def db_path():
@@ -39,6 +50,59 @@ def db_path():
 
 def _fpl_row(county, customers_out, customers_served=100_000):
     return {"county": county, "customers_out": customers_out, "customers_served": customers_served}
+
+
+class TestRateLimiting:
+    """
+    Per-IP rate limiting (Flask-Limiter), added 2026-08-02 to blunt a
+    scraper hammering the public site before it's ever a real problem.
+    Every other test in this file disables the limiter (see
+    disable_rate_limiting above) so rapid client.get() calls in the
+    suite don't trip each other - these tests re-enable it deliberately
+    to verify the real thing actually works, then reset the shared
+    in-memory storage afterward so no test above/below this class
+    inherits an already-exhausted counter.
+    """
+
+    @pytest.fixture(autouse=True)
+    def enable_rate_limiting(self):
+        public_site.limiter.enabled = True
+        yield
+        public_site.limiter.enabled = False
+        public_site.limiter.limiter.storage.reset()
+
+    def test_requests_within_the_limit_all_succeed(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+
+        for _ in range(30):
+            r = client.get("/")
+            assert r.status_code == 200
+
+    def test_exceeding_the_per_minute_limit_returns_429(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+
+        for _ in range(30):
+            client.get("/")
+
+        r = client.get("/")
+        assert r.status_code == 429
+
+    def test_different_ips_are_limited_independently(self):
+        # Real regression guard: a per-IP limiter that accidentally
+        # shared one global counter would let one heavy visitor lock
+        # out everyone else on the site, not just themselves.
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+
+        for _ in range(30):
+            client.get("/", environ_overrides={"REMOTE_ADDR": "1.1.1.1"})
+        blocked = client.get("/", environ_overrides={"REMOTE_ADDR": "1.1.1.1"})
+        assert blocked.status_code == 429
+
+        still_fine = client.get("/", environ_overrides={"REMOTE_ADDR": "2.2.2.2"})
+        assert still_fine.status_code == 200
 
 
 class TestGetSentinelVersion:

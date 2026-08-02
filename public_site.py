@@ -5,6 +5,8 @@ import sys
 from datetime import datetime
 
 from flask import Flask, render_template, request
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
@@ -31,6 +33,23 @@ import florida_county_paths as county_map
 app = Flask(__name__, template_folder="templates_public")
 app.jinja_env.filters['humanize'] = humanize_timestamp
 app.jinja_env.filters['row_tier'] = _row_tier
+
+# Blunts a scraper hammering the public site before it's ever a real
+# problem, not a response to one - added 2026-08-02, ahead of the
+# domain going live. Per-IP, in-memory: real enough to stop a bot doing
+# a tight loop, honest limitation worth stating plainly - gunicorn runs
+# multiple worker processes (see requirements.txt), each with its own
+# memory, so the real effective ceiling per IP is closer to (limit x
+# worker count) than a perfectly shared global count. Good enough for
+# this project's real scale; a shared backend (Redis) is the upgrade
+# path if real abuse ever demands a tighter guarantee - not built
+# preemptively for a site with zero traffic today.
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["30 per minute", "300 per hour"],
+    storage_uri="memory://",
+)
 
 
 def _severity_icon(severity):
