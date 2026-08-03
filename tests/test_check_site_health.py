@@ -45,7 +45,7 @@ def sent_emails(monkeypatch):
 
 def _mock_reachability(monkeypatch, results):
     """results: dict of url -> bool, whatever _is_reachable should return for it."""
-    monkeypatch.setattr(check_site_health, "_is_reachable", lambda url: results.get(url, True))
+    monkeypatch.setattr(check_site_health, "_is_reachable", lambda url, timeout=None: results.get(url, True))
 
 
 class TestCheckSiteHealth:
@@ -151,6 +151,44 @@ class TestCheckSiteHealth:
 
         assert len(sent_emails) == 1
         assert "umami" in sent_emails[0]["subject"]
+
+
+class TestPerServiceTimeout:
+    """
+    Real incident, 2026-08-03: dashboard flapped "not responding" twice
+    in a row - isolated to dashboard alone, zero crash evidence in its
+    own systemd journal. Best-supported explanation: its short-lived
+    correlation cache had just expired, and the next request paid a
+    real recompute cost that happened to exceed the default 10s window
+    - a legitimately slow response mistaken for a dead one. Fix gives
+    dashboard specifically a longer timeout; everything else keeps the
+    tighter default.
+    """
+
+    def test_dashboard_gets_the_longer_override_timeout(self, state_path, sent_emails, monkeypatch):
+        seen_timeouts = {}
+
+        def _fake_is_reachable(url, timeout=check_site_health.DEFAULT_REQUEST_TIMEOUT_SECONDS):
+            seen_timeouts[url] = timeout
+            return True
+
+        monkeypatch.setattr(check_site_health, "_is_reachable", _fake_is_reachable)
+        check_site_health.check_site_health()
+
+        assert seen_timeouts["http://127.0.0.1:5050/"] == 30
+
+    def test_other_services_keep_the_default_timeout(self, state_path, sent_emails, monkeypatch):
+        seen_timeouts = {}
+
+        def _fake_is_reachable(url, timeout=check_site_health.DEFAULT_REQUEST_TIMEOUT_SECONDS):
+            seen_timeouts[url] = timeout
+            return True
+
+        monkeypatch.setattr(check_site_health, "_is_reachable", _fake_is_reachable)
+        check_site_health.check_site_health()
+
+        assert seen_timeouts["http://127.0.0.1:5051/"] == check_site_health.DEFAULT_REQUEST_TIMEOUT_SECONDS
+        assert seen_timeouts["http://127.0.0.1:3000/"] == check_site_health.DEFAULT_REQUEST_TIMEOUT_SECONDS
 
 
 class TestIsReachable:

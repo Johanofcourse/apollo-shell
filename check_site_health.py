@@ -46,7 +46,21 @@ CHECKED_SERVICES = {
     "umami": "http://127.0.0.1:3000/",
 }
 
-REQUEST_TIMEOUT_SECONDS = 10
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 10
+
+# dashboard.py gets a longer leash than the default - real incident,
+# 2026-08-03: it flapped "not responding" twice in a row, isolated to
+# dashboard alone (public_site/umami stayed healthy both times), with
+# zero crash evidence in its own systemd journal - it never actually
+# went down. Best-supported explanation: its short-lived correlation
+# cache (see dashboard.py's own July 12 fix, "measured at over half a
+# minute" before that cache existed) had just expired, and the next
+# request paid a real, honest recompute cost that happened to exceed
+# the default 10s window - a legitimately slow response mistaken for a
+# dead one, not an actual outage.
+REQUEST_TIMEOUT_SECONDS_OVERRIDES = {
+    "dashboard": 30,
+}
 
 
 def _load_state():
@@ -61,9 +75,9 @@ def _save_state(state):
         json.dump(state, f)
 
 
-def _is_reachable(url):
+def _is_reachable(url, timeout=DEFAULT_REQUEST_TIMEOUT_SECONDS):
     try:
-        r = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+        r = requests.get(url, timeout=timeout)
         return r.status_code == 200
     except requests.exceptions.RequestException:
         return False
@@ -80,7 +94,8 @@ def check_site_health():
     state = _load_state()
 
     for name, url in CHECKED_SERVICES.items():
-        reachable = _is_reachable(url)
+        timeout = REQUEST_TIMEOUT_SECONDS_OVERRIDES.get(name, DEFAULT_REQUEST_TIMEOUT_SECONDS)
+        reachable = _is_reachable(url, timeout=timeout)
         was_down = state.get(name, False)
 
         if not reachable and not was_down:
