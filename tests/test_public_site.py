@@ -364,21 +364,33 @@ def _fake_open_fpl_event(county):
 
 class TestFplRestorationGapMessage:
     """
-    Real gap found 2026-08-03 investigating Palm Beach: it has an open
-    FPL outage but only 3 raw outage_events ever, both closed ones long
+    Started 2026-08-03 investigating Palm Beach: it has an open FPL
+    outage but only 3 raw outage_events ever, both closed ones long
     enough (10.5 days, 16.5 days) to get excluded by
-    fpl_ordinary_restoration_stats()'s outlier filter, and no major
-    storm on file either - so BOTH precedent cards used to just quietly
-    not render, with nothing telling a visitor why. Confirmed via raw
-    poll data this is a real data gap, not a bug (see
-    fpl_ordinary_restoration_stats()'s own docstring), so the honest
-    fix is a message, same "has_history"-style pattern Storm History
-    already uses for "no match" vs. "no storms in this window."
+    fpl_ordinary_restoration_stats()'s outlier filter - no Everyday
+    Outages card, nothing telling a visitor why.
+
+    First version of this message only fired when BOTH Everyday
+    Outages and Major Storms were missing - but a live check across
+    every FPL-open county found Major Storms archive data present for
+    nearly all of them (FPL's in almost every one of the 17 real PSC
+    storms), so that condition basically never triggered in practice,
+    and Johan caught it live-checking Palm Beach right after deploy.
+
+    Reframed around the real, always-true structural fact instead of a
+    data-completeness check: FPL never publishes a live per-incident
+    ETA at all, for anyone, unlike LWBU/TECO/Duke (which do, and get an
+    accuracy-checked card for it). Whatever FPL numbers a county does
+    show are historical substitutes, not a forecast for a specific
+    outage - true whether or not Everyday Outages/Major Storms happen
+    to have data, so this now shows any time FPL has an open outage in
+    the county, never contradicting whatever precedent cards render
+    alongside it.
     """
 
-    GAP_MESSAGE = "No confident FPL restoration precedent"
+    GAP_MESSAGE = "FPL doesn't publish a live restoration estimate for"
 
-    def test_shows_the_gap_message_when_fpl_is_open_but_no_precedent_exists(self, monkeypatch):
+    def test_shows_when_fpl_is_open_and_no_precedent_exists(self, monkeypatch):
         monkeypatch.setattr(
             public_site, "_real_per_county_open_events",
             lambda db: [_fake_open_fpl_event("Testonia")],
@@ -392,11 +404,15 @@ class TestFplRestorationGapMessage:
         r = client.get("/?county=Testonia")
 
         assert r.status_code == 200
-        body = r.data.decode()
-        assert self.GAP_MESSAGE in body
-        assert "Testonia County" in body
+        assert self.GAP_MESSAGE in r.data.decode()
 
-    def test_no_gap_message_when_everyday_precedent_exists(self, monkeypatch):
+    def test_still_shows_when_everyday_precedent_exists(self, monkeypatch):
+        # The real bug this test guards against: the first version of
+        # this message went silent the moment ANY precedent existed,
+        # which (given Major Storms archive coverage is nearly
+        # universal for FPL) meant it almost never showed at all. It
+        # must keep showing regardless - it's explaining a structural
+        # fact about FPL, not reporting a data gap.
         monkeypatch.setattr(
             public_site, "_real_per_county_open_events",
             lambda db: [_fake_open_fpl_event("Testonia")],
@@ -416,9 +432,9 @@ class TestFplRestorationGapMessage:
         r = client.get("/?county=Testonia")
 
         assert r.status_code == 200
-        assert self.GAP_MESSAGE not in r.data.decode()
+        assert self.GAP_MESSAGE in r.data.decode()
 
-    def test_no_gap_message_when_fpl_is_not_currently_open(self, monkeypatch):
+    def test_no_message_when_fpl_is_not_currently_open(self, monkeypatch):
         monkeypatch.setattr(public_site, "_real_per_county_open_events", lambda db: [])
         monkeypatch.setattr(public_site, "fpl_restoration_precedent", lambda county: None)
         monkeypatch.setattr(public_site, "fpl_restoration_precedent_by_wind_severity", lambda county: None)
