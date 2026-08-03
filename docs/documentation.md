@@ -1462,15 +1462,25 @@ FPL turned up a real, confirmed-genuine gap: only 3 raw FPL outage
 events on file there ever, and the 2 closed ones (10.5 and 16.5 days)
 are long enough to get excluded by `fpl_ordinary_restoration_stats()`'s
 own outlier filter as likely several outages blurred into one reading.
-No major storm on file for the county either. Both precedent cards
-just silently didn't render - no bug, but no explanation either.
-
 Same lesson Storm History already learned twice this project
 (distinguishing "unrecognized county" from "recognized county, empty
 window"): a missing number needs an honest sentence next to the gap it
-leaves, not silence. Added one line to the bottom of the County Status
-section - "No confident FPL restoration precedent for {county} County
-yet" - shown only when FPL has a real open outage there right now but
-neither the everyday nor the major-storm precedent card has anything
-to say. Same `.history-empty` styling already used for every other
-honest gap on the page.
+leaves, not silence.
+
+First version only fired when the county had zero FPL precedent of
+any kind - no Everyday Outages, no Major Storms. Checked it live
+against every county with an FPL outage open that night and found the
+condition basically never true: FPL's in almost every one of the 17
+real PSC storms on file, so the Major Storms card exists for nearly
+every county, Palm Beach included - meaning the message would have
+sat invisible in practice, and did on the very first county checked.
+
+Reframed around the real, always-true fact instead: FPL never
+publishes a live per-incident restoration estimate at all, for anyone,
+unlike LWBU/TECO/Duke (which do, and get an accuracy-checked card for
+it). Whatever FPL numbers a county does show are historical
+substitutes, not a forecast for one specific outage - true whether or
+not Everyday Outages/Major Storms happen to have data. Now shows
+whenever FPL has an open outage in the county, next to whatever
+precedent cards render alongside it rather than contradicting them.
+Same `.history-empty` styling as every other honest gap on the page.

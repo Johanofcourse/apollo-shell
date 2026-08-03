@@ -805,9 +805,10 @@
           </div>
         </div>
         {% endfor %}
-        {% if county_detail.fpl_open_now and not county_detail.everyday_precedent and not county_detail.major_storm_precedent %}
-        <div class="history-empty">No confident FPL restoration precedent for {{ selected_county }} County yet &mdash;
-          too few real outages tracked here, historical or live, to call a reliable range.</div>
+        {% if county_detail.fpl_open_now %}
+        <div class="history-empty">Unlike LWBU, TECO, and Duke, FPL doesn't publish a live restoration estimate for
+          individual outages &mdash; any number shown above is historical precedent, not a forecast for what's
+          happening at your address right now.</div>
         {% endif %}
       {% endif %}
     {% endif %}
