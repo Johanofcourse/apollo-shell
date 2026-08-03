@@ -805,6 +805,10 @@
           </div>
         </div>
         {% endfor %}
+        {% if county_detail.fpl_open_now and not county_detail.everyday_precedent and not county_detail.major_storm_precedent %}
+        <div class="history-empty">No confident FPL restoration precedent for {{ selected_county }} County yet &mdash;
+          too few real outages tracked here, historical or live, to call a reliable range.</div>
+        {% endif %}
       {% endif %}
     {% endif %}
   </section>
