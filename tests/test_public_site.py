@@ -384,6 +384,7 @@ class TestFplRestorationGapMessage:
             lambda db: [_fake_open_fpl_event("Testonia")],
         )
         monkeypatch.setattr(public_site, "fpl_restoration_precedent", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent_by_wind_severity", lambda county: None)
         monkeypatch.setattr(public_site, "fpl_ordinary_restoration_stats", lambda county, db: None)
 
         public_site.app.testing = True
@@ -401,6 +402,7 @@ class TestFplRestorationGapMessage:
             lambda db: [_fake_open_fpl_event("Testonia")],
         )
         monkeypatch.setattr(public_site, "fpl_restoration_precedent", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent_by_wind_severity", lambda county: None)
         monkeypatch.setattr(
             public_site, "fpl_ordinary_restoration_stats",
             lambda county, db: {
@@ -419,6 +421,7 @@ class TestFplRestorationGapMessage:
     def test_no_gap_message_when_fpl_is_not_currently_open(self, monkeypatch):
         monkeypatch.setattr(public_site, "_real_per_county_open_events", lambda db: [])
         monkeypatch.setattr(public_site, "fpl_restoration_precedent", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent_by_wind_severity", lambda county: None)
         monkeypatch.setattr(public_site, "fpl_ordinary_restoration_stats", lambda county, db: None)
 
         public_site.app.testing = True
