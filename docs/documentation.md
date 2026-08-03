@@ -1431,3 +1431,27 @@ actually ships, not a code change away from it. Also added to
 `check_site_health.py`'s watch list - a real systemd service now,
 capable of silently dying exactly like the other two it already
 tracks.
+
+## A false alarm, caught and fixed the same night (August 3, 2026)
+The site self-check fired for real for the first time - two "dashboard
+not responding" emails, ~5 minutes apart, both followed immediately by
+a "responding again." Checked it live: dashboard was already back up
+and answering normally by the time it got looked at, and its own
+systemd journal showed zero crash or restart evidence for that whole
+window - it never actually went down. Isolated to dashboard alone too
+(public_site and Umami stayed healthy both times), which ruled out a
+general VM-wide blip.
+
+Best-supported explanation, given the evidence: dashboard.py's own
+short-lived correlation cache (the July 12 fix - "measured at over
+half a minute" before that cache existed) had just expired, and the
+next request paid a real, honest recompute cost that happened to run
+past the health check's 10-second timeout. A legitimately slow
+response, mistaken for a dead one, not a real outage.
+
+Fixed by giving dashboard specifically a longer timeout (30s) in
+`check_site_health.py`, while public_site and Umami - neither of which
+have this expensive-recompute pattern - keep the tighter 10s default.
+A real, live example of the exact tradeoff sustained-failure
+thresholds exist for: not every "no response" is worth treating the
+same way.
