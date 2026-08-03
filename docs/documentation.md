@@ -1455,3 +1455,22 @@ have this expensive-recompute pattern - keep the tighter 10s default.
 A real, live example of the exact tradeoff sustained-failure
 thresholds exist for: not every "no response" is worth treating the
 same way.
+
+## Saying it out loud instead of going quiet (August 3, 2026)
+Digging into why Palm Beach shows no "Everyday Outages" precedent for
+FPL turned up a real, confirmed-genuine gap: only 3 raw FPL outage
+events on file there ever, and the 2 closed ones (10.5 and 16.5 days)
+are long enough to get excluded by `fpl_ordinary_restoration_stats()`'s
+own outlier filter as likely several outages blurred into one reading.
+No major storm on file for the county either. Both precedent cards
+just silently didn't render - no bug, but no explanation either.
+
+Same lesson Storm History already learned twice this project
+(distinguishing "unrecognized county" from "recognized county, empty
+window"): a missing number needs an honest sentence next to the gap it
+leaves, not silence. Added one line to the bottom of the County Status
+section - "No confident FPL restoration precedent for {county} County
+yet" - shown only when FPL has a real open outage there right now but
+neither the everyday nor the major-storm precedent card has anything
+to say. Same `.history-empty` styling already used for every other
+honest gap on the page.

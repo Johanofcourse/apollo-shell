@@ -351,6 +351,87 @@ class TestIndexRoute:
         assert r.status_code == 200
 
 
+def _fake_open_fpl_event(county):
+    return {
+        "county": county,
+        "utility": public_site.FPL_UTILITY_NAME,
+        "customers": 500,
+        "current_percentage_out": None,
+        "duration": "2 hours",
+        "estimated_restoration": None,
+    }
+
+
+class TestFplRestorationGapMessage:
+    """
+    Real gap found 2026-08-03 investigating Palm Beach: it has an open
+    FPL outage but only 3 raw outage_events ever, both closed ones long
+    enough (10.5 days, 16.5 days) to get excluded by
+    fpl_ordinary_restoration_stats()'s outlier filter, and no major
+    storm on file either - so BOTH precedent cards used to just quietly
+    not render, with nothing telling a visitor why. Confirmed via raw
+    poll data this is a real data gap, not a bug (see
+    fpl_ordinary_restoration_stats()'s own docstring), so the honest
+    fix is a message, same "has_history"-style pattern Storm History
+    already uses for "no match" vs. "no storms in this window."
+    """
+
+    GAP_MESSAGE = "No confident FPL restoration precedent"
+
+    def test_shows_the_gap_message_when_fpl_is_open_but_no_precedent_exists(self, monkeypatch):
+        monkeypatch.setattr(
+            public_site, "_real_per_county_open_events",
+            lambda db: [_fake_open_fpl_event("Testonia")],
+        )
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent_by_wind_severity", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_ordinary_restoration_stats", lambda county, db: None)
+
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia")
+
+        assert r.status_code == 200
+        body = r.data.decode()
+        assert self.GAP_MESSAGE in body
+        assert "Testonia County" in body
+
+    def test_no_gap_message_when_everyday_precedent_exists(self, monkeypatch):
+        monkeypatch.setattr(
+            public_site, "_real_per_county_open_events",
+            lambda db: [_fake_open_fpl_event("Testonia")],
+        )
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent_by_wind_severity", lambda county: None)
+        monkeypatch.setattr(
+            public_site, "fpl_ordinary_restoration_stats",
+            lambda county, db: {
+                "n": 5, "median_hours": 6.0, "min_hours": 2.0, "max_hours": 10.0,
+                "limited": False, "excluded_count": 0,
+            },
+        )
+
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia")
+
+        assert r.status_code == 200
+        assert self.GAP_MESSAGE not in r.data.decode()
+
+    def test_no_gap_message_when_fpl_is_not_currently_open(self, monkeypatch):
+        monkeypatch.setattr(public_site, "_real_per_county_open_events", lambda db: [])
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent_by_wind_severity", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_ordinary_restoration_stats", lambda county, db: None)
+
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia")
+
+        assert r.status_code == 200
+        assert self.GAP_MESSAGE not in r.data.decode()
+
+
 class TestUmamiTrackingScript:
     """
     Self-hosted analytics (Umami), added 2026-08-02. Both env vars
