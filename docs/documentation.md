@@ -1510,3 +1510,16 @@ treatment, all four. One real per-county note stays inline
 deliberately - the short "Reports one combined total across several
 counties" line in the Outage History (resolved-events) section, which
 was already one sentence.
+
+## Telling people the map is clickable before they've already looked at it (August 3, 2026)
+The only signals that the map was interactive used to sit below it -
+a caption line right under the SVG, plus a second hint further down
+pointing at the search box. A first-time visitor saw the title, a
+collapsed "What is this app?" toggle, then the map itself, with
+nothing telling them it responds to a click until after they'd already
+looked at it. Moved the "click a county, or search below" hint above
+the map instead - same text, same down-arrow, now pointing at the
+thing it's actually introducing. Also renamed the search box's
+placeholder from "Type your county…" to "Search your county…," a
+closer match for what the box actually does (autocomplete suggestions,
+not a plain text field).

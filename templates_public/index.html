@@ -140,7 +140,7 @@
 
   .gauge-caption { font-weight: 700; font-size: 1.05rem; margin-top: 0.2rem; }
   .gauge-sub { font-size: 0.78rem; color: var(--ink-soft); max-width: 16rem; }
-  .gauge-hint { font-size: 0.72rem; color: var(--cyan); margin-top: 0.3rem; }
+  .gauge-hint { font-size: 0.72rem; color: var(--cyan); }
   .map-mode-toggle { display: flex; gap: 0.4rem; margin-top: 0.7rem; }
   .map-mode-btn {
     background: transparent; border: 1px solid var(--line); color: var(--ink-soft);
@@ -386,6 +386,7 @@
 
   <div class="hero">
     <div class="hero-cell gauge-cell">
+      <div class="gauge-hint">&darr; click a county, or search below</div>
       <div class="fl-map-wrap" id="flMapWrap" role="img" aria-label="Map of Florida counties, color-coded by current weather-outage pattern">
         <svg id="flSvg" width="100%" height="100%" viewBox="0 0 736 706" preserveAspectRatio="xMidYMid meet">
           <g class="fl-rotate-group">
@@ -404,9 +405,8 @@
         <button type="button" class="map-mode-btn" id="mapModeHistorical">Historical Pattern</button>
       </div>
       <div class="map-legend" id="mapLegend"></div>
-      <div class="gauge-hint">&darr; click a county, or search below</div>
       <div class="county-combobox hero-county-combobox" id="heroCountyCombobox">
-        <input type="text" id="heroCountyInput" placeholder="Type your county&hellip;" autocomplete="off">
+        <input type="text" id="heroCountyInput" placeholder="Search your county&hellip;" autocomplete="off">
         <ul class="county-suggestions" id="heroCountySuggestions" hidden></ul>
       </div>
     </div>
