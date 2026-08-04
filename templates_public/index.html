@@ -706,9 +706,12 @@
               (typically {{ "%.1f"|format(ta.median_error_hours) }} hours later than promised).
             {% endif %}
           </div>
-          <div class="outage-note">Unlike FPL, TECO already reports a real per-incident restoration estimate — this
-            checks how trustworthy that existing number has actually been, not a live estimate for this specific
-            outage. From this project's own live tracking since April 2026.</div>
+          <details class="tele-explain">
+            <summary>More info</summary>
+            <p>Unlike FPL, TECO already reports a real per-incident restoration estimate — this
+              checks how trustworthy that existing number has actually been, not a live estimate for this specific
+              outage. From this project's own live tracking since April 2026.</p>
+          </details>
         </div>
         {% endif %}
         {% if county_detail.duke_precedent %}
@@ -727,10 +730,13 @@
             {{ "%.1f"|format(dp.max_hours) }} hours to restore, a median of {{ "%.1f"|format(dp.median_hours) }}
             hours.</div>
           {% endif %}
-          <div class="outage-note">Duke already reports real, individually-tracked incidents (like TECO), but has
-            no restoration-estimate field to check accuracy against — so this is a plain duration precedent, like
-            FPL's "Everyday Outages," from this project's own live tracking since April 2026. Not a live estimate
-            for this specific outage.</div>
+          <details class="tele-explain">
+            <summary>More info</summary>
+            <p>Duke already reports real, individually-tracked incidents (like TECO), but has
+              no restoration-estimate field to check accuracy against — so this is a plain duration precedent, like
+              FPL's "Everyday Outages," from this project's own live tracking since April 2026. Not a live estimate
+              for this specific outage.</p>
+          </details>
         </div>
         {% endif %}
         {% if county_detail.jea_precedent %}
@@ -748,11 +754,14 @@
             between {{ "%.0f"|format(jp.min_hours) }} and {{ "%.0f"|format(jp.max_hours) }} hours to restore,
             a median of {{ "%.0f"|format(jp.median_hours) }} hours.</div>
           {% endif %}
-          <div class="outage-note">JEA has the same structural limit as FPL — a county-wide rollup, no
-            per-incident data at all — so it gets FPL's historical-precedent shape instead of TECO's/Duke's.
-            JEA's live event volume is too thin right now for an "Everyday Outages" companion, so this is
-            historical-only for now. From 17 real PSC reports (2018&ndash;2025), not this project's own live
-            tracking.</div>
+          <details class="tele-explain">
+            <summary>More info</summary>
+            <p>JEA has the same structural limit as FPL — a county-wide rollup, no
+              per-incident data at all — so it gets FPL's historical-precedent shape instead of TECO's/Duke's.
+              JEA's live event volume is too thin right now for an "Everyday Outages" companion, so this is
+              historical-only for now. From 17 real PSC reports (2018&ndash;2025), not this project's own live
+              tracking.</p>
+          </details>
         </div>
         {% endif %}
         {% if county_detail.lwbu_accuracy %}
@@ -774,9 +783,12 @@
               (typically {{ "%.1f"|format(la.median_error_hours) }} hours later than promised).
             {% endif %}
           </div>
-          <div class="outage-note">Same shape as TECO's accuracy check — LWBU already reports a real
-            per-incident restoration estimate, so this checks how trustworthy that existing number has
-            actually been, not a live estimate for this specific outage.</div>
+          <details class="tele-explain">
+            <summary>More info</summary>
+            <p>Same shape as TECO's accuracy check — LWBU already reports a real
+              per-incident restoration estimate, so this checks how trustworthy that existing number has
+              actually been, not a live estimate for this specific outage.</p>
+          </details>
         </div>
         {% endif %}
         {% for e in county_detail.combined_events %}

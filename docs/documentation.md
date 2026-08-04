@@ -1499,3 +1499,14 @@ was cut, only hidden by default - same "honesty over polish" principle
 as everything else on this page, just less of it competing for
 attention at once. The shorter, already-tight notes (TECO/Duke/JEA/
 LWBU's accuracy caveats) stay inline for now.
+
+## The rest of the utilities get the same treatment (August 3, 2026)
+Johan caught it fast, checking Orlando (OUC) right after the FPL-only
+pass shipped: TECO's/Duke's/JEA's/LWBU's own accuracy and precedent
+notes were never touched, so they were still the longest, most
+inline text on the page relative to everything around them now that
+FPL's were collapsed. Same `<details>/<summary>More info</summary>`
+treatment, all four. One real per-county note stays inline
+deliberately - the short "Reports one combined total across several
+counties" line in the Outage History (resolved-events) section, which
+was already one sentence.
