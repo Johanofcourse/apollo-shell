@@ -1484,3 +1484,18 @@ not Everyday Outages/Major Storms happen to have data. Now shows
 whenever FPL has an open outage in the county, next to whatever
 precedent cards render alongside it rather than contradicting them.
 Same `.history-empty` styling as every other honest gap on the page.
+
+## Collapsing the longest caveats behind "More info" (August 3, 2026)
+All this honesty adds up to real text weight - the County Status cards
+were carrying full-paragraph caveats (Major Storms' PSC-archive
+explanation, the everyday/major-storm distinction, the combined-
+territory disclaimer, the statewide summary's incident-vs-percentage
+note) inline, every time, whether or not a visitor cared. Collapsed
+the four longest into `<details>/<summary>More info</summary>`
+toggles - the same pattern the page already used for "What is this
+section?" and the hero stat explainers ("WHAT COUNTS AS A CUSTOMER?"),
+just applied at the individual-card level for the first time. Nothing
+was cut, only hidden by default - same "honesty over polish" principle
+as everything else on this page, just less of it competing for
+attention at once. The shorter, already-tight notes (TECO/Duke/JEA/
+LWBU's accuracy caveats) stay inline for now.
