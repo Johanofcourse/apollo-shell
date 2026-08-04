@@ -92,7 +92,6 @@
   .summary-panel p:last-child { margin-bottom: 0; }
   .summary-panel strong { color: var(--ink); font-weight: 600; overflow-wrap: break-word; }
   .summary-panel strong.c-magenta { color: var(--magenta); }
-  .summary-caveat { display: block; margin-top: 0.5rem; font-size: 0.82rem; color: var(--ink-soft); font-style: italic; }
 
   .hero {
     display: grid;
@@ -459,11 +458,14 @@
       <strong>{{ narrative.top_pct_utility_name }}</strong> has the highest share of its tracked customers affected,
       at <strong class="mono">{{ "%.2f"|format(narrative.top_pct_utility_value) }}</strong>%.
       {% endif %}
-      <span class="summary-caveat">Some of our sources (incident-level feeds without a reported customer base) are
+    </p>
+    <details class="tele-explain">
+      <summary>More info</summary>
+      <p>Some of our sources (incident-level feeds without a reported customer base) are
         counted in every "customers out" figure above but left out of every percentage figure - we won't guess at a
         number we don't actually have. Combined-territory sources report one total across several counties at once,
-        so their number is counted statewide but can't be broken out by county on the map.</span>
-    </p>
+        so their number is counted statewide but can't be broken out by county on the map.</p>
+    </details>
     {% endif %}
   </div>
 
@@ -638,11 +640,14 @@
             {{ "%.0f"|format(ep.max_hours) }} hours to restore, a median of {{ "%.0f"|format(ep.median_hours) }}
             hours.</div>
           {% endif %}
-          <div class="outage-note">Historical precedent, not a live estimate for this specific outage — real
-            restoration time can differ. From this project's own live tracking, not the storm archive below -
-            ordinary outages, not major storms.{% if ep.excluded_count %} {{ ep.excluded_count }} unusually long
-            reading{{ "s" if ep.excluded_count != 1 }} excluded as likely several real outages blurred into one
-            county-wide reading, not one real repair job.{% endif %}</div>
+          <details class="tele-explain">
+            <summary>More info</summary>
+            <p>Historical precedent, not a live estimate for this specific outage — real
+              restoration time can differ. From this project's own live tracking, not the storm archive below -
+              ordinary outages, not major storms.{% if ep.excluded_count %} {{ ep.excluded_count }} unusually long
+              reading{{ "s" if ep.excluded_count != 1 }} excluded as likely several real outages blurred into one
+              county-wide reading, not one real repair job.{% endif %}</p>
+          </details>
         </div>
         {% endif %}
         {% if county_detail.major_storm_precedent %}
@@ -672,11 +677,14 @@
             {% if sev.unmatched_count %} ({{ sev.unmatched_count }} storm{{ "s" if sev.unmatched_count != 1 }} here
             {{ "have" if sev.unmatched_count != 1 else "has" }} no wind reading to classify.){% endif %}</div>
           {% endif %}
-          <div class="outage-note">Historical precedent, not a live estimate for this specific outage — real
-            restoration time can differ. "Major storm" here means a real event serious enough that the Florida
-            Public Service Commission required a formal utility restoration report for it - mostly named hurricanes
-            and tropical storms, plus a few severe non-tropical outbreaks. From 17 real PSC reports
-            (2018&ndash;2025), not this project's own live tracking.</div>
+          <details class="tele-explain">
+            <summary>More info</summary>
+            <p>Historical precedent, not a live estimate for this specific outage — real
+              restoration time can differ. "Major storm" here means a real event serious enough that the Florida
+              Public Service Commission required a formal utility restoration report for it - mostly named hurricanes
+              and tropical storms, plus a few severe non-tropical outbreaks. From 17 real PSC reports
+              (2018&ndash;2025), not this project's own live tracking.</p>
+          </details>
         </div>
         {% endif %}
         {% if county_detail.teco_accuracy %}
@@ -787,7 +795,12 @@
           {% elif e.other_active_counties %}
           <div class="outage-sub">Real street-level data shows activity elsewhere in this territory ({{ e.other_active_counties | join(", ") }}), not confirmed specifically in {{ selected_county }}.</div>
           {% endif %}
-          <div class="outage-note">Reports one combined total across several counties, not broken out by county. Location detail above (when present) comes from real street names this source sometimes reports, resolved to a county only when confidently matched within its own known territory.</div>
+          <details class="tele-explain">
+            <summary>More info</summary>
+            <p>Reports one combined total across several counties, not broken out by county. Location detail above
+              (when present) comes from real street names this source sometimes reports, resolved to a county only
+              when confidently matched within its own known territory.</p>
+          </details>
         </div>
         {% endfor %}
         {% for a in county_detail.active_alerts %}
