@@ -76,8 +76,12 @@ POLL_INTERVAL_SECONDS = 15 * 60
 # Talquin/PRECO's credentials need periodic manual refreshing (see
 # TALQUIN_API_URL/PRECO_API_URL in .env.example) - checking them less
 # often than every other source is a lighter request cadence while
-# that's true.
-TALQUIN_PRECO_INTERVAL_SECONDS = 30 * 60
+# that's true. Widened from 30 to 45 minutes on 2026-08-10 after a real
+# 24-day outage (both sources' trackingCode blocked by their shared
+# WAF, 2026-07-17 to 2026-08-10) - suspected the 30-min cadence played
+# a role in triggering it, so backing off further while stability is
+# unproven.
+TALQUIN_PRECO_INTERVAL_SECONDS = 45 * 60
 
 
 def run_outage_cycle(db):
@@ -900,7 +904,7 @@ def main():
             if check_talquin_preco_this_cycle:
                 last_talquin_preco_check = time.time()
             else:
-                print("Skipping Talquin/PRECO this cycle (30-min interval not yet elapsed)")
+                print("Skipping Talquin/PRECO this cycle (45-min interval not yet elapsed)")
 
             if check_talquin_preco_this_cycle:
                 try:
