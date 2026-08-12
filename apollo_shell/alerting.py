@@ -10,8 +10,14 @@ load_dotenv()
 ALERT_EMAIL_ADDRESS = os.environ.get("ALERT_EMAIL_ADDRESS")
 ALERT_EMAIL_APP_PASSWORD = os.environ.get("ALERT_EMAIL_APP_PASSWORD")
 
-ICLOUD_SMTP_HOST = "smtp.mail.me.com"
-ICLOUD_SMTP_PORT = 587
+# Switched from iCloud to a dedicated Gmail account (2026-08-12) - a
+# fake sustained-failure alert email, crafted convincingly enough to
+# use this file's own real wording, made it obvious the personal
+# iCloud address shouldn't be the one exposed as this system's public
+# face. A dedicated account is a strictly better boundary regardless of
+# how any single incident is ultimately explained.
+ALERT_SMTP_HOST = "smtp.gmail.com"
+ALERT_SMTP_PORT = 587
 
 # Sources whose failures are worth a real email, not just the
 # dashboard's own pipeline-health strip - ones known to need manual
@@ -215,11 +221,11 @@ def check_and_alert_sustained_failures(db):
 
 def send_alert_email(subject, body):
     """
-    Send a plain-text alert email via iCloud Mail's SMTP server, using
-    an app-specific password (not the real account password) - same
-    address as both sender and recipient. Never raises - a missing or
-    misconfigured alert channel should never take down the poller
-    itself, just skip silently (with a log line).
+    Send a plain-text alert email via a dedicated Gmail account's SMTP
+    server, using an app-specific password (not the real account
+    password) - same address as both sender and recipient. Never
+    raises - a missing or misconfigured alert channel should never
+    take down the poller itself, just skip silently (with a log line).
     """
     if not ALERT_EMAIL_ADDRESS or not ALERT_EMAIL_APP_PASSWORD:
         print("Alert email not configured - skipping")
@@ -231,7 +237,7 @@ def send_alert_email(subject, body):
     msg["To"] = ALERT_EMAIL_ADDRESS
 
     try:
-        with smtplib.SMTP(ICLOUD_SMTP_HOST, ICLOUD_SMTP_PORT, timeout=15) as server:
+        with smtplib.SMTP(ALERT_SMTP_HOST, ALERT_SMTP_PORT, timeout=15) as server:
             server.starttls()
             server.login(ALERT_EMAIL_ADDRESS, ALERT_EMAIL_APP_PASSWORD)
             server.send_message(msg)

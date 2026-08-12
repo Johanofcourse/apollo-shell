@@ -1644,3 +1644,11 @@ same real live data before shipping: the county-by-county distribution
 went from 55 storm / 9 watch / 1 clear (of 65) to 2 storm / 44 watch /
 19 clear - a map that finally shows something worth reading instead of
 a wall of one color.
+
+## Alert email moved off Johan's personal account (August 12, 2026)
+`send_alert_email()` now sends through a dedicated Gmail account
+(`apollopoweroutage@gmail.com`) instead of Johan's own iCloud address -
+a real, meaningful separation between "this project's public-facing
+identity" and his personal email, not just a cosmetic rename. Verified
+end-to-end with a real test send through the new account's SMTP before
+switching the poller over.

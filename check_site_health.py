@@ -14,7 +14,7 @@ bug unlikely to recur, but this check exists for the general case -
 any reason either app stops answering gets caught within minutes,
 not whenever someone happens to look.
 
-Reuses alerting.py's send_alert_email() - same iCloud SMTP channel
+Reuses alerting.py's send_alert_email() - same Gmail SMTP channel
 already configured for the Talquin/PRECO alerts. State (whether a
 "down" email has already been sent for the current outage) lives in a
 small local JSON file rather than in memory, since this script is a
