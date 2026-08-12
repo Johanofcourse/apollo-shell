@@ -1652,3 +1652,13 @@ a real, meaningful separation between "this project's public-facing
 identity" and his personal email, not just a cosmetic rename. Verified
 end-to-end with a real test send through the new account's SMTP before
 switching the poller over.
+
+## A real contact address, on purpose (August 12, 2026)
+Added a "Questions, corrections, or want to collaborate?" line to the
+public site's footer, pointing at `contact@apollosentinel.app` - a
+free Porkbun email forward to the same dedicated Gmail account alerts
+already go through. Deliberate, not an accident: this project's whole
+security review today was about controlling what's exposed and how -
+one real, chosen contact channel is the intended outcome, not zero.
+Verified end-to-end with a real test send from an entirely separate
+account before adding it anywhere public.
