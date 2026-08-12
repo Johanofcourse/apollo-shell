@@ -14,6 +14,7 @@ from dashboard import (
     _is_pipeline_error_ongoing, _normalize_open_events, _rows_for_county,
     _paginate, _split_chronic_errors, _summarize_chronic_errors,
     _build_unified_view, COUNTY_PICKER_CHOICES,
+    _group_closed_events_by_month,
 )
 
 
@@ -522,6 +523,71 @@ class TestRowsForCounty:
     def test_row_with_no_county_never_matches(self):
         rows = [self._row(None)]
         assert _rows_for_county(rows, "Duval") == []
+
+
+class TestGroupClosedEventsByMonth:
+    """
+    _group_closed_events_by_month() - added 2026-08-11 for the county
+    page's new "Monthly History" breakdown (Johan's own request: an
+    expandable "Monthly" section with one expandable bucket per month,
+    paginated within a month). Groups this project's own real closed-
+    event data (the same shape Outage History already uses) by the
+    calendar month of start_time - real per-county and combined-
+    territory events both, since neither dataset existed on the
+    internal dashboard's /county page before this.
+    """
+
+    def _event(self, start_time, utility="Test Utility", county="Duval"):
+        return {
+            "utility": utility, "county": county, "peak_customers": 10,
+            "start_time": start_time, "end_time": "2026-08-02T00:00:00", "duration": "2h",
+        }
+
+    def test_groups_events_into_the_right_month_bucket(self):
+        events = [self._event("2026-08-01T10:00:00"), self._event("2026-07-15T10:00:00")]
+        months = _group_closed_events_by_month(events)
+        assert [m["month_key"] for m in months] == ["2026-08", "2026-07"]
+        assert months[0]["count"] == 1
+        assert months[1]["count"] == 1
+
+    def test_multiple_events_in_the_same_month_share_one_bucket(self):
+        events = [self._event("2026-08-01T10:00:00"), self._event("2026-08-20T10:00:00")]
+        months = _group_closed_events_by_month(events)
+        assert len(months) == 1
+        assert months[0]["count"] == 2
+
+    def test_months_are_sorted_newest_first(self):
+        events = [
+            self._event("2026-04-01T10:00:00"),
+            self._event("2026-08-01T10:00:00"),
+            self._event("2026-06-01T10:00:00"),
+        ]
+        months = _group_closed_events_by_month(events)
+        assert [m["month_key"] for m in months] == ["2026-08", "2026-06", "2026-04"]
+
+    def test_events_within_a_month_are_sorted_newest_first(self):
+        events = [
+            self._event("2026-08-01T10:00:00"),
+            self._event("2026-08-20T10:00:00"),
+            self._event("2026-08-10T10:00:00"),
+        ]
+        months = _group_closed_events_by_month(events)
+        assert [e["start_time"] for e in months[0]["events"]] == [
+            "2026-08-20T10:00:00", "2026-08-10T10:00:00", "2026-08-01T10:00:00",
+        ]
+
+    def test_month_label_is_a_real_human_readable_month_and_year(self):
+        months = _group_closed_events_by_month([self._event("2026-08-01T10:00:00")])
+        assert months[0]["month_label"] == "August 2026"
+
+    def test_event_with_no_start_time_is_skipped_not_a_crash(self):
+        events = [self._event("2026-08-01T10:00:00"), self._event(None)]
+        months = _group_closed_events_by_month(events)
+        assert len(months) == 1
+        assert months[0]["count"] == 1
+
+    def test_empty_input_returns_empty_list(self):
+        assert _group_closed_events_by_month([]) == []
 
     def test_empty_rows_returns_empty(self):
         assert _rows_for_county([], "Duval") == []

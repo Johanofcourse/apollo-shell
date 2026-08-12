@@ -116,6 +116,57 @@
     }
     .alert-window { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.5rem; }
     .alert-areas { color: var(--muted); font-size: 0.82rem; }
+    /* Collapsed by default - a per-county month-by-month breakdown of
+       this project's own tracked closed events, nested one level
+       (outer "Monthly" toggle, one inner toggle per month) so a
+       county's whole real history doesn't dump onto the page at once. */
+    .monthly-block {
+      background: var(--panel);
+      border: 1px solid var(--pink);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-top: 1rem;
+    }
+    .monthly-block > summary {
+      cursor: pointer;
+      list-style: none;
+      color: var(--text);
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    .monthly-block > summary::-webkit-details-marker { display: none; }
+    .monthly-block > summary::before { content: "▸ "; color: var(--pink); }
+    .monthly-block[open] > summary::before { content: "▾ "; }
+    .month-block {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.6rem 1rem;
+      margin-top: 0.75rem;
+    }
+    .month-block > summary {
+      cursor: pointer;
+      list-style: none;
+      color: var(--text);
+      font-size: 0.88rem;
+    }
+    .month-block > summary::-webkit-details-marker { display: none; }
+    .month-block > summary::before { content: "▸ "; color: var(--muted); }
+    .month-block[open] > summary::before { content: "▾ "; }
+    .month-block .count { color: var(--muted); }
+    .month-block .wrap { margin-top: 0.6rem; margin-bottom: 0; }
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 0.75rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .pagination a { color: var(--pink); text-decoration: none; }
+    .pagination a:hover { text-decoration: underline; }
+    .pagination-disabled { color: var(--border); pointer-events: none; }
   </style>
 </head>
 <body>
@@ -461,6 +512,54 @@
           No entry, and no live source currently reports outage data for {{ selected_county }} at all.
         {% endif %}
       </div>
+    {% endif %}
+
+    <h2>Monthly History</h2>
+    <p class="section-note">
+      Every resolved event this project has directly tracked for {{ selected_county }} (real per-county and
+      combined-territory both), grouped by the month it started - this project's own live tracking since April
+      2026, not the multi-year storm archive. A different cut of the same data <a href="/history">County Storm
+      History</a> and Outage History use elsewhere.
+    </p>
+    {% if monthly_history %}
+      <details class="monthly-block" {% if request.args.get('month') %}open{% endif %}>
+        <summary>Monthly ({{ monthly_history | length }} month{{ "s" if monthly_history | length != 1 }} on file)</summary>
+        {% for m in monthly_history %}
+        <details class="month-block" id="month-{{ m.month_key }}" {% if request.args.get('month') == m.month_key %}open{% endif %}>
+          <summary>{{ m.month_label }} <span class="count">&mdash; {{ m.count }} issue{{ "s" if m.count != 1 }}</span></summary>
+          <div class="wrap">
+            <table>
+              <tr><th>Utility</th><th>Peak Customers</th><th>Started</th><th>Duration</th></tr>
+              {% for e in m.events %}
+              <tr>
+                <td>{{ e.utility }}{% if e.county and e.county != selected_county %} <span class="count">({{ e.county }})</span>{% endif %}</td>
+                <td>{{ "{:,}".format(e.peak_customers or 0) }}</td>
+                <td>{{ e.start_time | humanize }}</td>
+                <td>{{ e.duration }}</td>
+              </tr>
+              {% endfor %}
+            </table>
+          </div>
+          {% if m.total_pages > 1 %}
+          <div class="pagination">
+            {% if m.has_prev %}
+              <a href="/county?county={{ selected_county | urlencode }}&month={{ m.month_key }}&{{ m.page_param }}={{ m.page - 1 }}#month-{{ m.month_key }}">&larr; Newer</a>
+            {% else %}
+              <span class="pagination-disabled">&larr; Newer</span>
+            {% endif %}
+            <span>Page {{ m.page }} of {{ m.total_pages }}</span>
+            {% if m.has_next %}
+              <a href="/county?county={{ selected_county | urlencode }}&month={{ m.month_key }}&{{ m.page_param }}={{ m.page + 1 }}#month-{{ m.month_key }}">Older &rarr;</a>
+            {% else %}
+              <span class="pagination-disabled">Older &rarr;</span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </details>
+        {% endfor %}
+      </details>
+    {% else %}
+      <div class="empty">No resolved events on file for {{ selected_county }} yet from this project's own live tracking.</div>
     {% endif %}
 
     <h2>Active Weather Alerts{{ ' (' ~ active_alerts|length ~ ')' if active_alerts else '' }}</h2>
