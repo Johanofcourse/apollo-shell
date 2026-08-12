@@ -1618,3 +1618,29 @@ login has the same access. Fine for a handful of trusted people right
 now; a real accounts system would be a genuinely bigger project if
 "eventually" ever means dozens of people or different permission
 tiers, not an incremental step from here.
+
+## Historical Pattern's map was tied to an absolute number that could only ever go up (August 12, 2026)
+Johan noticed the real problem himself the morning after launch: the
+Historical Pattern map view read as almost entirely red. Root cause,
+confirmed against real live data before touching anything: `verdictOf()`
+colored a county "Storm Related" if it had even one high-confidence
+weather-correlation match, ever - not whichever tier actually dominated
+its history. Checked live: 55 of 65 counties read red this way, most
+with high-confidence readings as a small minority of their real total
+(Columbia County: 9 high, 110 medium, 51 low - 5.3% high, still solid
+red). Since raw counts only ever grow, every active county was destined
+to cross the "at least one high match ever" bar eventually, regardless
+of its true pattern - explains exactly what Johan was seeing.
+
+Fixed by switching to the same dominant-tier logic
+`county_status.at_risk_counties()` already used elsewhere for this
+exact same tally, just never carried over to the map's own coloring -
+whichever confidence tier is the real plurality wins, ties favoring the
+more alarming tier first. Genuinely relative rather than absolute:
+since dividing three counts by the same total never changes which one
+is biggest, this only shifts as the real mix of a county's history
+shifts, not merely because more data accumulates. Verified against the
+same real live data before shipping: the county-by-county distribution
+went from 55 storm / 9 watch / 1 clear (of 65) to 2 storm / 44 watch /
+19 clear - a map that finally shows something worth reading instead of
+a wall of one color.

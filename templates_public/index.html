@@ -1025,10 +1025,22 @@
   document.getElementById("kpiCounties").textContent = counties.filter(c => (c.customers || 0) > 0).length.toLocaleString();
 
   function verdictOf(c) {
-    const total = (c.high || 0) + (c.medium || 0) + (c.low || 0);
-    if (c.high > 0) return { cls: "storm", label: "Storm Related" };
-    if (c.medium > 0) return { cls: "watch", label: "Keep An Eye Out" };
+    // Relative, not absolute - picks whichever confidence tier is the
+    // real plurality of this county's own history, not "has this
+    // county EVER had even one high-confidence match" (the old rule,
+    // fixed 2026-08-12: since raw counts only ever grow, that version
+    // trended every active county toward "storm" over time regardless
+    // of the true underlying mix - confirmed live, 55 of 65 counties
+    // read that way, most with high confidence as a small minority of
+    // their real total). Same dominant-tier logic
+    // county_status.at_risk_counties() already uses in Python for the
+    // same underlying tally - ties favor the more alarming tier first
+    // (high, then medium), matching that existing precedent exactly.
+    const high = c.high || 0, medium = c.medium || 0, low = c.low || 0;
+    const total = high + medium + low;
     if (total === 0) return { cls: "nodata", label: "No Historical Weather Data Yet" };
+    if (high >= medium && high >= low) return { cls: "storm", label: "Storm Related" };
+    if (medium >= low) return { cls: "watch", label: "Keep An Eye Out" };
     return { cls: "clear", label: "Probably Not Weather" };
   }
 
