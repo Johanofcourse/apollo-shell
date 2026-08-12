@@ -1523,3 +1523,25 @@ thing it's actually introducing. Also renamed the search box's
 placeholder from "Type your county…" to "Search your county…," a
 closer match for what the box actually does (autocomplete suggestions,
 not a plain text field).
+
+## A monthly view of a county's own real history, on the internal dashboard (August 11, 2026)
+The internal dashboard's `/county` page was explicitly "live status
+only" until now - real per-county outages, active alerts, weather
+correlation, nothing historical (see its own docstring, unchanged
+since 2026-07-14). The public site's Outage History (real closed
+events this project has directly tracked since April) was never
+surfaced there at all, just never wired in.
+
+Added a "Monthly History" section: one outer collapsed "Monthly"
+toggle, one nested toggle per calendar month (newest first, count
+shown in the summary line so it's scannable without expanding
+anything), and real pagination inside a month for busy counties -
+TECO/Duke report real per-incident closures, so a single month for a
+county like Hillsborough can run past 200 individual events. Verified
+against real live data before shipping: Hillsborough's August/July
+2026 buckets, over 200 events each, paginate correctly and
+independently (moving August to page 2 leaves July's own page
+untouched). Reuses the same per-county closed-event data
+`_real_per_county_closed_events()`/`_combined_territory_closed_events()`
+already provide for the public site - no new data collection, just a
+new view onto data that already existed.

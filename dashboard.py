@@ -28,6 +28,7 @@ from county_status import (
     COUNTY_PICKER_CHOICES, _duration_since, _percentage_tier,
     _normalize_open_events, _real_per_county_open_events,
     _combined_territory_open_events, _rows_for_county,
+    _real_per_county_closed_events, _combined_territory_closed_events,
     humanize_timestamp as _humanize_timestamp,
     explain_missing_historical_data, fpl_ordinary_restoration_stats,
     teco_etr_accuracy, TECO_UTILITY_NAME,
@@ -995,6 +996,7 @@ def county_detail():
     duke_precedent = None
     jea_precedent = None
     lwbu_accuracy = None
+    monthly_history = []
 
     if selected_county:
         db = OutageDatabase()
@@ -1083,6 +1085,30 @@ def county_detail():
         )
         lwbu_accuracy = lwbu_etr_accuracy(selected_county, db) if lwbu_open_now else None
 
+        # Monthly history - every resolved event this project has
+        # directly tracked for this county (real + combined-territory
+        # both), grouped by calendar month. A genuinely different
+        # dataset from the live sections above: this is Outage
+        # History's own closed-event data (see public_site.py's
+        # identical grouping for the public-facing equivalent), not
+        # yet surfaced anywhere on the internal dashboard before now.
+        closed_events = _rows_for_county(_real_per_county_closed_events(db), selected_county)
+        combined_closed_events = _rows_for_county(_combined_territory_closed_events(db), selected_county)
+        monthly_history = _group_closed_events_by_month(closed_events + combined_closed_events)
+        for m in monthly_history:
+            page_param = f"mpage_{m['month_key']}"
+            try:
+                m_page = int(request.args.get(page_param, "1"))
+            except ValueError:
+                m_page = 1
+            pagination = _paginate(m["events"], m_page, MONTHLY_HISTORY_EVENTS_PER_PAGE)
+            m["events"] = pagination["items"]
+            m["page"] = pagination["page"]
+            m["total_pages"] = pagination["total_pages"]
+            m["has_prev"] = pagination["has_prev"]
+            m["has_next"] = pagination["has_next"]
+            m["page_param"] = page_param
+
         db.close()
 
         active_alerts = [a for a in all_active_alerts if _county_in_alert(selected_county, a["areas"])]
@@ -1105,6 +1131,7 @@ def county_detail():
         duke_precedent=duke_precedent,
         jea_precedent=jea_precedent,
         lwbu_accuracy=lwbu_accuracy,
+        monthly_history=monthly_history,
     )
 
 
@@ -1231,6 +1258,47 @@ def _paginate(items, page, per_page):
         "has_prev": page > 1,
         "has_next": page < total_pages,
     }
+
+
+# How many of a month's individual closed events show on one page inside
+# its expanded <details> - TECO/Duke report real per-incident closures,
+# so a busy county in a busy month can genuinely have dozens in one
+# bucket, unlike the low-volume county-rollup sources.
+MONTHLY_HISTORY_EVENTS_PER_PAGE = 10
+
+
+def _group_closed_events_by_month(events):
+    """
+    Groups already-filtered closed events (real + combined-territory,
+    same normalized shape _real_per_county_closed_events()/
+    _combined_territory_closed_events() produce - a dict with
+    start_time/end_time/utility/etc.) by the calendar month of
+    start_time, for the county page's "Monthly" breakdown.
+
+    Returns a list of dicts (month_key "YYYY-MM", month_label "August
+    2026", events, count), newest month first, each month's own events
+    newest first. Events missing a start_time are skipped - shouldn't
+    happen for a genuinely closed event, but avoids a crash on
+    malformed data rather than assuming it can't occur.
+    """
+    buckets = {}
+    for e in events:
+        start_time = e.get("start_time")
+        if not start_time:
+            continue
+        buckets.setdefault(start_time[:7], []).append(e)
+
+    months = []
+    for month_key, month_events in buckets.items():
+        month_events.sort(key=lambda e: e["start_time"] or "", reverse=True)
+        months.append({
+            "month_key": month_key,
+            "month_label": datetime.strptime(month_key, "%Y-%m").strftime("%B %Y"),
+            "events": month_events,
+            "count": len(month_events),
+        })
+    months.sort(key=lambda m: m["month_key"], reverse=True)
+    return months
 
 
 def _split_chronic_errors(errors, chronic_sources, limit):
