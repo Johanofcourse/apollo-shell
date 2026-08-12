@@ -7,6 +7,7 @@ from datetime import datetime
 from flask import Flask, render_template, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
@@ -33,6 +34,20 @@ import florida_county_paths as county_map
 app = Flask(__name__, template_folder="templates_public")
 app.jinja_env.filters['humanize'] = humanize_timestamp
 app.jinja_env.filters['row_tier'] = _row_tier
+
+# nginx now sits in front of this app (added 2026-08-11 for the public
+# launch) - without this, every visitor's request.remote_addr would
+# read as nginx's own loopback address, since that's who's actually
+# making the request to gunicorn. Real consequence if left unfixed:
+# rate limiting below keys off remote_addr, so every real visitor would
+# silently share ONE combined 30/min budget instead of getting their
+# own. x_for=1 trusts exactly one proxy hop's X-Forwarded-For value -
+# correct here since nginx is the only proxy in the chain; a value
+# higher than the real hop count would let a client forge their own IP
+# via a fake X-Forwarded-For header. x_proto=1 does the same for
+# X-Forwarded-Proto, so Flask correctly sees "https" even though
+# gunicorn itself only ever receives plain HTTP from nginx.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 # Blunts a scraper hammering the public site before it's ever a real
 # problem, not a response to one - added 2026-08-02, ahead of the

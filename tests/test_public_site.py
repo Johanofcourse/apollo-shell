@@ -21,6 +21,7 @@ import tempfile
 from datetime import datetime
 
 import pytest
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import public_site
 import storm_history
@@ -103,6 +104,49 @@ class TestRateLimiting:
 
         still_fine = client.get("/", environ_overrides={"REMOTE_ADDR": "2.2.2.2"})
         assert still_fine.status_code == 200
+
+    def test_real_visitor_ip_comes_from_x_forwarded_for_not_the_proxy(self):
+        # Real regression this guards against: nginx started sitting in
+        # front of this app 2026-08-11 for the public launch. Without
+        # ProxyFix, request.remote_addr would always read as nginx's own
+        # connecting address (the same one for every visitor), so every
+        # real visitor would silently share ONE combined rate-limit
+        # budget instead of getting their own. Both requests here arrive
+        # from the same simulated proxy hop but claim two different real
+        # visitor IPs via X-Forwarded-For, the way nginx actually
+        # forwards them - proves the limiter keys off the forwarded
+        # visitor IP, not the proxy's own.
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+
+        for _ in range(30):
+            client.get("/", environ_overrides={"REMOTE_ADDR": "10.0.0.5"},
+                       headers={"X-Forwarded-For": "203.0.113.10"})
+        blocked = client.get("/", environ_overrides={"REMOTE_ADDR": "10.0.0.5"},
+                              headers={"X-Forwarded-For": "203.0.113.10"})
+        assert blocked.status_code == 429
+
+        still_fine = client.get("/", environ_overrides={"REMOTE_ADDR": "10.0.0.5"},
+                                 headers={"X-Forwarded-For": "203.0.113.11"})
+        assert still_fine.status_code == 200
+
+
+class TestProxyFixConfig:
+    """
+    ProxyFix (werkzeug) - added 2026-08-11 alongside nginx for the
+    public launch. x_for/x_proto must stay at exactly 1 - the real hop
+    count for this deployment (one nginx instance directly in front of
+    gunicorn). A value of 0 would leave the original bug in place; a
+    value higher than the real hop count would let a client forge its
+    own apparent IP by sending a fake X-Forwarded-For header nginx never
+    actually added.
+    """
+
+    def test_trusts_exactly_one_proxy_hop_for_ip_and_scheme(self):
+        wsgi_app = public_site.app.wsgi_app
+        assert isinstance(wsgi_app, ProxyFix)
+        assert wsgi_app.x_for == 1
+        assert wsgi_app.x_proto == 1
 
 
 class TestGetSentinelVersion:
