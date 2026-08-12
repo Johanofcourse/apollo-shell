@@ -1592,3 +1592,29 @@ deliberately not documented here in detail); Umami analytics still
 needs `UMAMI_SCRIPT_URL`/`UMAMI_WEBSITE_ID` set now that a real domain
 exists; and a final smoke test on the live domain itself, not just the
 VM directly.
+
+## The dashboard gets a real front door too (August 12, 2026)
+Deliberately reversing an earlier deliberate decision: the internal
+dashboard was SSH-tunnel-only, on purpose, since the Oracle Cloud
+migration. Johan's real goal changed it - not just his own
+convenience, but wanting techs/professionals to eventually be able to
+use the dashboard themselves. A tunnel doesn't scale to "other
+people," a public URL with real access control does.
+
+Shipped the smallest version that's still honestly ready to grow, not
+a placeholder that gets thrown away later: `dashboard.apollosentinel.app`,
+its own nginx server block and its own Let's Encrypt certificate
+(separate from the public site's), gated by HTTP Basic Auth at the
+nginx layer - individually-named credentials
+(`htpasswd -b .../dashboard.htpasswd <name> <password>`), not one
+shared login, so one person's access can be revoked later without
+touching anyone else's. The SSH tunnel still works too - additive, not
+a replacement.
+
+Real, named gap worth stating plainly rather than implying this is
+more than it is: no self-serve signup, no per-person permission
+levels, no audit log of who did what once logged in - everyone with a
+login has the same access. Fine for a handful of trusted people right
+now; a real accounts system would be a genuinely bigger project if
+"eventually" ever means dozens of people or different permission
+tiers, not an incremental step from here.
