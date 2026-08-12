@@ -127,6 +127,10 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+# Local only, never committed - real user quotes shouldn't sit in a
+# public repo's history forever (2026-08-12, Johan's own call)
+docs/user-feedback.md
+
 # Environments
 .env
 .venv
