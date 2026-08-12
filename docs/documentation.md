@@ -1545,3 +1545,50 @@ untouched). Reuses the same per-county closed-event data
 `_real_per_county_closed_events()`/`_combined_territory_closed_events()`
 already provide for the public site - no new data collection, just a
 new view onto data that already existed.
+
+## Public launch: a real domain, a real certificate (August 11-12, 2026)
+Apollo Sentinel is genuinely public now - `https://apollosentinel.app`
+resolves, serves the real site, and redirects HTTP to HTTPS
+automatically. Real steps, in order: bought the domain (Porkbun, after
+Cloudflare Registrar unexpectedly blocked the account mid-signup with
+no working support path to appeal it - abandoned rather than fought,
+Porkbun turned out to bundle free Cloudflare-backed DNS anyway, no
+account required); pointed a plain A record at the VM's IP; opened
+both firewall layers (Oracle's own Security List ingress rules, and
+the VM's own firewalld, which had never had anything but SSH open);
+installed nginx as a reverse proxy in front of gunicorn; got a real
+Let's Encrypt certificate via certbot, deployed automatically by its
+own nginx plugin.
+
+Two real snags, both the same root cause this project's hit twice
+before (gunicorn, then Umami): SELinux blocking things by default that
+aren't obviously "network" or "file" permissions to a newcomer.
+`httpd_can_network_connect` had to be explicitly enabled before nginx
+could reach gunicorn at all (a connection refused with no useful nginx
+error otherwise), and the nginx config file itself needed `restorecon`
+after being moved into place - it kept its origin `/tmp` label instead
+of picking up the `httpd_config_t` label nginx actually needs to read
+it, so nginx failed to even start until that was fixed. Also: this
+Oracle Linux build's certbot package ships no systemd timer for
+renewal at all (unlike Debian's), so a daily cron job
+(`certbot-3 renew --quiet --deploy-hook "systemctl reload nginx"`) was
+added by hand and verified with a real `--dry-run` before trusting it.
+
+One real bug caught before it could bite: nginx sitting in front of
+gunicorn means every visitor's `request.remote_addr` would otherwise
+read as nginx's own address, not the real visitor's - silently
+collapsing rate limiting's per-IP budget into one shared budget for
+the entire internet. Fixed with werkzeug's `ProxyFix` middleware,
+trusting exactly one proxy hop (`x_for=1`, `x_proto=1` - the real hop
+count for this deployment, nginx directly in front of gunicorn, no
+more). Verified with a real test simulating two different visitor IPs
+arriving through the same proxy connection, confirming they get
+independent rate-limit budgets rather than sharing one.
+
+Still open before this is fully launch-ready: the known Talquin/PRECO
+data-gap disclosure on the site stays up until a real multi-day
+stretch of stability is observed (see the internal note on that,
+deliberately not documented here in detail); Umami analytics still
+needs `UMAMI_SCRIPT_URL`/`UMAMI_WEBSITE_ID` set now that a real domain
+exists; and a final smoke test on the live domain itself, not just the
+VM directly.
