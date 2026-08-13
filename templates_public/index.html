@@ -65,8 +65,26 @@
     margin: 0; font-size: 1.4rem; font-weight: 900; letter-spacing: 0.02em;
     font-family: "Big Shoulders Stencil Display", "Helvetica Neue", sans-serif;
     text-wrap: balance;
+    min-width: 0;
+    max-width: 100%;
   }
   .bezel .tagline { color: #9fb0bd; font-size: 0.82rem; }
+
+  @media (max-width: 760px) {
+    /* Real bug, caught with an actual iPhone-width screenshot, not
+       assumed: at 1.4rem, "Big Shoulders Stencil Display" (a wide
+       stencil display face by design) renders this exact title's
+       computed width at ~397px - about 7px wider than a true 390px
+       phone viewport, even with text-wrap: balance. Not a flex/grid
+       shrink issue (verified directly - min-width: 0 above didn't
+       fix it, removing balance entirely didn't fix it either); it's
+       simply too wide at this size on the narrowest real phones. A
+       small, deliberate font-size step down here is the actual fix -
+       tested at 1.25rem, which fits with real margin to spare rather
+       than exactly at the edge again. Same 760px breakpoint .hero
+       already uses elsewhere on this page, not a new one. */
+    .bezel h1 { font-size: 1.25rem; }
+  }
 
   .page { max-width: 960px; margin: 0 auto; padding: 1.75rem 1.5rem 4rem; }
 
@@ -100,7 +118,19 @@
     margin-bottom: 2.5rem;
   }
   .hero > * + * { border-left: 1px solid var(--line); }
-  .hero-cell { padding: 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .hero-cell {
+    padding: 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;
+    /* Defensive, not chasing a reproduced bug here specifically -
+       grid items default to min-width: auto, same as flex items, and
+       .hero's fixed 29rem first column is wider than a real phone
+       viewport on its own. The @media (max-width: 760px) single-
+       column override below can't actually shrink a cell past its
+       content's natural width without this. Real header clipping
+       bug turned out to be unrelated (a font-size issue - see
+       .bezel h1 below), but this is still real, correct defensive
+       CSS for these cells' own content. */
+    min-width: 0;
+  }
   .gauge-cell { align-items: center; text-align: center; background: var(--surface); }
 
   .fl-map-wrap {

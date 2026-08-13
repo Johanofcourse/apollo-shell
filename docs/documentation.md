@@ -1703,3 +1703,33 @@ silently dropped certbot's earlier HTTPS additions, serving the wrong
 certificate for the hostname - re-ran certbot against the corrected
 config to restore it, verified with a real subject/SAN check before
 calling it done.
+
+## A real mobile bug, and a real lesson about trusting screenshots (August 13, 2026)
+Checking the site at a genuine iPhone width before it goes wider than
+friends - real headline clipping in the header, "APOLLO'S FLORIDA
+OUTAGE & WEATHER WAT" with the rest silently gone (the page sets
+`overflow-x: hidden` site-wide, so there was no scrollbar to reveal
+it, just missing letters). Took far longer to actually fix than it
+should have, and the detour is worth recording: headless Chrome's
+`--window-size` flag is not consistently honored across its own
+different modes in this environment - `--dump-dom` reported
+`window.innerWidth` as 500px regardless of what was requested, while
+`--screenshot` genuinely did use the real requested width. Several
+early fixes (flex/grid `min-width: 0` on `.bezel`/`.hero-cell`) were
+reasonable, defensible CSS, verified as *not* the actual cause by
+bisecting the real page down to nothing but the header and watching it
+still clip - and a first attempt at a real fix (a narrow `@media
+(max-width: 400px)` rule) silently failed to even apply, for the same
+underlying reason: whatever this environment's effective width is for
+media-query evaluation isn't reliably the real requested one either.
+
+The actual, verified root cause: "Big Shoulders Stencil Display" (a
+wide stencil face by design) renders this exact title's computed width
+at ~397px at 1.4rem - about 7px over a true 390px phone width, even
+with `text-wrap: balance` trying to even out the line split. Not a
+layout bug at all, just a font too wide for the text at that size on
+the narrowest real phones. Fixed with a small, deliberate font-size
+step down (1.4rem &rarr; 1.25rem) at the same 760px breakpoint `.hero`
+already uses elsewhere, verified with a real screenshot showing the
+full title on one line, and a second real screenshot confirming
+desktop still gets the larger original size.
