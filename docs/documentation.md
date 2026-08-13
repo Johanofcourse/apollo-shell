@@ -1685,3 +1685,21 @@ deliberately inactive until now. Fixed with one real `load_dotenv()`
 call, verified with a real regression test that reloads the module
 fresh and confirms it's actually invoked - proven to fail without the
 fix, not just written and trusted.
+
+One more real bug surfaced logging into it for the first time: nginx
+Basic Auth on `stats.apollosentinel.app`'s `/api/` paths collided with
+Umami's own real Bearer-token auth - a request can only carry one
+`Authorization` header, so Umami's own token silently overwrote
+whatever Basic Auth credentials the browser would've sent, and nginx
+bounced every authenticated API call (login "succeeded," the very next
+`/api/auth/verify` call 401'd, back to the login screen, forever).
+Fixed by dropping nginx Basic Auth from `/api/` entirely - Umami's own
+login already protects that data on its own; the nginx layer there was
+a redundant, broken double-lock, not real extra security. Page loads
+(the login screen itself, the dashboard shell) keep the nginx layer,
+since a plain page GET never carries a competing Bearer token. Also
+caught and fixed in the same pass: rewriting that config file had
+silently dropped certbot's earlier HTTPS additions, serving the wrong
+certificate for the hostname - re-ran certbot against the corrected
+config to restore it, verified with a real subject/SAN check before
+calling it done.
