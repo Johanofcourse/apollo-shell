@@ -14,6 +14,7 @@ historical weather-match confidence tally per county
 test_county_status.py). _county_map_data()/_narrative_stats() are the
 new pieces of real logic here.
 """
+import importlib
 import os
 import re
 import sqlite3
@@ -500,6 +501,18 @@ class TestUmamiTrackingScript:
     shipping this active would mean pointing real visitors' browsers at
     a URL nothing can serve. Deliberately inactive until Phase 6's
     launch infrastructure exists.
+
+    Real bug found 2026-08-13, the night this actually got flipped on:
+    public_site.py never called load_dotenv() anywhere, and neither
+    does anything in its real import chain (database/correlate/
+    county_status/storm_history all import cleanly without it) -
+    UMAMI_SCRIPT_URL/UMAMI_WEBSITE_ID silently read as None even with
+    correct values sitting in a real .env on disk. Invisible the whole
+    time only because the feature stayed inactive until someone
+    actually needed a real value read from it. The three tests below
+    all monkeypatch these variables directly, which is exactly why
+    that bug slipped past them - see test_load_dotenv_is_actually_
+    called_on_import below for the one that would have caught it.
     """
 
     def test_no_script_tag_when_unconfigured(self, monkeypatch):
@@ -530,6 +543,22 @@ class TestUmamiTrackingScript:
         r = client.get("/")
 
         assert b'<script defer src="https://example.com/script.js" data-website-id="test-website-id-123"></script>' in r.data
+
+    def test_load_dotenv_is_actually_called_on_import(self, monkeypatch):
+        # The real regression guard - the three tests above monkeypatch
+        # UMAMI_SCRIPT_URL/UMAMI_WEBSITE_ID directly, which can't catch
+        # "the .env file that sets these in the first place never
+        # actually gets loaded." This one re-imports the module fresh
+        # with dotenv.load_dotenv() itself replaced by a spy, proving
+        # public_site.py's own top-level code really does call it -
+        # not relying on some other module's import chain to do it.
+        calls = []
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **kw: calls.append(True))
+        importlib.reload(public_site)
+        monkeypatch.undo()
+        importlib.reload(public_site)  # restore real state for every other test
+
+        assert calls, "public_site.py must call load_dotenv() itself on import"
 
 
 class TestPaginate:
