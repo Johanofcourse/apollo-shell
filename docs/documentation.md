@@ -1662,3 +1662,26 @@ security review today was about controlling what's exposed and how -
 one real, chosen contact channel is the intended outcome, not zero.
 Verified end-to-end with a real test send from an entirely separate
 account before adding it anywhere public.
+
+## Umami finally goes live, and a real silent bug found on the way (August 13, 2026)
+Flipping on self-hosted analytics needed its own real subdomain first
+- `stats.apollosentinel.app`, its own nginx server block, its own
+Let's Encrypt cert. The tracking script and its data endpoint
+(`/script.js`, `/api/send`) had to stay fully public, no login at all,
+or visitors' browsers could never reach them - but everything else on
+that same Umami instance (the real dashboard, login, settings) sits
+behind the same nginx Basic Auth as the internal dashboard, on top of
+Umami's own real login underneath.
+
+Setting the env vars and restarting didn't work, and the real cause
+was worse than a typo: `public_site.py` has never called
+`load_dotenv()` anywhere, and neither does anything in its actual
+import chain. Every other env read in that file either had a working
+fallback or came from a different process entirely - Umami was
+literally the first feature that ever needed this file to read a real
+value from `.env` directly, and it had been silently returning `None`
+since the day it was built, invisible only because the feature stayed
+deliberately inactive until now. Fixed with one real `load_dotenv()`
+call, verified with a real regression test that reloads the module
+fresh and confirms it's actually invoked - proven to fail without the
+fix, not just written and trusted.

@@ -4,10 +4,23 @@ import subprocess
 import sys
 from datetime import datetime
 
+from dotenv import load_dotenv
 from flask import Flask, render_template, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
+
+# Real bug found 2026-08-13: this file has never called load_dotenv()
+# anywhere, and neither does anything in its actual import chain
+# (database/correlate/county_status/storm_history all load cleanly
+# without it) - every other os.environ.get() call in this file either
+# had a working fallback (PUBLIC_SITE_PORT) or the value came from a
+# different process entirely (alerting.py's own env reads, used by the
+# poller, not this file). UMAMI_SCRIPT_URL/UMAMI_WEBSITE_ID below were
+# the first real value this file ever needed to read directly from
+# .env - silently None this whole time, invisible only because the
+# feature was deliberately inactive until tonight.
+load_dotenv()
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
