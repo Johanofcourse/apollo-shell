@@ -665,6 +665,17 @@
           {% endif %}
         </div>
         {% endfor %}
+        {% if county_detail.real_events_total_pages > 1 %}
+        <div class="history-pagination">
+          {% if county_detail.real_events_page > 1 %}
+            <a href="/?county={{ selected_county | urlencode }}&amp;county_events_page={{ county_detail.real_events_page - 1 }}#countyStatusSection">&larr; Worse</a>
+          {% endif %}
+          <span>Page {{ county_detail.real_events_page }} of {{ county_detail.real_events_total_pages }} ({{ county_detail.real_events_total }} active outage{{ "s" if county_detail.real_events_total != 1 }})</span>
+          {% if county_detail.real_events_page < county_detail.real_events_total_pages %}
+            <a href="/?county={{ selected_county | urlencode }}&amp;county_events_page={{ county_detail.real_events_page + 1 }}#countyStatusSection">Less severe &rarr;</a>
+          {% endif %}
+        </div>
+        {% endif %}
         {% if county_detail.everyday_precedent %}
         {% set ep = county_detail.everyday_precedent %}
         <div class="outage-card historical">

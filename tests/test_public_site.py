@@ -1144,4 +1144,86 @@ class TestAtRiskCountiesPaginationRoute:
         client = public_site.app.test_client()
         r = client.get("/")
 
-        assert b"No counties currently flagged" in r.data
+
+class TestCountyEventsPaginationRoute:
+    """
+    Same real pagination pattern as Outage History/At-Risk Counties,
+    added 2026-08-17 once real per-incident FPL rows (see
+    TestFplIncidentRows above) could make one county's real_events list
+    genuinely long - Miami-Dade real-checked at 15+ open FPL tickets
+    alone, on top of whatever TECO/Duke/etc. also has open there.
+    """
+
+    def test_more_than_one_page_worth_shows_real_pagination_controls(self, monkeypatch):
+        monkeypatch.setattr(
+            public_site, "_real_per_county_open_events",
+            lambda db: [_fake_open_fpl_event("Testonia") for _ in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia")
+
+        assert r.status_code == 200
+        assert b"12 active outages" in r.data
+
+    def test_out_of_range_county_events_page_does_not_error(self, monkeypatch):
+        monkeypatch.setattr(
+            public_site, "_real_per_county_open_events",
+            lambda db: [_fake_open_fpl_event("Testonia") for _ in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia&county_events_page=9999")
+        assert r.status_code == 200
+
+    def test_non_numeric_county_events_page_does_not_error(self, monkeypatch):
+        monkeypatch.setattr(
+            public_site, "_real_per_county_open_events",
+            lambda db: [_fake_open_fpl_event("Testonia") for _ in range(12)],
+        )
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia&county_events_page=abc")
+        assert r.status_code == 200
+
+    def test_precedent_cards_still_show_when_the_only_fpl_row_is_on_page_two(self, monkeypatch):
+        # The real bug this guards against: fpl_open_now (and every
+        # other *_open_now check) must be computed from the FULL
+        # real_events list, before pagination slices it down - otherwise
+        # a county's only FPL row landing on page 2 would wrongly hide
+        # the Everyday Outages/Major Storms cards for a county that
+        # genuinely does have an open FPL outage right now.
+        other_utility_rows = [
+            {"county": "Testonia", "utility": "Duke Energy", "customers": 5,
+             "current_percentage_out": None, "duration": "1 hour", "estimated_restoration": None}
+            for _ in range(7)
+        ]
+        monkeypatch.setattr(
+            public_site, "_real_per_county_open_events",
+            lambda db: other_utility_rows + [_fake_open_fpl_event("Testonia")],
+        )
+        monkeypatch.setattr(
+            public_site, "fpl_ordinary_restoration_stats",
+            lambda county, db: {
+                "n": 5, "median_hours": 6.0, "min_hours": 2.0, "max_hours": 10.0,
+                "limited": False, "excluded_count": 0,
+            },
+        )
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent_by_wind_severity", lambda county: None)
+
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia")
+
+        assert r.status_code == 200
+        assert b"Everyday Outages" in r.data
+
+    def test_no_active_outages_shows_honest_empty_state(self, monkeypatch):
+        monkeypatch.setattr(public_site, "_real_per_county_open_events", lambda db: [])
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia")
+
+        assert r.status_code == 200
+        assert b"No active outages or weather alerts for Testonia County right now" in r.data
