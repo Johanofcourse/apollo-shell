@@ -599,6 +599,7 @@ def index():
             "storms_page": storms_page,
             "storms_total_pages": storms_total_pages,
             "fpl_open_now": fpl_open_now,
+            "fpl_has_incident_data": bool(fpl_incident_rows),
             "major_storm_precedent": major_storm_precedent,
             "major_storm_by_severity": major_storm_by_severity,
             "everyday_precedent": everyday_precedent,
