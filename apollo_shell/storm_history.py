@@ -38,6 +38,8 @@ def all_storms():
     the ones where that county has nothing, rather than silently
     omitting them (see load_history_for_county).
     """
+    if not os.path.exists(HISTORICAL_DB_PATH):
+        return []
     conn = sqlite3.connect(HISTORICAL_DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -67,6 +69,8 @@ def load_history_for_county(county):
     listing storms with data blurred that distinction (this is the same
     lesson the Miami-Dade bug hunt turned up - see docs/documentation.md).
     """
+    if not os.path.exists(HISTORICAL_DB_PATH):
+        return []
     conn = sqlite3.connect(HISTORICAL_DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -147,6 +151,8 @@ def fpl_restoration_precedent(county):
     feed has - a single reported duration can still blur multiple real
     repair jobs into one window, same caveat the live data carries.
     """
+    if not os.path.exists(HISTORICAL_DB_PATH):
+        return None
     conn = sqlite3.connect(HISTORICAL_DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -201,6 +207,8 @@ def jea_restoration_precedent(county):
     Otherwise the same n/min/median/max/limited shape as
     fpl_restoration_precedent().
     """
+    if not os.path.exists(HISTORICAL_DB_PATH):
+        return None
     conn = sqlite3.connect(HISTORICAL_DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -291,6 +299,8 @@ def fpl_restoration_precedent_by_wind_severity(county):
     storms on file here with no NOAA wind reading to classify them by -
     not silently dropped, just not sorted into either tier).
     """
+    if not os.path.exists(HISTORICAL_DB_PATH):
+        return None
     conn = sqlite3.connect(HISTORICAL_DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
