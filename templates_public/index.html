@@ -151,6 +151,15 @@
   }
   .fl-county:focus-visible { outline: 2px solid var(--white); outline-offset: 1px; }
 
+  .fl-pin {
+    color: var(--cyan);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+    filter: drop-shadow(0 0 3px rgba(0,229,255,0.85));
+  }
+  .fl-pin:focus-visible { outline: 2px solid var(--white); outline-offset: 2px; }
+
   .fl-tooltip {
     position: absolute;
     background: var(--void);
@@ -422,6 +431,7 @@
         <svg id="flSvg" width="100%" height="100%" viewBox="0 0 736 706" preserveAspectRatio="xMidYMid meet">
           <g class="fl-rotate-group">
             <g id="flCounties"></g>
+            <g id="flPins"></g>
           </g>
         </svg>
         <div class="fl-tooltip" id="flTooltip">
@@ -1044,6 +1054,7 @@
 <script>
   const counties = {{ counties_json | safe }};
   const COUNTY_RINGS = {{ county_rings_json | safe }};
+  const FPL_PINS = {{ fpl_incident_pins_json | safe }};
   const countyByName = Object.fromEntries(counties.map(c => [c.name, c]));
 
   // kpiCustomers is rendered server-side from narrative.total_current (see
@@ -1192,6 +1203,7 @@
   function renderMap() {
     countiesGroup.innerHTML = "";
     const jobs = [];
+    const countyHeightByName = {};
     for (const [name, rings] of Object.entries(COUNTY_RINGS)) {
       const county = countyByName[name];
       let cls, fill, darkFill, subtitle;
@@ -1209,6 +1221,11 @@
         cls = "nodata"; fill = "#1c1f24"; darkFill = "#0c0e10"; subtitle = "NOT CURRENTLY TRACKED";
       }
       const height = mapMode === "live" ? (LIVE_HEIGHT_BY_SEVERITY[cls] || 2) : HEIGHT_BY_VERDICT[cls];
+      // Keyed upper-case, same reasoning as _county_map_data's
+      // tally_by_upper server-side - a pin's county (reverse-geocoded
+      // via the FCC Census API, see fetch_teco_outages.lookup_county())
+      // isn't guaranteed to match FLORIDA_COUNTY_RINGS's exact casing.
+      countyHeightByName[name.toUpperCase()] = height;
 
       for (const pointsAttr of rings) {
         const ground = parseRing(pointsAttr);
@@ -1251,6 +1268,8 @@
       track(job.top); track(job.ground);
     }
 
+    renderPins(countyHeightByName);
+
     const pad = 16;
     flSvg.setAttribute("viewBox", `${(minX - pad).toFixed(1)} ${(minY - pad).toFixed(1)} ${(maxX - minX + pad * 2).toFixed(1)} ${(maxY - minY + pad * 2).toFixed(1)}`);
 
@@ -1270,6 +1289,46 @@
     }
 
     renderLegend();
+  }
+
+  const pinsGroup = document.getElementById("flPins");
+
+  // FPL's real per-incident feed (added 2026-08-16) - the first time
+  // this map has ever shown an actual outage location instead of a
+  // whole county colored one shade. Live-only (no historical
+  // counterpart exists), so pins only render in "live" mode. Each pin
+  // sits on top of its own county's current extruded slab, not
+  // floating at ground level - same isoProject() + height-lift logic
+  // renderMap() uses for the county tops themselves, just for one point
+  // instead of a whole ring.
+  function renderPins(countyHeightByName) {
+    pinsGroup.innerHTML = "";
+    if (mapMode !== "live") return;
+
+    const PIN_LIFT = 5;
+    for (const pin of FPL_PINS) {
+      const height = pin.county ? (countyHeightByName[pin.county.toUpperCase()] ?? 2) : 2;
+      const [gx, gy] = isoProject(pin.x, pin.y);
+      const px = gx, py = gy - height - PIN_LIFT;
+
+      const marker = document.createElementNS(svgNS, "use");
+      marker.setAttribute("href", "#hz-medium");
+      marker.setAttribute("class", "fl-pin");
+      marker.setAttribute("x", (px - 4.5).toFixed(1));
+      marker.setAttribute("y", (py - 4.5).toFixed(1));
+      marker.setAttribute("width", "9");
+      marker.setAttribute("height", "9");
+      marker.tabIndex = 0;
+
+      const name = "FPL Outage" + (pin.county ? " · " + pin.county : "");
+      const subtitle = `${(pin.customer_count || 0).toLocaleString()} customers · ${pin.cause || "Cause unknown"} · ETR ${pin.estimated_restoration}`;
+      marker.addEventListener("mouseenter", () => showTooltip(marker, name, subtitle));
+      marker.addEventListener("mouseleave", hideTooltip);
+      marker.addEventListener("focus", () => showTooltip(marker, name, subtitle));
+      marker.addEventListener("blur", hideTooltip);
+
+      pinsGroup.appendChild(marker);
+    }
   }
 
   renderMap();

@@ -36,6 +36,7 @@ from county_status import (
     lwbu_etr_accuracy,
     attach_active_counties,
     at_risk_counties,
+    _normalize_open_events,
 )
 from storm_history import (
     available_history_counties, load_history_for_county,
@@ -43,6 +44,7 @@ from storm_history import (
     jea_restoration_precedent, JEA_UTILITY_NAME,
 )
 import florida_county_paths as county_map
+from map_projection import project_lat_lon
 
 app = Flask(__name__, template_folder="templates_public")
 app.jinja_env.filters['humanize'] = humanize_timestamp
@@ -258,6 +260,61 @@ def _county_map_data(db, all_rows):
     return counties
 
 
+def _fpl_incident_pins(db):
+    """
+    Real FPL per-incident outages, projected to the same flat
+    coordinate space FLORIDA_COUNTY_RINGS uses, ready for the map's
+    client-side isometric transform to place as pins - the first time
+    this site has ever shown an outage as a real point rather than a
+    whole county colored one shade. Only currently-open incidents
+    (fpl_incident_events with no end_time), since a resolved incident
+    isn't a live pin anymore.
+
+    Skips any incident missing lat/lon (a real, possible state - not
+    every incident resolves a real coordinate) rather than crashing or
+    guessing a placement.
+    """
+    pins = []
+    for event in db.get_fpl_open_events():
+        xy = project_lat_lon(event.get("lat"), event.get("lon"))
+        if xy is None:
+            continue
+        pins.append({
+            "incident_id": event["incident_id"],
+            "x": xy[0],
+            "y": xy[1],
+            "county": event.get("county"),
+            "customer_count": event.get("current_customer_count") or event.get("peak_customer_count") or 0,
+            "cause": event.get("cause"),
+            "estimated_restoration": humanize_timestamp(event.get("current_estimated_restoration")),
+        })
+    return pins
+
+
+def _fpl_incident_rows(db, county):
+    """
+    Real per-incident FPL outages for one specific county, normalized
+    the same shape TECO/Duke's real_events rows already use (see
+    county_status._normalize_open_events()) - same outage-card markup,
+    same "N customers out · ongoing Ym" / "UTILITY estimates
+    restoration by DATE" display TECO already gets, for the first time
+    for FPL too (real per-incident ETR, from fpl_incidents.
+    estimated_restoration - FPL's county-wide rollup never had one).
+
+    Deliberately a separate query, not folded into
+    _real_per_county_open_events()/_statewide_rows() - FPL's existing
+    plain county-wide rollup (db.get_open_events(), CountyOutages.json)
+    already counts every one of these same real outages in its own
+    county total. Feeding these individual rows into that same pipeline
+    too would double every FPL customer counted, both in the statewide/
+    narrative KPIs and in this map's own county severity coloring - see
+    index()'s real_events handling for how the caller keeps the two
+    from ever being displayed together for the same county.
+    """
+    events = [e for e in db.get_fpl_open_events() if (e.get("county") or "").upper() == county.upper()]
+    return _normalize_open_events(events, "current_customer_count", "peak_customer_count")
+
+
 def _narrative_stats(all_rows):
     """
     Real statewide numbers for the plain-language summary paragraph -
@@ -348,6 +405,7 @@ def index():
     db = OutageDatabase()
     all_rows = _statewide_rows(db)
     counties_data = _county_map_data(db, all_rows)
+    fpl_incident_pins = _fpl_incident_pins(db)
     narrative = _narrative_stats(all_rows)
     heat_summary = db.get_heat_advisory_summary()
 
@@ -377,6 +435,21 @@ def index():
 
     if selected_county:
         real_events = _rows_for_county(_real_per_county_open_events(db), selected_county)
+
+        # Real per-incident FPL rows (StormFeedRestoration.json) are
+        # strictly more detailed than the single county-wide aggregate
+        # row already in real_events (same utility, same real outages,
+        # just blurred into one number) - swap the blurred row out for
+        # the real individual ones, the exact problem this feed exists
+        # to fix. Only swapped when this county actually has resolved
+        # incident-level data this cycle - falls back to the aggregate
+        # row otherwise, so a real active FPL outage never silently
+        # disappears from the card just because a lat/lon hasn't
+        # resolved to this county yet in the newer feed.
+        fpl_incident_rows = _fpl_incident_rows(db, selected_county)
+        if fpl_incident_rows:
+            real_events = [r for r in real_events if r["utility"] != FPL_UTILITY_NAME] + fpl_incident_rows
+
         combined_events = _rows_for_county(_combined_territory_open_events(db), selected_county)
         active_alerts = [a for a in all_active_alerts if _county_in_alert(selected_county, a["areas"])]
         for a in active_alerts:
@@ -394,24 +467,34 @@ def index():
         # Restoration precedent (Phase 3) - two deliberately separate,
         # distinctly-labeled numbers, only shown when there's a real,
         # currently-open FPL outage in this county right now, not as a
-        # standalone historical curiosity. FPL's live feed can never
-        # support real incident-level restoration modeling, so these are
-        # the honest substitute - "Major Storms" from the 17-storm PSC
-        # archive (see storm_history.fpl_restoration_precedent()) and
-        # "Everyday Outages" from this project's own live tracking (see
-        # county_status.fpl_ordinary_restoration_stats()). Never merged
-        # into one number - they honestly answer different questions.
+        # standalone historical curiosity. Written when FPL's live feed
+        # (CountyOutages.json) could only give a county-wide rollup, no
+        # per-incident data at all - since superseded by the real
+        # per-incident feed found 2026-08-16 (see _fpl_incident_rows()
+        # above, which now shows real individual FPL cards, TECO-style,
+        # whenever this county has resolved incident-level data), but
+        # these two precedent numbers are still real, honest signal
+        # worth keeping alongside it: "Major Storms" from the 17-storm
+        # PSC archive (see storm_history.fpl_restoration_precedent())
+        # and "Everyday Outages" from this project's own live tracking
+        # (see county_status.fpl_ordinary_restoration_stats()). Never
+        # merged into one number - they honestly answer different
+        # questions.
         fpl_open_now = any(r["utility"] == FPL_UTILITY_NAME for r in real_events)
         major_storm_precedent = fpl_restoration_precedent(selected_county) if fpl_open_now else None
         major_storm_by_severity = fpl_restoration_precedent_by_wind_severity(selected_county) if fpl_open_now else None
         everyday_precedent = fpl_ordinary_restoration_stats(selected_county, db) if fpl_open_now else None
 
-        # A genuinely different Phase 3 signal for TECO - it already
-        # reports a real per-incident ETR (unlike FPL, which has no
-        # per-incident data at all), so instead of inventing a precedent
-        # range, this checks how trustworthy TECO's own existing number
-        # has actually been. Same "only when directly relevant right
-        # now" gating - see county_status.teco_etr_accuracy().
+        # A genuinely different Phase 3 signal for TECO - it's had a
+        # real per-incident ETR since this project's original TECO
+        # integration (FPL only gained one 2026-08-16, see
+        # _fpl_incident_rows() above), so instead of inventing a
+        # precedent range, this checks how trustworthy TECO's own
+        # existing number has actually been. Same "only when directly
+        # relevant right now" gating - see county_status.teco_etr_accuracy().
+        # An equivalent fpl_etr_accuracy() is a natural next step now
+        # that FPL has real per-incident ETR too, once enough incidents
+        # have actually closed to make it meaningful - not built yet.
         teco_open_now = any(r["utility"] == TECO_UTILITY_NAME for r in real_events)
         teco_accuracy = teco_etr_accuracy(selected_county, db) if teco_open_now else None
 
@@ -531,6 +614,7 @@ def index():
         "index.html",
         counties_json=json.dumps(counties_data),
         county_rings_json=json.dumps(county_map.FLORIDA_COUNTY_RINGS),
+        fpl_incident_pins_json=json.dumps(fpl_incident_pins),
         narrative=narrative,
         tracked_utility_count=TRACKED_UTILITY_COUNT,
         sentinel_version=SENTINEL_VERSION,
