@@ -546,6 +546,8 @@ def index():
     teco_closed_events = db.get_teco_recent_closed_events(limit=10)
     duke_open_events = db.get_duke_open_events()
     duke_closed_events = db.get_duke_recent_closed_events(limit=10)
+    fpl_incident_open_events = db.get_fpl_open_events()
+    fpl_incident_closed_events = db.get_fpl_recent_closed_events(limit=10)
     jea_open_events = db.get_jea_open_events()
     jea_closed_events = db.get_jea_recent_closed_events(limit=10)
     tallahassee_open_events = db.get_tallahassee_open_events()
@@ -582,7 +584,7 @@ def index():
     clay_closed_incidents = db.get_clay_recent_closed_incidents(limit=10)
     clay_etr_accuracy_stats = clay_etr_accuracy(db)
 
-    pipeline_health = db.get_pipeline_health(sources=["fpl", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "lcec", "clay", "correlation", "historical_tally"])
+    pipeline_health = db.get_pipeline_health(sources=["fpl", "fpl_incidents", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "lcec", "clay", "correlation", "historical_tally"])
     heat_summary = db.get_heat_advisory_summary()
 
     db.close()
@@ -598,6 +600,10 @@ def index():
     for event in duke_open_events:
         event["duration"] = _duration_since(event["start_time"])
     for event in duke_closed_events:
+        event["duration"] = _duration_since(event["start_time"], event["end_time"])
+    for event in fpl_incident_open_events:
+        event["duration"] = _duration_since(event["start_time"])
+    for event in fpl_incident_closed_events:
         event["duration"] = _duration_since(event["start_time"], event["end_time"])
     for event in jea_open_events:
         event["duration"] = _duration_since(event["start_time"])
@@ -867,6 +873,8 @@ def index():
         duke_open_events=duke_open_events,
         duke_closed_events=duke_closed_events,
         duke_correlation=duke_correlation,
+        fpl_incident_open_events=fpl_incident_open_events,
+        fpl_incident_closed_events=fpl_incident_closed_events,
         jea_open_events=jea_open_events,
         jea_closed_events=jea_closed_events,
         jea_correlation=jea_correlation,
@@ -1425,10 +1433,11 @@ def incident():
     main dashboard (one pair per utility) - not meant to be reached by
     typing an id from memory.
 
-    TECO/Duke/FPUC's per-incident view have a real incident_id, so one
-    id is enough to find everything on file for it (every lifecycle
-    episode, plus the full raw snapshot timeline - both tables log a
-    fresh row every poll cycle while active, so this is a real
+    TECO/Duke/FPL's per-incident view/FPUC's per-incident view have a
+    real incident_id, so one id is enough to find everything on file
+    for it (every lifecycle episode, plus the full raw snapshot
+    timeline - both tables log a fresh row every poll cycle while
+    active, so this is a real
     timeline, not just a start/end pair). FPL/JEA/Talquin/City of
     Tallahassee/FPUC's combined-territory view/PRECO never give us a
     discrete incident identity, only a county-level rollup, so a
@@ -1443,12 +1452,13 @@ def incident():
     db = OutageDatabase()
 
     detail = None
-    if source in ("teco", "duke", "fpuc_incident", "lwbu_incident", "clay_incident"):
+    if source in ("teco", "duke", "fpl_incident", "fpuc_incident", "lwbu_incident", "clay_incident"):
         incident_id = request.args.get("incident_id", "").strip()
         if incident_id:
             detail_fns = {
                 "teco": db.get_teco_incident_detail,
                 "duke": db.get_duke_incident_detail,
+                "fpl_incident": db.get_fpl_incident_detail,
                 "fpuc_incident": db.get_fpuc_incident_detail,
                 "lwbu_incident": db.get_lwbu_incident_detail,
                 "clay_incident": db.get_clay_incident_detail,
@@ -1483,7 +1493,7 @@ def incident():
     db.close()
 
     if detail:
-        if source in ("teco", "duke", "fpuc_incident", "lwbu_incident", "clay_incident"):
+        if source in ("teco", "duke", "fpl_incident", "fpuc_incident", "lwbu_incident", "clay_incident"):
             for ev in detail["events"]:
                 ev["duration"] = _duration_since(ev["start_time"], ev["end_time"])
         else:

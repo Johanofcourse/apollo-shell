@@ -516,6 +516,34 @@
   {% endif %}
   </div>
 
+  <h3>FPL Individual Incidents — Currently Open ({{ fpl_incident_open_events|length }})</h3>
+  <p class="section-note">
+    FPL's real per-incident feed (StormFeedRestoration.json, added 2026-08-16) - a genuine ticket per real outage,
+    with its own real ETR, unlike the county-wide "FPL — Latest Snapshot" total above. Additive, not a replacement -
+    that snapshot remains the authoritative live county total.
+  </p>
+  <div class="wrap">
+  {% if fpl_incident_open_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Current</th><th>Peak</th><th>Cause</th><th>Est. Restoration</th><th>Started</th><th>Ongoing</th></tr>
+      {% for e in fpl_incident_open_events %}
+      <tr>
+        <td><a href="/incident?source=fpl_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td>{{ e.current_customer_count if e.current_customer_count is not none else "—" }}</td>
+        <td class="pct-bad">{{ e.peak_customer_count }}</td>
+        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
+        <td>{{ e.current_estimated_restoration or "—" }}</td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">No open FPL individual incidents right now.</div>
+  {% endif %}
+  </div>
+
   <h3>TECO — Currently Open Incidents ({{ teco_open_events|length }})</h3>
   <div class="wrap">
   {% if teco_open_events %}
@@ -1050,6 +1078,28 @@
       <tr>
         <td><a href="/incident?source=fpl&amp;county={{ e.county | urlencode }}&amp;start_time={{ e.start_time | urlencode }}" style="color: var(--pink);">{{ e.county }}</a></td>
         <td><span class="badge badge-{{ e.severity_tier }}">{{ "%.2f"|format(e.peak_percentage_out) }}%</span></td>
+        <td>{{ e.start_time | humanize }}</td>
+        <td>{{ e.end_time | humanize }}</td>
+        <td>{{ e.duration }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="empty">Nothing resolved yet.</div>
+  {% endif %}
+  </div>
+
+  <h3>FPL Individual Incidents — Recently Resolved</h3>
+  <div class="wrap">
+  {% if fpl_incident_closed_events %}
+    <table>
+      <tr><th>Incident</th><th>County</th><th>Peak Customers</th><th>Cause</th><th>Started</th><th>Ended</th><th>Duration</th></tr>
+      {% for e in fpl_incident_closed_events %}
+      <tr>
+        <td><a href="/incident?source=fpl_incident&amp;incident_id={{ e.incident_id | urlencode }}" style="color: var(--pink);">{{ e.incident_id | incident_label }}</a></td>
+        <td>{{ e.county or "—" }}</td>
+        <td class="pct-ok">{{ e.peak_customer_count }}</td>
+        <td>{{ e.cause or "—" }} <span style="color: var(--muted)">({{ e.cause_category }})</span></td>
         <td>{{ e.start_time | humanize }}</td>
         <td>{{ e.end_time | humanize }}</td>
         <td>{{ e.duration }}</td>

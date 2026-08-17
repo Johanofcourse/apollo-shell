@@ -394,6 +394,28 @@ class TestConsecutiveFailureCount:
         assert alerting._consecutive_failure_count(db, "teco", "teco_incidents", "fetched_at") == 1
 
 
+class TestFplIncidentsSustainedAlertRegistration:
+    """
+    Real regression guard for the exact gap found live 2026-08-17:
+    FPL_INCIDENTS_API_URL was never added to the VM's .env, so the new
+    fpl_incidents poll cycle failed silently every single cycle since
+    deploy - nothing caught it automatically, only a manual live check.
+    Registering "fpl_incidents" here means a future failure of this
+    kind (wrong table name typo, endpoint going away, etc.) gets a real
+    email the same way OUC's/Duke's sustained failures already do,
+    instead of relying on someone noticing zero pins on the live page.
+    """
+
+    def test_fpl_incidents_is_a_sustained_alert_worthy_source(self):
+        assert "fpl_incidents" in alerting.SUSTAINED_ALERT_WORTHY_SOURCES
+        table, column = alerting.SUSTAINED_ALERT_WORTHY_SOURCES["fpl_incidents"]
+        assert table == "fpl_incidents"
+        assert column == "fetched_at"
+
+    def test_fpl_incidents_has_a_real_display_name(self):
+        assert "fpl_incidents" in alerting.PIPELINE_SOURCE_DISPLAY_NAMES
+
+
 class TestCheckAndAlertSustainedFailures:
     """
     Built 2026-08-02, prompted by two real incidents (Duke's expired
