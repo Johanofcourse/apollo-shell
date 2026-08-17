@@ -131,6 +131,11 @@ celerybeat.pid
 # public repo's history forever (2026-08-12, Johan's own call)
 docs/user-feedback.md
 
+# Local only, never committed - real scraped API response samples and
+# undocumented endpoint discovery notes (2026-08-16, FPL per-incident
+# feed investigation)
+.fpl_discovery_scratch/
+
 # Environments
 .env
 .venv
