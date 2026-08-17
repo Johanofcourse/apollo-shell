@@ -540,6 +540,18 @@ def index():
         )
         lwbu_accuracy = lwbu_etr_accuracy(selected_county, db) if lwbu_open_now else None
 
+        # Real pagination for the individual outage cards themselves -
+        # added 2026-08-17 once real per-incident FPL rows (see
+        # _fpl_incident_rows() above) could make this list genuinely
+        # long for a busy county (Miami-Dade real-checked at 15+ open
+        # FPL tickets alone, on top of whatever TECO/Duke/etc. also has
+        # open there). Every *_open_now check above already ran against
+        # the full, unpaginated real_events - only the display slice
+        # gets cut down here, so a real open outage on page 2 never
+        # silently makes its own precedent/accuracy card disappear.
+        real_events_total = len(real_events)
+        real_events, real_events_page, real_events_total_pages = _paginate(real_events, "county_events_page")
+
         # This project's own directly-observed outage history for this
         # county (real start/end pairs from the live poller, running
         # since 2026-04) - a genuinely different dataset from Storm
@@ -582,6 +594,9 @@ def index():
 
         county_detail = {
             "real_events": real_events,
+            "real_events_total": real_events_total,
+            "real_events_page": real_events_page,
+            "real_events_total_pages": real_events_total_pages,
             "combined_events": combined_events,
             "active_alerts": active_alerts,
             "closed_events": closed_events,

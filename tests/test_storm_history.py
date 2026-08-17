@@ -74,6 +74,68 @@ def _insert_severity(path, county, storm_name, wind_mph, storm_year=2024, zone_n
     conn.close()
 
 
+@pytest.fixture
+def missing_historical_db_path(monkeypatch):
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    os.remove(path)
+    monkeypatch.setattr(storm_history, "HISTORICAL_DB_PATH", path)
+    yield path
+    if os.path.exists(path):
+        os.remove(path)
+
+
+class TestMissingHistoricalDatabase:
+    """
+    Real regression found live on CI 2026-08-17: five of these six
+    functions connected to HISTORICAL_DB_PATH without first checking
+    os.path.exists() - only available_history_counties() had the guard.
+    sqlite3.connect() silently creates an empty file at a nonexistent
+    path, so the first unguarded call, on a fresh CI checkout where the
+    real historical_consolidated.db genuinely doesn't exist yet (it's
+    gitignored, never committed), left behind an empty phantom file.
+    Every existence check afterward - including
+    available_history_counties()'s own guard - then read that phantom
+    file as "the db exists" and crashed querying a table that was never
+    actually created. Confirmed by reproducing locally: moving the real
+    local historical_consolidated.db aside and re-running the exact
+    test that failed on CI.
+    """
+
+    def test_all_storms_returns_empty_list_not_a_crash(self, missing_historical_db_path):
+        assert storm_history.all_storms() == []
+
+    def test_load_history_for_county_returns_empty_list_not_a_crash(self, missing_historical_db_path):
+        assert storm_history.load_history_for_county("Alachua") == []
+
+    def test_fpl_restoration_precedent_returns_none_not_a_crash(self, missing_historical_db_path):
+        assert storm_history.fpl_restoration_precedent("Alachua") is None
+
+    def test_jea_restoration_precedent_returns_none_not_a_crash(self, missing_historical_db_path):
+        assert storm_history.jea_restoration_precedent("Duval") is None
+
+    def test_fpl_restoration_precedent_by_wind_severity_returns_none_not_a_crash(self, missing_historical_db_path):
+        assert storm_history.fpl_restoration_precedent_by_wind_severity("Alachua") is None
+
+    def test_available_history_counties_returns_empty_list_not_a_crash(self, missing_historical_db_path):
+        assert storm_history.available_history_counties() == []
+
+    def test_none_of_the_above_leave_a_phantom_file_behind(self, missing_historical_db_path):
+        # The root of the real bug: sqlite3.connect() on a missing path
+        # silently creates an empty file. Calling every function here
+        # must never leave one behind, or the NEXT caller's own
+        # os.path.exists() guard gets fooled the same way
+        # available_history_counties()'s did on CI.
+        storm_history.all_storms()
+        storm_history.load_history_for_county("Alachua")
+        storm_history.fpl_restoration_precedent("Alachua")
+        storm_history.jea_restoration_precedent("Duval")
+        storm_history.fpl_restoration_precedent_by_wind_severity("Alachua")
+        storm_history.available_history_counties()
+
+        assert not os.path.exists(missing_historical_db_path)
+
+
 class TestFplRestorationPrecedent:
     def test_no_data_for_county_returns_none(self, historical_db_path):
         assert storm_history.fpl_restoration_precedent("Alachua") is None
