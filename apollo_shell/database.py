@@ -272,6 +272,63 @@ class OutageDatabase:
             )
         ''')
 
+        # FPL real per-incident outage snapshots - discovered 2026-08-16
+        # via StormFeedRestoration.json, a real endpoint the outage map
+        # widget itself uses but that CountyOutages.json (this project's
+        # original FPL integration) never exposed. Unlike duke_incidents,
+        # FPL's feed gives a real per-record lastUpdated timestamp, so
+        # this table follows teco_incidents's identity pattern
+        # (incident_id, last_updated) instead of Duke's fallback-to-
+        # fetched_at one. Also unlike Duke, FPL reports a real per-
+        # incident estimated_restoration - the field that makes an
+        # eventual fpl_etr_accuracy() (matching teco_etr_accuracy()/
+        # lwbu_etr_accuracy()) possible for the first time. This is
+        # additive alongside the existing county-wide outages table, not
+        # a replacement - CountyOutages.json remains the authoritative
+        # live map total.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fpl_incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                utility TEXT,
+                customer_count INTEGER,
+                lat REAL,
+                lon REAL,
+                county TEXT,
+                cause TEXT,
+                cause_category TEXT,
+                status TEXT,
+                reported_start_time TEXT,
+                estimated_restoration TEXT,
+                last_updated TEXT
+            )
+        ''')
+
+        # FPL incident lifecycle tracking - same close-on-disappearance
+        # approach as duke_incident_events/teco_incident_events: an event
+        # opens the first time a ticketNum is seen and closes once it
+        # stops appearing in a poll (FPL's feed, like Duke's and TECO's,
+        # only lists currently-active outages). No estimated_restoration
+        # column here, same as duke/teco_incident_events - an accuracy
+        # check joins back to fpl_incidents for the first known ETR, the
+        # same way teco_etr_accuracy() does.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fpl_incident_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT NOT NULL,
+                utility TEXT,
+                county TEXT,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                peak_customer_count INTEGER,
+                cause TEXT,
+                cause_category TEXT,
+                lat REAL,
+                lon REAL
+            )
+        ''')
+
         # City of Tallahassee raw incident snapshots - same incident-level
         # shape as duke_incidents (no per-record update_time of its own,
         # so a fresh row every poll cycle keyed on our own fetched_at is
@@ -1007,6 +1064,11 @@ class OutageDatabase:
         ''')
 
         cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_fpl_incident_events_open
+            ON fpl_incident_events(incident_id, end_time)
+        ''')
+
+        cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_jea_outage_events_open
             ON jea_outage_events(utility, county, end_time)
         ''')
@@ -1160,6 +1222,20 @@ class OutageDatabase:
         cursor.execute('''
             CREATE UNIQUE INDEX IF NOT EXISTS idx_duke_incident_events_unique
             ON duke_incident_events(incident_id, start_time)
+        ''')
+
+        # FPL's own lastUpdated is real per-record identity, the same
+        # principle as idx_teco_incidents_unique(incident_id,
+        # update_time) - not the fetched_at fallback duke_incidents needs
+        # since Duke's feed has no equivalent field.
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_fpl_incidents_unique
+            ON fpl_incidents(incident_id, last_updated)
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_fpl_incident_events_unique
+            ON fpl_incident_events(incident_id, start_time)
         ''')
 
         cursor.execute('''
@@ -4877,6 +4953,123 @@ class OutageDatabase:
         print(f"Duke incident events: {opened} opened, {closed} closed this cycle")
 
 
+    def log_fpl_incidents(self, records):
+        """
+        Insert FPL real per-incident outage snapshots (from
+        fetch_fpl_incidents.py).
+
+        Args:
+            records: list of dicts with keys: incident_id, utility,
+                     customer_count, lat, lon, county, cause,
+                     cause_category, status, reported_start_time,
+                     estimated_restoration, last_updated
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        fetched_at = datetime.now().isoformat()
+
+        rows = [
+            (
+                r['incident_id'], fetched_at, r.get('utility'),
+                r.get('customer_count'), r.get('lat'), r.get('lon'),
+                r.get('county'), r.get('cause'), r.get('cause_category'),
+                r.get('status'), r.get('reported_start_time'),
+                r.get('estimated_restoration'), r.get('last_updated'),
+            )
+            for r in records
+        ]
+
+        cursor.executemany('''
+            INSERT OR IGNORE INTO fpl_incidents
+                (incident_id, fetched_at, utility, customer_count, lat, lon,
+                 county, cause, cause_category, status, reported_start_time,
+                 estimated_restoration, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
+
+        conn.commit()
+        print(f"Logged {len(rows)} FPL incident records")
+
+
+    def sync_fpl_incident_events(self, records, timestamp=None):
+        """
+        Track FPL incident lifecycle. Same close-on-disappearance
+        approach as sync_duke_incident_events/sync_teco_incident_events:
+        an event opens the first time a ticketNum is seen, stays updated
+        with the latest known values while still being reported, and
+        closes once a ticketNum that was open stops appearing in a poll
+        at all (FPL's feed only lists currently-active outages).
+
+        NOT SAFE TO REPLAY - same characteristic as
+        sync_duke_incident_events/sync_teco_incident_events (see their
+        docstrings): only safe for calls arriving in real chronological
+        order, one live poll at a time. This feed is live-only, no
+        historical backfill exists for it.
+
+        Args:
+            records: list of dicts as returned by fetch_fpl_incidents.parse_incidents()
+            timestamp: ISO timestamp for this poll; defaults to now
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        timestamp = timestamp or datetime.now().isoformat()
+        current_ids = {r['incident_id'] for r in records}
+
+        opened = 0
+        closed = 0
+
+        for r in records:
+            cursor.execute('''
+                SELECT id, peak_customer_count, county FROM fpl_incident_events
+                WHERE incident_id = ? AND end_time IS NULL
+            ''', (r['incident_id'],))
+            open_event = cursor.fetchone()
+
+            if open_event is None:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO fpl_incident_events
+                        (incident_id, utility, county, start_time, end_time,
+                         peak_customer_count, cause, cause_category, lat, lon)
+                    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
+                ''', (
+                    r['incident_id'], r.get('utility'), r.get('county'), timestamp,
+                    r.get('customer_count'), r.get('cause'), r.get('cause_category'),
+                    r.get('lat'), r.get('lon'),
+                ))
+                if cursor.rowcount > 0:
+                    opened += 1
+            else:
+                peak = max(open_event['peak_customer_count'] or 0, r.get('customer_count') or 0)
+                # Same overwrite-guard as sync_duke_incident_events/
+                # sync_teco_incident_events - a transient reverse-geocode
+                # failure on a later poll must never downgrade an
+                # already-known county back to None.
+                county = r.get('county') or open_event['county']
+                cursor.execute('''
+                    UPDATE fpl_incident_events
+                    SET peak_customer_count = ?, utility = ?, county = ?,
+                        cause = ?, cause_category = ?, lat = ?, lon = ?
+                    WHERE id = ?
+                ''', (
+                    peak, r.get('utility'), county,
+                    r.get('cause'), r.get('cause_category'),
+                    r.get('lat'), r.get('lon'), open_event['id'],
+                ))
+
+        cursor.execute('SELECT id, incident_id FROM fpl_incident_events WHERE end_time IS NULL')
+        for row in cursor.fetchall():
+            if row['incident_id'] not in current_ids:
+                cursor.execute('''
+                    UPDATE fpl_incident_events SET end_time = ? WHERE id = ?
+                ''', (timestamp, row['id']))
+                closed += 1
+
+        conn.commit()
+        print(f"FPL incident events: {opened} opened, {closed} closed this cycle")
+
+
     def log_clay_incidents(self, records):
         """
         Insert Clay Electric Cooperative live outage incidents (from
@@ -5100,6 +5293,62 @@ class OutageDatabase:
             LIMIT ?
         ''', (limit,))
         return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_fpl_open_events(self):
+        """
+        Same shape as get_duke_open_events(), for fpl_incident_events -
+        currently open incidents (end_time IS NULL), worst (by peak
+        customer count) first, with current_customer_count from the
+        latest fpl_incidents row fetched for that incident_id alongside
+        the lifecycle peak.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT oe.*,
+                   cur.customer_count AS current_customer_count,
+                   cur.estimated_restoration AS current_estimated_restoration
+            FROM fpl_incident_events oe
+            LEFT JOIN fpl_incidents cur
+                ON cur.incident_id = oe.incident_id
+                AND cur.fetched_at = (
+                    SELECT MAX(fetched_at) FROM fpl_incidents t2
+                    WHERE t2.incident_id = oe.incident_id
+                )
+            WHERE oe.end_time IS NULL
+            ORDER BY oe.peak_customer_count DESC
+        ''')
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_fpl_recent_closed_events(self, limit=10):
+        """
+        Return the most recently closed fpl_incident_events.
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM fpl_incident_events
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT ?
+        ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_fpl_incident_detail(self, incident_id):
+        """
+        Same as get_duke_incident_detail(), for a real per-incident FPL
+        ticketNum - distinct from get_fpl_outage_detail() (the existing
+        county-wide rollup tracker's own detail lookup).
+        """
+        return {
+            "events": self._get_incident_events("fpl_incident_events", incident_id),
+            "history": self._get_incident_raw_history("fpl_incidents", incident_id),
+        }
 
 
     def log_tallahassee_outages(self, outage_list, timestamp=None):
