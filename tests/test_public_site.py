@@ -528,9 +528,19 @@ class TestFplRestorationGapMessage:
     to have data, so this now shows any time FPL has an open outage in
     the county, never contradicting whatever precedent cards render
     alongside it.
+
+    Reframed again 2026-08-17: the "FPL never publishes a live per-
+    incident ETA at all" premise stopped being true the moment the real
+    per-incident feed (fetch_fpl_incidents.py) shipped - FPL does now,
+    wherever a real incident has resolved to this county this cycle
+    (see _fpl_incident_rows()). This message now only fires for the
+    genuinely-still-true case: FPL has an open outage here, but nothing
+    from the new incident feed has resolved to this specific county
+    yet, so the old blurred county-wide aggregate is still what's
+    showing.
     """
 
-    GAP_MESSAGE = "FPL doesn't publish a live restoration estimate for"
+    GAP_MESSAGE = "hasn't resolved a real individual outage location for this county yet"
 
     def test_shows_when_fpl_is_open_and_no_precedent_exists(self, monkeypatch):
         monkeypatch.setattr(
@@ -578,6 +588,37 @@ class TestFplRestorationGapMessage:
 
     def test_no_message_when_fpl_is_not_currently_open(self, monkeypatch):
         monkeypatch.setattr(public_site, "_real_per_county_open_events", lambda db: [])
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_restoration_precedent_by_wind_severity", lambda county: None)
+        monkeypatch.setattr(public_site, "fpl_ordinary_restoration_stats", lambda county, db: None)
+
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/?county=Testonia")
+
+        assert r.status_code == 200
+        assert self.GAP_MESSAGE not in r.data.decode()
+
+    def test_no_message_when_real_incident_data_exists_for_this_county(self, monkeypatch):
+        # The real, new case as of 2026-08-17: once a real FPL incident
+        # has resolved to this specific county this cycle, the honest
+        # gap this message describes no longer applies here - showing
+        # it anyway would contradict the real per-incident ETR cards
+        # rendering right above it in the same real_events list.
+        monkeypatch.setattr(
+            public_site, "_real_per_county_open_events",
+            lambda db: [_fake_open_fpl_event("Testonia")],
+        )
+        monkeypatch.setattr(
+            public_site, "_fpl_incident_rows",
+            lambda db, county: [{
+                "utility": public_site.FPL_UTILITY_NAME, "county": county,
+                "customers": 42, "peak_customers": 42,
+                "current_percentage_out": None, "peak_percentage_out": None,
+                "customers_served": None, "estimated_restoration": "2026-08-17T05:00:00",
+                "start_time": "2026-08-17T02:00:00", "duration": "3 hours",
+            }],
+        )
         monkeypatch.setattr(public_site, "fpl_restoration_precedent", lambda county: None)
         monkeypatch.setattr(public_site, "fpl_restoration_precedent_by_wind_severity", lambda county: None)
         monkeypatch.setattr(public_site, "fpl_ordinary_restoration_stats", lambda county, db: None)
