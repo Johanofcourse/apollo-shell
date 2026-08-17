@@ -1314,10 +1314,15 @@
       const marker = document.createElementNS(svgNS, "use");
       marker.setAttribute("href", "#hz-medium");
       marker.setAttribute("class", "fl-pin");
-      marker.setAttribute("x", (px - 4.5).toFixed(1));
-      marker.setAttribute("y", (py - 4.5).toFixed(1));
-      marker.setAttribute("width", "9");
-      marker.setAttribute("height", "9");
+      // Real feedback 2026-08-17: 9x9 map units read as near-invisible
+      // against the county tiles' own severity color, especially in a
+      // dense cluster like Miami-Dade's - sized up to actually read as
+      // a marker at a glance, not a full map zoom/pan feature (a real,
+      // separate, bigger UX piece - banked, not built tonight).
+      marker.setAttribute("x", (px - 8).toFixed(1));
+      marker.setAttribute("y", (py - 8).toFixed(1));
+      marker.setAttribute("width", "16");
+      marker.setAttribute("height", "16");
       marker.tabIndex = 0;
 
       const name = "FPL Outage" + (pin.county ? " · " + pin.county : "");
