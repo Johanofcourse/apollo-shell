@@ -76,6 +76,7 @@ DOWN_ALERT_SUPPRESSED_SOURCES = {"talquin", "preco"}
 # instead, same direction it already imports ALERT_WORTHY_SOURCES from.
 PIPELINE_SOURCE_DISPLAY_NAMES = {
     "fpl": "FPL",
+    "fpl_incidents": "FPL Individual Incidents",
     "weather": "NWS Weather",
     "teco": "TECO",
     "duke": "Duke Energy",
@@ -122,6 +123,7 @@ PIPELINE_SOURCE_DISPLAY_NAMES = {
 # assumed away).
 SUSTAINED_ALERT_WORTHY_SOURCES = {
     "fpl": ("outages", "timestamp"),
+    "fpl_incidents": ("fpl_incidents", "fetched_at"),
     "weather": ("weather_alerts", "timestamp"),
     "teco": ("teco_incidents", "fetched_at"),
     "duke": ("duke_incidents", "fetched_at"),
