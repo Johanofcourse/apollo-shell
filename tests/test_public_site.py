@@ -54,6 +54,17 @@ def _fpl_row(county, customers_out, customers_served=100_000):
     return {"county": county, "customers_out": customers_out, "customers_served": customers_served}
 
 
+def _fpl_incident(incident_id, county="Palm Beach", customer_count=20, lat=26.7, lon=-80.1,
+                   cause="Under investigation", estimated_restoration=None):
+    return {
+        "incident_id": incident_id, "utility": "Florida Power and Light Company",
+        "customer_count": customer_count, "lat": lat, "lon": lon, "county": county,
+        "cause": cause, "cause_category": "pending", "status": "Crew assigned.",
+        "reported_start_time": "2026-01-01T00:00:00",
+        "estimated_restoration": estimated_restoration, "last_updated": "2026-01-01T00:00:00",
+    }
+
+
 class TestRateLimiting:
     """
     Per-IP rate limiting (Flask-Limiter), added 2026-08-02 to blunt a
@@ -254,6 +265,92 @@ class TestCountyMapData:
         assert len(counties) == 67
         by_name = {c["name"]: c for c in counties}
         assert by_name["Palm Beach"]["customers"] == 50
+
+
+class TestFplIncidentPins:
+    def test_clean_database_has_no_pins(self, db_path):
+        db = OutageDatabase(db_path)
+        pins = public_site._fpl_incident_pins(db)
+        db.close()
+        assert pins == []
+
+    def test_real_open_incident_becomes_a_pin(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpl_incidents([_fpl_incident("F1", lat=25.7617, lon=-80.1918, customer_count=42, cause="Damage to equipment")])
+        db.sync_fpl_incident_events([_fpl_incident("F1", lat=25.7617, lon=-80.1918, customer_count=42, cause="Damage to equipment")])
+
+        pins = public_site._fpl_incident_pins(db)
+        db.close()
+
+        assert len(pins) == 1
+        assert pins[0]["incident_id"] == "F1"
+        assert pins[0]["county"] == "Palm Beach"
+        assert pins[0]["customer_count"] == 42
+        assert pins[0]["cause"] == "Damage to equipment"
+        assert pins[0]["x"] is not None and pins[0]["y"] is not None
+
+    def test_incident_missing_lat_lon_is_skipped_not_a_crash(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpl_incidents([_fpl_incident("F1", lat=None, lon=None)])
+        db.sync_fpl_incident_events([_fpl_incident("F1", lat=None, lon=None)])
+
+        pins = public_site._fpl_incident_pins(db)
+        db.close()
+
+        assert pins == []
+
+    def test_closed_incident_is_not_a_pin(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpl_incidents([_fpl_incident("F1")])
+        db.sync_fpl_incident_events([_fpl_incident("F1")], timestamp="2026-01-01T00:00:00")
+        db.sync_fpl_incident_events([], timestamp="2026-01-01T02:00:00")  # disappears -> closes
+
+        pins = public_site._fpl_incident_pins(db)
+        db.close()
+
+        assert pins == []
+
+
+class TestFplIncidentRows:
+    def test_clean_database_has_no_rows(self, db_path):
+        db = OutageDatabase(db_path)
+        rows = public_site._fpl_incident_rows(db, "Palm Beach")
+        db.close()
+        assert rows == []
+
+    def test_real_open_incident_becomes_a_row_shaped_like_tecos(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpl_incidents([_fpl_incident("F1", county="Palm Beach", customer_count=42, estimated_restoration="2026-01-01T05:00:00")])
+        db.sync_fpl_incident_events([_fpl_incident("F1", county="Palm Beach", customer_count=42, estimated_restoration="2026-01-01T05:00:00")])
+
+        rows = public_site._fpl_incident_rows(db, "Palm Beach")
+        db.close()
+
+        assert len(rows) == 1
+        assert rows[0]["utility"] == "Florida Power and Light Company"
+        assert rows[0]["customers"] == 42
+        assert rows[0]["estimated_restoration"] == "2026-01-01T05:00:00"
+        assert rows[0]["current_percentage_out"] is None  # no per-incident customer base, same as TECO
+
+    def test_other_county_is_filtered_out(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpl_incidents([_fpl_incident("F1", county="Broward")])
+        db.sync_fpl_incident_events([_fpl_incident("F1", county="Broward")])
+
+        rows = public_site._fpl_incident_rows(db, "Palm Beach")
+        db.close()
+
+        assert rows == []
+
+    def test_county_match_is_case_insensitive(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpl_incidents([_fpl_incident("F1", county="PALM BEACH")])
+        db.sync_fpl_incident_events([_fpl_incident("F1", county="PALM BEACH")])
+
+        rows = public_site._fpl_incident_rows(db, "Palm Beach")
+        db.close()
+
+        assert len(rows) == 1
 
 
 class TestNarrativeStats:
