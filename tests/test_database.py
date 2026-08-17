@@ -163,6 +163,17 @@ def _duke_incident(incident_id, county="Orange", customer_count=20, cause="Equip
     }
 
 
+def _fpl_incident(incident_id, county="Palm Beach", customer_count=20, cause="Under investigation",
+                   last_updated="2026-01-01T00:00:00", estimated_restoration=None):
+    return {
+        "incident_id": incident_id, "utility": "Florida Power and Light Company",
+        "customer_count": customer_count, "lat": 26.7, "lon": -80.1, "county": county,
+        "cause": cause, "cause_category": "pending", "status": "Crew assigned.",
+        "reported_start_time": "2026-01-01T00:00:00",
+        "estimated_restoration": estimated_restoration, "last_updated": last_updated,
+    }
+
+
 def _tallahassee_row(county="Leon", customers_out=30):
     return {"county": county, "customers_out": customers_out}
 
@@ -244,6 +255,28 @@ class TestIncidentDetailLookup:
         assert detail["events"][0]["end_time"] == "2026-01-01T03:00:00"
         assert len(detail["history"]) == 1
         assert detail["history"][0]["cause"] == "Equipment"
+
+    def test_fpl_incident_detail_has_one_episode_and_raw_history(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpl_incidents([_fpl_incident("F1")])
+        db.sync_fpl_incident_events([_fpl_incident("F1")], timestamp="2026-01-01T00:00:00")
+        db.sync_fpl_incident_events([], timestamp="2026-01-01T03:00:00")
+
+        detail = db.get_fpl_incident_detail("F1")
+        db.close()
+
+        assert len(detail["events"]) == 1
+        assert detail["events"][0]["end_time"] == "2026-01-01T03:00:00"
+        assert len(detail["history"]) == 1
+        assert detail["history"][0]["cause"] == "Under investigation"
+
+    def test_fpl_incident_detail_empty_for_unknown_id(self, db_path):
+        db = OutageDatabase(db_path)
+        detail = db.get_fpl_incident_detail("NOT-A-REAL-TICKET")
+        db.close()
+
+        assert detail["events"] == []
+        assert detail["history"] == []
 
     def test_tallahassee_outage_detail_returns_event_and_bounded_history(self, db_path):
         # Redesigned 2026-07-18 - Tallahassee moved from an incident-
@@ -808,6 +841,50 @@ class TestOpenEventsCurrentVsPeak:
         db.close()
 
         assert open_events[0]["county"] == "Orange"
+
+    def test_fpl_incident_open_event_reports_current_alongside_peak(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpl_incidents([_fpl_incident("F1", customer_count=20)])
+        db.sync_fpl_incident_events([_fpl_incident("F1", customer_count=20)], timestamp="2026-01-01T00:00:00")
+        db.log_fpl_incidents([_fpl_incident("F1", customer_count=400, last_updated="2026-01-01T00:15:00")])
+        db.sync_fpl_incident_events([_fpl_incident("F1", customer_count=400, last_updated="2026-01-01T00:15:00")], timestamp="2026-01-01T00:15:00")
+        db.log_fpl_incidents([_fpl_incident("F1", customer_count=60, last_updated="2026-01-01T00:30:00")])
+        db.sync_fpl_incident_events([_fpl_incident("F1", customer_count=60, last_updated="2026-01-01T00:30:00")], timestamp="2026-01-01T00:30:00")
+
+        open_events = db.get_fpl_open_events()
+        db.close()
+
+        assert len(open_events) == 1
+        assert open_events[0]["peak_customer_count"] == 400
+        assert open_events[0]["current_customer_count"] == 60
+
+    def test_fpl_incidents_unique_index_uses_last_updated_not_fetched_at(self, db_path):
+        # Unlike Duke (no real per-record timestamp, so
+        # idx_duke_incidents_unique falls back to our own fetched_at),
+        # FPL gives a real lastUpdated per ticket - re-polling the exact
+        # same unresolved incident with an unchanged last_updated should
+        # not create a second raw history row, the same way TECO's
+        # update_time-keyed identity works.
+        db = OutageDatabase(db_path)
+        db.log_fpl_incidents([_fpl_incident("F1", last_updated="2026-01-01T00:00:00")])
+        db.log_fpl_incidents([_fpl_incident("F1", last_updated="2026-01-01T00:00:00")])
+        db.log_fpl_incidents([_fpl_incident("F1", last_updated="2026-01-01T00:15:00")])
+
+        detail = db.get_fpl_incident_detail("F1")
+        db.close()
+
+        assert len(detail["history"]) == 2
+
+    def test_fpl_incident_transient_geocode_failure_does_not_erase_known_county(self, db_path):
+        # Same real bug as Duke's/TECO's equivalent test above.
+        db = OutageDatabase(db_path)
+        db.sync_fpl_incident_events([_fpl_incident("F1", county="Palm Beach")], timestamp="2026-01-01T00:00:00")
+        db.sync_fpl_incident_events([_fpl_incident("F1", county=None)], timestamp="2026-01-01T00:15:00")
+
+        open_events = db.get_fpl_open_events()
+        db.close()
+
+        assert open_events[0]["county"] == "Palm Beach"
 
     def test_fpuc_transient_geocode_failure_does_not_erase_known_county(self, db_path):
         # Same real bug as Duke's/TECO's equivalent test above, found in

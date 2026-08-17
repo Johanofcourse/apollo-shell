@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apo
 from database import OutageDatabase
 from alerting import check_and_alert_pipeline_health, check_and_alert_sustained_failures
 from fetch_fpl_outages import get_combined_fpl_records, UTILITY_NAME as FPL_UTILITY_NAME
+from fetch_fpl_incidents import get_incidents_summary as get_fpl_incidents_summary
 from fetch_weather import get_alerts_summary
 from fetch_teco_outages import get_incidents_summary
 from fetch_duke_outages import (
@@ -110,6 +111,28 @@ def run_outage_cycle(db):
     timestamp = datetime.now().isoformat()
     db.log_multiple_outages(FPL_UTILITY_NAME, records, timestamp=timestamp)
     db.sync_outage_events(FPL_UTILITY_NAME, records, timestamp=timestamp)
+
+
+def run_fpl_incidents_cycle(db):
+    """
+    Fetch FPL's real per-incident outage feed (discovered 2026-08-16),
+    save it, and update fpl_incident_events lifecycle tracking. This is
+    additive alongside run_outage_cycle()/CountyOutages.json above, not
+    a replacement - that feed remains the authoritative live county
+    total. A fetch failure here (including FPL_INCIDENTS_API_URL simply
+    not being configured yet) raises, same as run_teco_cycle/
+    run_duke_cycle - caught by the poll loop's own try/except and logged
+    via log_pipeline_error, never touching the county-wide outage
+    pipeline above.
+    """
+    incidents = get_fpl_incidents_summary()
+    if not incidents:
+        print("Skipping FPL incident save - no active incidents")
+        return
+
+    timestamp = datetime.now().isoformat()
+    db.log_fpl_incidents(incidents)
+    db.sync_fpl_incident_events(incidents, timestamp=timestamp)
 
 
 def run_weather_cycle(db):
@@ -885,6 +908,12 @@ def main():
             except Exception as e:
                 print(f"Duke fetch cycle failed: {e}")
                 db.log_pipeline_error("duke", str(e))
+
+            try:
+                run_fpl_incidents_cycle(db)
+            except Exception as e:
+                print(f"FPL incidents fetch cycle failed: {e}")
+                db.log_pipeline_error("fpl_incidents", str(e))
 
             try:
                 run_jea_cycle(db)
