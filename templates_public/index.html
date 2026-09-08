@@ -237,6 +237,65 @@
   .heat-now.quiet .dot { background: var(--line); box-shadow: none; }
   @media (max-width: 760px) { .heat-panel { grid-template-columns: 1fr; text-align: left; } }
 
+  /* Mobile-first restructure, 2026-09-08 - real feedback from a
+     product manager (Christian R.) that the statewide-first layout
+     (map, alerts, at-risk, THEN your county) cost too much scroll on
+     mobile before reaching what most visitors actually came for.
+     Desktop is untouched - this entire block only fires under the
+     same 760px breakpoint the rest of the page already uses.
+
+     Two changes: the narrative paragraph becomes a compact 2-tile
+     stat strip (.mobile-stat-strip) instead of prose, and everything
+     below it becomes tab-switched instead of one long scroll
+     (.mobile-tabs + [data-tab] sections) - "My County" is the default
+     tab, since the map is meant to be the hub: tapping a county (or a
+     search result, or any pagination link elsewhere on the page)
+     always reloads to that section's own #hash, and the JS below
+     picks the right tab from that hash rather than always resetting
+     to County. */
+  .mobile-tabs, .mobile-stat-strip { display: none; }
+  @media (max-width: 760px) {
+    .summary-prose { display: none; }
+
+    .mobile-stat-strip {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      margin-bottom: 2.5rem;
+    }
+    .mobile-stat-tile {
+      background: var(--surface); padding: 1.1rem 1rem; text-align: center;
+      /* Grid items default to min-width: auto - without this, a long
+         utility/county name refuses to wrap and overflows straight
+         past the tile (and the viewport), the same real bug .hero-cell
+         already has a guard against above for the same reason. */
+      min-width: 0;
+    }
+    .mobile-stat-tile .stat-num { font-size: 1.5rem; overflow-wrap: break-word; }
+    .mobile-stat-tile .stat-label { font-size: 0.72rem; margin-top: 0.3rem; overflow-wrap: break-word; }
+
+    .mobile-tabs {
+      display: flex;
+      gap: 0.4rem;
+      margin-bottom: 1.75rem;
+    }
+    .mobile-tabs .map-mode-btn {
+      /* Same min-width: 0 story as .mobile-stat-tile above - flex
+         items won't actually shrink below their label's natural width
+         without it, so 4 buttons in a 390px row overflowed instead of
+         fitting. Smaller font/padding here too - the desktop-sized
+         map-mode-btn text was real close to the same problem even
+         with the fix. */
+      flex: 1 1 0; min-width: 0; text-align: center;
+      padding: 0.45rem 0.3rem; font-size: 0.6rem;
+    }
+
+    [data-tab] { display: none; }
+    [data-tab].tab-active { display: block; }
+  }
+
   .hz-icon { width: 1.15em; height: 1.15em; display: inline-block; vertical-align: -0.22em; flex-shrink: 0; }
 
   .outage-card, .alert-card, .heat-panel {
@@ -473,7 +532,28 @@
     </div>
   </div>
 
+  <div class="mobile-stat-strip">
+    {% if narrative.worst_county_name %}
+    <div class="mobile-stat-tile">
+      <div class="stat-num c-ink mono">{{ "{:,}".format(narrative.worst_county_customers) }}</div>
+      <div class="stat-label">{{ narrative.worst_county_name | upper }} &middot; WORST COUNTY</div>
+    </div>
+    {% endif %}
+    {% if narrative.top_utility_name %}
+    <div class="mobile-stat-tile">
+      <div class="stat-num c-ink mono">{{ "{:,}".format(narrative.top_utility_customers) }}</div>
+      <div class="stat-label">{{ narrative.top_utility_name | upper }} &middot; TOP UTILITY</div>
+    </div>
+    {% endif %}
+    {% if not narrative.worst_county_name and not narrative.top_utility_name %}
+    <div class="mobile-stat-tile" style="grid-column: 1 / -1;">
+      <div class="stat-label">ALL CLEAR STATEWIDE RIGHT NOW</div>
+    </div>
+    {% endif %}
+  </div>
+
   <div class="summary-panel">
+   <div class="summary-prose">
     <p>
       Right now, <strong class="c-magenta mono">{{ "{:,}".format(narrative.total_current) }}</strong> customers are
       without power in Florida{% if narrative.total_known_served %}. That's
@@ -508,9 +588,17 @@
         so their number is counted statewide but can't be broken out by county on the map.</p>
     </details>
     {% endif %}
+   </div>
   </div>
 
-  <section id="alertsSection">
+  <div class="mobile-tabs" role="tablist" aria-label="Page sections">
+    <button type="button" class="map-mode-btn mobile-tab-btn" role="tab" data-tab-target="county">My County</button>
+    <button type="button" class="map-mode-btn mobile-tab-btn" role="tab" data-tab-target="alerts">Alerts</button>
+    <button type="button" class="map-mode-btn mobile-tab-btn" role="tab" data-tab-target="heat">Heat</button>
+    <button type="button" class="map-mode-btn mobile-tab-btn" role="tab" data-tab-target="history">History</button>
+  </div>
+
+  <section id="alertsSection" data-tab="alerts">
     <h2 class="section-title">Current Weather Alerts</h2>
     <details class="tele-explain section-explain">
       <summary>What is this section?</summary>
@@ -559,7 +647,7 @@
     {% endif %}
   </section>
 
-  <section id="atRiskSection">
+  <section id="atRiskSection" data-tab="alerts">
     <h2 class="section-title">At-Risk Counties</h2>
     <details class="tele-explain section-explain">
       <summary>What is this section?</summary>
@@ -597,7 +685,7 @@
     {% endif %}
   </section>
 
-  <section id="heatSection">
+  <section id="heatSection" data-tab="heat">
     <h2 class="section-title">Heat This Month</h2>
     <details class="tele-explain section-explain">
       <summary>What is this section?</summary>
@@ -633,7 +721,7 @@
     </div>
   </section>
 
-  <section id="countyStatusSection">
+  <section id="countyStatusSection" data-tab="county">
     <h2 class="section-title">County Status</h2>
     <details class="tele-explain section-explain">
       <summary>What is this section?</summary>
@@ -891,7 +979,7 @@
     {% endif %}
   </section>
 
-  <section id="outageHistorySection">
+  <section id="outageHistorySection" data-tab="history">
     <h2 class="section-title">Outage History</h2>
     <details class="tele-explain section-explain">
       <summary>What is this section?</summary>
@@ -958,7 +1046,7 @@
     {% endif %}
   </section>
 
-  <section id="historySection">
+  <section id="historySection" data-tab="history">
     <h2 class="section-title">Storm History</h2>
     <details class="tele-explain section-explain">
       <summary>What is this section?</summary>
@@ -1465,6 +1553,50 @@
   setupCountyCombobox("countyInput", "countySuggestions", "countyCombobox", (name) => {
     window.location.href = "/?county=" + encodeURIComponent(name) + "#historySection";
   });
+
+  // Mobile-only tab switching (see the [data-tab] CSS block above) -
+  // inert on desktop, since the CSS that hides non-active [data-tab]
+  // sections only fires under the 760px breakpoint. "My County" is the
+  // default tab (the map is meant to be the hub), but every other real
+  // navigation on this page - a map/search county pick, any pagination
+  // link, the Storm History search - already reloads to that section's
+  // own #hash, so the right tab is picked from location.hash rather
+  // than always resetting to County and losing the visitor's place.
+  (function setupMobileTabs() {
+    const buttons = document.querySelectorAll(".mobile-tab-btn");
+    const panels = document.querySelectorAll("[data-tab]");
+
+    function activateTab(tabName) {
+      buttons.forEach((b) => {
+        const active = b.dataset.tabTarget === tabName;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      panels.forEach((p) => p.classList.toggle("tab-active", p.dataset.tab === tabName));
+    }
+
+    buttons.forEach((b) => b.addEventListener("click", () => activateTab(b.dataset.tabTarget)));
+
+    const HASH_TO_TAB = {
+      "#countyStatusSection": "county",
+      "#alertsSection": "alerts",
+      "#atRiskSection": "alerts",
+      "#heatSection": "heat",
+      "#outageHistorySection": "history",
+      "#historySection": "history",
+    };
+    const hash = window.location.hash;
+    activateTab(HASH_TO_TAB[hash] || "county");
+
+    // The browser's own on-load anchor scroll can fire before the line
+    // above reveals the right panel (it's display:none until then), so
+    // it can land at the wrong spot - re-run it now that the panel's
+    // actually visible.
+    if (hash) {
+      const target = document.querySelector(hash);
+      if (target) target.scrollIntoView();
+    }
+  })();
 </script>
 </body>
 </html>
