@@ -32,6 +32,7 @@ from county_status import (
     _combined_territory_closed_events, _rows_for_county, humanize_timestamp,
     _row_tier, fpl_ordinary_restoration_stats,
     teco_etr_accuracy, TECO_UTILITY_NAME,
+    fpl_etr_accuracy,
     duke_restoration_precedent, DUKE_UTILITY_NAME,
     lwbu_etr_accuracy,
     attach_active_counties,
@@ -484,6 +485,14 @@ def index():
         major_storm_precedent = fpl_restoration_precedent(selected_county) if fpl_open_now else None
         major_storm_by_severity = fpl_restoration_precedent_by_wind_severity(selected_county) if fpl_open_now else None
         everyday_precedent = fpl_ordinary_restoration_stats(selected_county, db) if fpl_open_now else None
+        # Built 2026-09-08 once real volume justified it (9,482 closed
+        # FPL incidents statewide with a known ETR, 1,119 in Palm Beach
+        # alone) - same real accuracy-check shape as teco_etr_accuracy()
+        # below, now that FPL has a real per-incident ETR too. Not
+        # merged with the two precedent cards above - this answers a
+        # different question ("how trustworthy is FPL's own number"),
+        # same distinction TECO's version already draws.
+        fpl_accuracy = fpl_etr_accuracy(selected_county, db) if fpl_open_now else None
 
         # A genuinely different Phase 3 signal for TECO - it's had a
         # real per-incident ETR since this project's original TECO
@@ -492,9 +501,6 @@ def index():
         # precedent range, this checks how trustworthy TECO's own
         # existing number has actually been. Same "only when directly
         # relevant right now" gating - see county_status.teco_etr_accuracy().
-        # An equivalent fpl_etr_accuracy() is a natural next step now
-        # that FPL has real per-incident ETR too, once enough incidents
-        # have actually closed to make it meaningful - not built yet.
         teco_open_now = any(r["utility"] == TECO_UTILITY_NAME for r in real_events)
         teco_accuracy = teco_etr_accuracy(selected_county, db) if teco_open_now else None
 
@@ -618,6 +624,7 @@ def index():
             "major_storm_precedent": major_storm_precedent,
             "major_storm_by_severity": major_storm_by_severity,
             "everyday_precedent": everyday_precedent,
+            "fpl_accuracy": fpl_accuracy,
             "teco_accuracy": teco_accuracy,
             "duke_precedent": duke_precedent,
             "jea_precedent": jea_precedent,

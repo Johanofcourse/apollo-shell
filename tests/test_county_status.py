@@ -803,10 +803,14 @@ class TestTecoEtrAccuracy:
         assert result is None
 
     def test_resolved_earlier_than_etr_is_a_negative_error(self, db_path):
+        # first_etr is TECO's raw naive-Eastern string - January is EST
+        # (UTC-5), so "10:00" Eastern is really 15:00 UTC. actual_end is
+        # this project's own naive-but-actually-UTC end_time, unconverted.
+        # 12:00 UTC is 3 real hours before the 15:00 UTC promise.
         db = OutageDatabase(db_path)
         _open_and_close_teco_incident(
             db, "T1", "Hillsborough",
-            first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T03:00:00",
+            first_etr="2026-01-01T10:00:00", actual_end="2026-01-01T12:00:00",
         )
 
         result = cs.teco_etr_accuracy("Hillsborough", db)
@@ -818,10 +822,12 @@ class TestTecoEtrAccuracy:
         assert result["limited"] is True
 
     def test_resolved_later_than_etr_is_a_positive_error(self, db_path):
+        # Same real EST offset as above - "10:00" Eastern = 15:00 UTC.
+        # 18:00 UTC is 3 real hours after that promise.
         db = OutageDatabase(db_path)
         _open_and_close_teco_incident(
             db, "T1", "Hillsborough",
-            first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T09:00:00",
+            first_etr="2026-01-01T10:00:00", actual_end="2026-01-01T18:00:00",
         )
 
         result = cs.teco_etr_accuracy("Hillsborough", db)
@@ -831,16 +837,35 @@ class TestTecoEtrAccuracy:
         assert result["on_time_pct"] == 0.0
 
     def test_on_time_pct_reflects_a_real_mix(self, db_path):
+        # All three use the same real EST offset ("10:00" Eastern =
+        # 15:00 UTC, January): T1 resolves 3h early, T2 resolves 3h
+        # late, T3 resolves exactly on time (0h counts as on-time).
         db = OutageDatabase(db_path)
-        _open_and_close_teco_incident(db, "T1", "Polk", first_etr="2026-01-01T06:00:00", actual_end="2026-01-01T03:00:00", open_at="2026-01-01T00:00:00")
-        _open_and_close_teco_incident(db, "T2", "Polk", first_etr="2026-01-02T06:00:00", actual_end="2026-01-02T09:00:00", open_at="2026-01-02T00:00:00")
-        _open_and_close_teco_incident(db, "T3", "Polk", first_etr="2026-01-03T06:00:00", actual_end="2026-01-03T06:00:00", open_at="2026-01-03T00:00:00")
+        _open_and_close_teco_incident(db, "T1", "Polk", first_etr="2026-01-01T10:00:00", actual_end="2026-01-01T12:00:00", open_at="2026-01-01T00:00:00")
+        _open_and_close_teco_incident(db, "T2", "Polk", first_etr="2026-01-02T10:00:00", actual_end="2026-01-02T18:00:00", open_at="2026-01-02T00:00:00")
+        _open_and_close_teco_incident(db, "T3", "Polk", first_etr="2026-01-03T10:00:00", actual_end="2026-01-03T15:00:00", open_at="2026-01-03T00:00:00")
 
         result = cs.teco_etr_accuracy("Polk", db)
         db.close()
 
         assert result["n"] == 3
         assert round(result["on_time_pct"], 2) == round(2 / 3 * 100, 2)
+
+    def test_real_edt_offset_is_used_in_summer_not_a_fixed_hour_shift(self, db_path):
+        # Real regression guard for the actual bug: a fixed year-round
+        # offset (e.g. always +5h) would get July wrong, since Eastern
+        # is EDT (UTC-4) then, not EST (UTC-5). "10:00" Eastern in July
+        # is 14:00 UTC - 12:00 UTC is 2 real hours early, not 3.
+        db = OutageDatabase(db_path)
+        _open_and_close_teco_incident(
+            db, "T1", "Hillsborough",
+            first_etr="2026-07-01T10:00:00", actual_end="2026-07-01T12:00:00",
+        )
+
+        result = cs.teco_etr_accuracy("Hillsborough", db)
+        db.close()
+
+        assert result["median_error_hours"] == -2.0
 
     def test_county_name_match_is_case_insensitive(self, db_path):
         db = OutageDatabase(db_path)
@@ -889,6 +914,152 @@ class TestTecoEtrAccuracy:
         )
 
         result = cs.teco_etr_accuracy("Hillsborough", db)
+        db.close()
+
+        assert result is None
+
+
+def _fpl_incident(incident_id, county="Palm Beach", customer_count=10, estimated_restoration="2026-01-01T10:00:00"):
+    return {
+        "incident_id": incident_id, "utility": "Florida Power and Light Company",
+        "customer_count": customer_count, "lat": 26.7, "lon": -80.1, "county": county,
+        "cause": "Under investigation", "cause_category": "pending", "status": "Crew assigned.",
+        "reported_start_time": "2026-01-01T00:00:00", "estimated_restoration": estimated_restoration,
+        "last_updated": "2026-01-01T00:00:00",
+    }
+
+
+def _open_and_close_fpl_incident(db, incident_id, county, first_etr, actual_end, open_at="2026-01-01T00:00:00"):
+    db.log_fpl_incidents([_fpl_incident(incident_id, county=county, estimated_restoration=first_etr)])
+    db.sync_fpl_incident_events([_fpl_incident(incident_id, county=county, estimated_restoration=first_etr)], timestamp=open_at)
+    db.sync_fpl_incident_events([], timestamp=actual_end)
+
+
+class TestFplEtrAccuracy:
+    """
+    fpl_etr_accuracy() - added 2026-09-08 once the real per-incident
+    feed (fpl_incidents, discovered 2026-08-16) had accumulated enough
+    closed volume to check (9,482 statewide, 1,119 in Palm Beach alone).
+    Same accuracy-check shape as teco_etr_accuracy(), built with the
+    correct Eastern-to-UTC conversion from the start - see
+    county_status._eastern_naive_to_utc_naive()'s own comment for the
+    real bug found in TECO's already-shipped version of this same check
+    while confirming this was ready to build.
+    """
+
+    def test_no_data_for_county_returns_none(self, db_path):
+        db = OutageDatabase(db_path)
+        result = cs.fpl_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result is None
+
+    def test_resolved_earlier_than_etr_is_a_negative_error(self, db_path):
+        # first_etr is FPL's raw naive-Eastern string, same as TECO's -
+        # January is EST (UTC-5), so "10:00" Eastern is really 15:00
+        # UTC. 12:00 UTC (our own naive-but-UTC end_time) is 3 real
+        # hours before that promise.
+        db = OutageDatabase(db_path)
+        _open_and_close_fpl_incident(
+            db, "F1", "Palm Beach",
+            first_etr="2026-01-01T10:00:00", actual_end="2026-01-01T12:00:00",
+        )
+
+        result = cs.fpl_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result["n"] == 1
+        assert result["median_error_hours"] == -3.0
+        assert result["on_time_pct"] == 100.0
+        assert result["limited"] is True
+
+    def test_resolved_later_than_etr_is_a_positive_error(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_fpl_incident(
+            db, "F1", "Palm Beach",
+            first_etr="2026-01-01T10:00:00", actual_end="2026-01-01T18:00:00",
+        )
+
+        result = cs.fpl_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result["median_error_hours"] == 3.0
+        assert result["on_time_pct"] == 0.0
+
+    def test_real_edt_offset_is_used_in_summer_not_a_fixed_hour_shift(self, db_path):
+        # Same real regression guard as TECO's equivalent test - July is
+        # EDT (UTC-4), not EST, so "10:00" Eastern is 14:00 UTC there,
+        # not 15:00.
+        db = OutageDatabase(db_path)
+        _open_and_close_fpl_incident(
+            db, "F1", "Palm Beach",
+            first_etr="2026-07-01T10:00:00", actual_end="2026-07-01T12:00:00",
+        )
+
+        result = cs.fpl_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result["median_error_hours"] == -2.0
+
+    def test_on_time_pct_reflects_a_real_mix(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_fpl_incident(db, "F1", "Broward", first_etr="2026-01-01T10:00:00", actual_end="2026-01-01T12:00:00", open_at="2026-01-01T00:00:00")
+        _open_and_close_fpl_incident(db, "F2", "Broward", first_etr="2026-01-02T10:00:00", actual_end="2026-01-02T18:00:00", open_at="2026-01-02T00:00:00")
+        _open_and_close_fpl_incident(db, "F3", "Broward", first_etr="2026-01-03T10:00:00", actual_end="2026-01-03T15:00:00", open_at="2026-01-03T00:00:00")
+
+        result = cs.fpl_etr_accuracy("Broward", db)
+        db.close()
+
+        assert result["n"] == 3
+        assert round(result["on_time_pct"], 2) == round(2 / 3 * 100, 2)
+
+    def test_county_name_match_is_case_insensitive(self, db_path):
+        db = OutageDatabase(db_path)
+        _open_and_close_fpl_incident(db, "F1", "MIAMI-DADE", first_etr="2026-01-01T10:00:00", actual_end="2026-01-01T12:00:00")
+
+        result = cs.fpl_etr_accuracy("Miami-Dade", db)
+        db.close()
+
+        assert result is not None
+
+    def test_reaching_the_confident_threshold_clears_the_limited_flag(self, db_path):
+        db = OutageDatabase(db_path)
+        for i in range(cs.MIN_EVENTS_FOR_CONFIDENT_RANGE):
+            _open_and_close_fpl_incident(
+                db, f"F{i}", "Palm Beach",
+                first_etr=f"2026-01-0{i + 1}T10:00:00", actual_end=f"2026-01-0{i + 1}T09:00:00",
+                open_at=f"2026-01-0{i + 1}T00:00:00",
+            )
+
+        result = cs.fpl_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result["n"] == cs.MIN_EVENTS_FOR_CONFIDENT_RANGE
+        assert result["limited"] is False
+
+    def test_incidents_with_no_etr_ever_reported_are_excluded(self, db_path):
+        db = OutageDatabase(db_path)
+        db.log_fpl_incidents([_fpl_incident("F1", county="Palm Beach", estimated_restoration=None)])
+        db.sync_fpl_incident_events(
+            [_fpl_incident("F1", county="Palm Beach", estimated_restoration=None)],
+            timestamp="2026-01-01T00:00:00",
+        )
+        db.sync_fpl_incident_events([], timestamp="2026-01-01T03:00:00")
+
+        result = cs.fpl_etr_accuracy("Palm Beach", db)
+        db.close()
+
+        assert result is None
+
+    def test_other_utilities_in_the_same_county_are_ignored(self, db_path):
+        db = OutageDatabase(db_path)
+        db.sync_duke_incident_events(
+            [{"incident_id": "D1", "utility": "Duke Energy", "county": "Palm Beach", "customer_count": 50,
+              "lat": 26.7, "lon": -80.1, "cause": "Tree down", "cause_category": "vegetation"}],
+            timestamp="2026-01-01T00:00:00",
+        )
+
+        result = cs.fpl_etr_accuracy("Palm Beach", db)
         db.close()
 
         assert result is None
