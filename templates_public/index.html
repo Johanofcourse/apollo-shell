@@ -255,7 +255,11 @@
      to County. */
   .mobile-tabs, .mobile-stat-strip { display: none; }
   @media (max-width: 760px) {
-    .summary-prose { display: none; }
+    /* Hiding .summary-prose alone left .summary-panel itself still
+       rendering as an empty box (its own padding/background with no
+       visible content) - real gap Johan caught checking the live page -
+       hide the whole container, not just what's inside it. */
+    .summary-panel { display: none; }
 
     .mobile-stat-strip {
       display: grid;
