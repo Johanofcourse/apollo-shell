@@ -831,6 +831,34 @@
           </details>
         </div>
         {% endif %}
+        {% if county_detail.fpl_accuracy %}
+        {% set fa = county_detail.fpl_accuracy %}
+        <div class="outage-card historical">
+          <div class="outage-top">
+            <span class="outage-utility">Restoration Estimate Accuracy: Florida Power &amp; Light (FPL)</span>
+            <span class="outage-figure mono">{{ "%.0f"|format(fa.on_time_pct) }}% on time</span>
+          </div>
+          {% if fa.limited %}
+          <div class="outage-sub">Only {{ fa.n }} real incident{{ "s" if fa.n != 1 }} on file for this county —
+            not enough precedent yet to call this a reliable pattern.</div>
+          {% endif %}
+          <div class="outage-sub">Based on {{ fa.n }} real FPL incidents resolved here, {{ "%.0f"|format(fa.on_time_pct) }}%
+            were fixed at or before FPL's own first stated estimate
+            {% if fa.median_error_hours <= 0 %}
+              (typically {{ "%.1f"|format(-fa.median_error_hours) }} hours earlier than promised).
+            {% else %}
+              (typically {{ "%.1f"|format(fa.median_error_hours) }} hours later than promised).
+            {% endif %}
+          </div>
+          <details class="tele-explain">
+            <summary>More info</summary>
+            <p>Different from the two precedent cards above — this checks how trustworthy FPL's own real
+              per-incident restoration estimate has actually been, not a historical range for what a typical outage
+              here looks like. Only possible since the real per-incident feed found 2026-08-16 - from this project's
+              own live tracking since then, not the storm archive.</p>
+          </details>
+        </div>
+        {% endif %}
         {% if county_detail.teco_accuracy %}
         {% set ta = county_detail.teco_accuracy %}
         <div class="outage-card historical">
@@ -852,7 +880,7 @@
           </div>
           <details class="tele-explain">
             <summary>More info</summary>
-            <p>Unlike FPL, TECO already reports a real per-incident restoration estimate — this
+            <p>TECO reports a real per-incident restoration estimate — this
               checks how trustworthy that existing number has actually been, not a live estimate for this specific
               outage. From this project's own live tracking since April 2026.</p>
           </details>

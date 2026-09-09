@@ -8,6 +8,8 @@ formatting functions only; no Flask/template dependency here.
 import re
 from datetime import datetime, timezone
 
+import pytz
+
 from correlate import (
     _county_in_alert, correlation_summary,
     teco_correlation_summary, duke_correlation_summary,
@@ -107,8 +109,9 @@ def _normalize_open_events(open_events, customers_field, peak_field):
     See county_verdict() for how the two cases get tiered together.
 
     estimated_restoration is carried through the same optional way -
-    only TECO's get_teco_open_events() row has
-    current_estimated_restoration to give, so every other source's rows
+    only carried by the sources whose own feed reports a real
+    per-incident ETR (TECO, FPL, LWBU, Clay's get_X_open_events() rows
+    all give current_estimated_restoration); every other source's rows
     come back None here.
     """
     return [{
@@ -591,6 +594,37 @@ MAX_PLAUSIBLE_SINGLE_OUTAGE_HOURS = 96
 # counts live everyday events instead of storms.
 MIN_EVENTS_FOR_CONFIDENT_RANGE = 3
 
+_EASTERN = pytz.timezone("America/New_York")
+
+
+def _eastern_naive_to_utc_naive(raw):
+    """
+    TECO's and FPL's raw estimated_restoration strings are naive local
+    Eastern time with no offset attached - confirmed real 2026-09-08 by
+    comparing a live fpl_incidents.last_updated value against the VM's
+    own real UTC clock (timedatectl confirms this server runs UTC, not
+    Eastern) and finding they line up almost exactly once treated as
+    Eastern, not UTC.
+
+    Real bug found and fixed the same day: teco_etr_accuracy() had been
+    comparing this naive-Eastern ETR directly against end_time (this
+    project's own naive-but-actually-UTC timestamp) with no conversion
+    at all - live for Hillsborough, that meant a shown "on-time %" of
+    26.6% when the real, corrected number is 91.6%. LWBU already got a
+    fix for a DIFFERENT symptom of this same root problem back in July
+    (its own ETR carries a real UTC offset, so the aware/naive mismatch
+    raised TypeError instead of silently computing wrong math) - TECO's
+    naive format never crashed, so nobody had reason to suspect it.
+
+    Localizes via pytz's real America/New_York rules (correctly
+    straddles the EDT/EST boundary) rather than a fixed-hour shift,
+    which would silently go wrong for half the year - deliberately not
+    the same fixed offset year-round.
+    """
+    naive_eastern = datetime.fromisoformat(raw)
+    localized = _EASTERN.localize(naive_eastern, is_dst=None)
+    return localized.astimezone(pytz.utc).replace(tzinfo=None)
+
 
 def fpl_ordinary_restoration_stats(county, db):
     """
@@ -689,6 +723,12 @@ def teco_etr_accuracy(county, db):
     promised, negative = resolved earlier), on_time_pct (share resolved
     at or before their first stated ETR), limited (n too small to mean
     much).
+
+    Real bug found and fixed 2026-09-08: first_etr is TECO's own raw
+    naive-Eastern string - it was being compared directly against
+    end_time (naive-but-actually-UTC) with no conversion at all. See
+    _eastern_naive_to_utc_naive()'s own comment for the real, confirmed
+    magnitude (Hillsborough's shown 26.6% vs. the real 91.6%).
     """
     conn = db.connect()
     cursor = conn.cursor()
@@ -707,8 +747,72 @@ def teco_etr_accuracy(county, db):
         if not first_etr:
             continue
         try:
-            error_hours = (datetime.fromisoformat(end_time) - datetime.fromisoformat(first_etr)).total_seconds() / 3600
-        except (TypeError, ValueError):
+            etr_utc = _eastern_naive_to_utc_naive(first_etr)
+            error_hours = (datetime.fromisoformat(end_time) - etr_utc).total_seconds() / 3600
+        except (TypeError, ValueError, pytz.exceptions.InvalidTimeError):
+            continue
+        errors.append(error_hours)
+
+    if not errors:
+        return None
+
+    errors.sort()
+    n = len(errors)
+    mid = n // 2
+    median = errors[mid] if n % 2 == 1 else (errors[mid - 1] + errors[mid]) / 2
+    on_time = sum(1 for e in errors if e <= 0)
+
+    return {
+        "n": n,
+        "median_error_hours": median,
+        "on_time_pct": on_time / n * 100,
+        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
+    }
+
+
+def fpl_etr_accuracy(county, db):
+    """
+    Same real accuracy-check shape as teco_etr_accuracy() - FPL's real
+    per-incident feed (fpl_incidents.estimated_restoration, added
+    2026-08-16) finally makes this possible for FPL too. Before that,
+    FPL's live feed only ever gave a county-wide rollup with no
+    restoration estimate at all - fpl_ordinary_restoration_stats()
+    above and storm_history.fpl_restoration_precedent() were the only
+    honest signals available. Real volume checked 2026-09-08: 9,482
+    closed FPL incidents statewide with a known first ETR, 1,119 of
+    those in Palm Beach alone - comfortably past
+    MIN_EVENTS_FOR_CONFIDENT_RANGE.
+
+    Built using the corrected timezone handling from the start - see
+    _eastern_naive_to_utc_naive()'s own comment for the real bug found
+    the same day checking whether this was ready to build (TECO's
+    already-shipped version of this exact check had been silently wrong
+    since 2026-07-18).
+
+    Returns None if there's no usable data for this county. Otherwise
+    the same n/median_error_hours/on_time_pct/limited shape as every
+    other ETR-accuracy function.
+    """
+    conn = db.connect()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT oe.end_time,
+               (SELECT fi.estimated_restoration FROM fpl_incidents fi
+                WHERE fi.incident_id = oe.incident_id AND fi.estimated_restoration IS NOT NULL
+                ORDER BY fi.fetched_at ASC LIMIT 1) AS first_etr
+        FROM fpl_incident_events oe
+        WHERE UPPER(oe.county) = UPPER(?) AND oe.end_time IS NOT NULL
+    ''', (county,))
+    rows = cursor.fetchall()
+
+    errors = []
+    for end_time, first_etr in rows:
+        if not first_etr:
+            continue
+        try:
+            etr_utc = _eastern_naive_to_utc_naive(first_etr)
+            error_hours = (datetime.fromisoformat(end_time) - etr_utc).total_seconds() / 3600
+        except (TypeError, ValueError, pytz.exceptions.InvalidTimeError):
             continue
         errors.append(error_hours)
 
