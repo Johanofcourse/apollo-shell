@@ -72,6 +72,23 @@ def _duration_since(start_iso, end_iso=None):
     return " ".join(parts)
 
 
+def google_maps_url(lat, lon):
+    """
+    A real link to one incident's exact real-world location - links
+    out to Google Maps rather than building a map renderer a second
+    time: the dashboard has no map at all, and the public site's own
+    isometric map is a whole-state view, not built to frame one point.
+    Same "small concepts, room to grow" scoping as everything else
+    here - a fancier in-house view is a real option later, not a gap
+    now. Returns None when either coordinate is missing (a
+    county/territory-wide rollup has no single point to give) so
+    templates can skip the link cleanly rather than build a broken one.
+    """
+    if lat is None or lon is None:
+        return None
+    return f"https://www.google.com/maps?q={lat},{lon}"
+
+
 def _percentage_tier(percentage_out):
     """
     Bucket a peak-percentage-out value into a severity tier for a
@@ -113,6 +130,12 @@ def _normalize_open_events(open_events, customers_field, peak_field):
     per-incident ETR (TECO, FPL, LWBU, Clay's get_X_open_events() rows
     all give current_estimated_restoration); every other source's rows
     come back None here.
+
+    lat/lon are carried through the same way, real per-incident
+    coordinates already sitting in the *_incident_events tables since
+    the live-pins work - only ever real for the incident-level sources
+    (TECO/Duke/FPL/LWBU/Clay); a county/territory-wide rollup has no
+    single point to give, so those rows come back None here too.
     """
     return [{
         "utility": e["utility"],
@@ -125,6 +148,8 @@ def _normalize_open_events(open_events, customers_field, peak_field):
         "estimated_restoration": e.get("current_estimated_restoration"),
         "start_time": e["start_time"],
         "duration": _duration_since(e["start_time"]),
+        "lat": e.get("lat"),
+        "lon": e.get("lon"),
     } for e in open_events]
 
 
@@ -220,6 +245,11 @@ def _normalize_closed_events(closed_events, peak_field):
     same fields as _normalize_open_events() except there's no "current"
     reading (the event is over) and "duration" is bounded between
     start_time and end_time rather than start_time and now.
+
+    lat/lon carried through the same optional way as
+    _normalize_open_events() - real for the incident-level sources
+    only, None for a county/territory-wide rollup with no single point
+    to give.
     """
     return [{
         "utility": e["utility"],
@@ -230,6 +260,8 @@ def _normalize_closed_events(closed_events, peak_field):
         "start_time": e["start_time"],
         "end_time": e["end_time"],
         "duration": _duration_since(e["start_time"], e["end_time"]),
+        "lat": e.get("lat"),
+        "lon": e.get("lon"),
     } for e in closed_events]
 
 

@@ -119,6 +119,12 @@
             <div class="label">County</div>
             <div class="value">{{ ev.county or "—" }}</div>
           </div>
+          {% if ev.lat and ev.lon %}
+          <div class="summary-item">
+            <div class="label">Location</div>
+            <div class="value"><a href="{{ maps_url(ev.lat, ev.lon) }}" target="_blank" rel="noopener" style="color: var(--pink); font-size: 0.95rem;">View real location</a></div>
+          </div>
+          {% endif %}
           {% if ev.region_name %}
           <div class="summary-item">
             <div class="label">Area</div>

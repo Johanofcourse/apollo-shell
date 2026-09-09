@@ -357,6 +357,8 @@
   .outage-figure { color: var(--magenta); font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem; }
   .outage-card.combined .outage-figure { color: var(--cyan); }
   .outage-sub { color: var(--ink-soft); font-size: 0.85rem; }
+  .location-link { color: var(--cyan); text-decoration: none; border-bottom: 1px solid var(--cyan); }
+  .location-link:hover { color: var(--ink); border-bottom-color: var(--ink); }
   .outage-note { color: var(--ink-soft); font-size: 0.75rem; margin-top: 0.4rem; }
 
   .map-legend { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; margin-top: 0.7rem; }
@@ -765,6 +767,9 @@
           {% if e.estimated_restoration %}
           <div class="outage-sub">{{ e.utility }} estimates restoration by {{ e.estimated_restoration | humanize }}</div>
           {% endif %}
+          {% if e.lat and e.lon %}
+          <div class="outage-sub"><a class="location-link" href="{{ maps_url(e.lat, e.lon) }}" target="_blank" rel="noopener">&#128205; View real location</a></div>
+          {% endif %}
         </div>
         {% endfor %}
         {% if county_detail.real_events_total_pages > 1 %}
@@ -1047,6 +1052,9 @@
           </span>
         </div>
         <div class="outage-sub">{{ e.start_time | humanize }} &rarr; {{ e.end_time | humanize }} &middot; lasted {{ e.duration }}</div>
+        {% if e.lat and e.lon %}
+        <div class="outage-sub"><a class="location-link" href="{{ maps_url(e.lat, e.lon) }}" target="_blank" rel="noopener">&#128205; View real location</a></div>
+        {% endif %}
       </div>
       {% endfor %}
       {% if county_detail.closed_events_total_pages > 1 %}
