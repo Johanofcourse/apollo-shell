@@ -180,6 +180,12 @@
   .gauge-caption { font-weight: 700; font-size: 1.05rem; margin-top: 0.2rem; }
   .gauge-sub { font-size: 0.78rem; color: var(--ink-soft); max-width: 16rem; }
   .gauge-hint { font-size: 0.72rem; color: var(--cyan); }
+  .gauge-hint .zoomed-name { color: var(--ink); font-weight: 600; }
+  .zoom-out-btn {
+    background: none; border: none; padding: 0; margin: 0;
+    font-family: inherit; font-size: inherit; color: var(--cyan);
+    text-decoration: underline; cursor: pointer;
+  }
   .map-mode-toggle { display: flex; gap: 0.4rem; margin-top: 0.7rem; }
   .map-mode-btn {
     background: transparent; border: 1px solid var(--line); color: var(--ink-soft);
@@ -467,6 +473,10 @@
     <symbol id="hz-nodata" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 3">
       <circle cx="12" cy="12" r="9"/>
     </symbol>
+    <symbol id="hz-pin-bolt" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9.5" fill="#060708" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M13 6 L7.5 13.5 L11.2 13.5 L10.3 18.5 L16.3 10.3 L12.5 10.3 Z" fill="currentColor"/>
+    </symbol>
   </defs>
 </svg>
 
@@ -489,7 +499,7 @@
 
   <div class="hero">
     <div class="hero-cell gauge-cell">
-      <div class="gauge-hint">&darr; click a county, or search below</div>
+      <div class="gauge-hint" id="gaugeHint">&darr; click a county, or search below</div>
       <div class="fl-map-wrap" id="flMapWrap" role="img" aria-label="Map of Florida counties, color-coded by current weather-outage pattern">
         <svg id="flSvg" width="100%" height="100%" viewBox="0 0 736 706" preserveAspectRatio="xMidYMid meet">
           <g class="fl-rotate-group">
@@ -1186,6 +1196,7 @@
   const counties = {{ counties_json | safe }};
   const COUNTY_RINGS = {{ county_rings_json | safe }};
   const FPL_PINS = {{ fpl_incident_pins_json | safe }};
+  const SELECTED_COUNTY = {{ selected_county_json | safe }};
   const countyByName = Object.fromEntries(counties.map(c => [c.name, c]));
 
   // kpiCustomers is rendered server-side from narrative.total_current (see
@@ -1331,6 +1342,17 @@
 
   let mapMode = "live";
 
+  // Map-as-hub zoom, added 2026-09-09: a real visitor lands on their
+  // own county's cards after clicking/searching (see selectCounty()
+  // below), so the map should already be zoomed there too, not still
+  // showing all 67 counties at once - real feedback that picking out
+  // individual pins in a dense cluster (Miami-Dade) was hard at
+  // statewide zoom even after sizing pins up. Starts from the
+  // server-rendered selected county so a fresh page load (a county
+  // click, a search result, a bookmarked ?county= link) already lands
+  // zoomed in, not just client-side navigation.
+  let zoomedCounty = SELECTED_COUNTY ? SELECTED_COUNTY.toUpperCase() : null;
+
   function renderMap() {
     countiesGroup.innerHTML = "";
     const jobs = [];
@@ -1375,7 +1397,26 @@
       }
     }
 
+    // Zoom bounding box - real bug caught checking Monroe (the Keys,
+    // 10 real separate ring parts stretching 100+ miles) and Franklin
+    // (3 parts, real barrier islands miles from the mainland part):
+    // unioning every matching part's points made "zoomed in" barely
+    // zoom at all for these counties, since the box had to stretch to
+    // cover every scattered island too. Picks the single LARGEST part
+    // by area instead - the other parts still render normally on the
+    // always-drawn full map, just not what the zoom frames around.
+    let zMinX = Infinity, zMaxX = -Infinity, zMinY = Infinity, zMaxY = -Infinity;
+    let zoomedCountyDisplayName = null;
+    let bestZoomArea = -1;
+
     for (const job of jobs) {
+      // When zoomed, an irregularly-shaped county's own axis-aligned
+      // bounding box can still leave real "dead space" that a neighbor
+      // happens to fill (real case: Franklin's hexagonal main part) -
+      // dimming every OTHER county makes it unambiguous which shape is
+      // actually the zoom target, regardless of how well its own
+      // bounding box happens to fit its real shape.
+      const isDimmed = zoomedCounty && job.name.toUpperCase() !== zoomedCounty;
       const n = job.ground.length;
       for (let i = 0; i < n; i++) {
         const g1 = job.ground[i], g2 = job.ground[(i + 1) % n];
@@ -1383,12 +1424,14 @@
         const wall = document.createElementNS(svgNS, "polygon");
         wall.setAttribute("points", fmtRing([t1, t2, g2, g1]));
         wall.setAttribute("fill", job.darkFill);
+        if (isDimmed) wall.setAttribute("opacity", "0.3");
         countiesGroup.appendChild(wall);
       }
       const top = document.createElementNS(svgNS, "polygon");
       top.setAttribute("class", "fl-county");
       top.setAttribute("points", fmtRing(job.top));
       top.setAttribute("fill", job.fill);
+      if (isDimmed) top.setAttribute("opacity", "0.3");
       top.tabIndex = 0;
       top.addEventListener("mouseenter", () => showTooltip(top, job.name, job.subtitle));
       top.addEventListener("mouseleave", hideTooltip);
@@ -1396,13 +1439,32 @@
       top.addEventListener("blur", hideTooltip);
       top.addEventListener("click", () => selectCounty(job.name));
       countiesGroup.appendChild(top);
+      if (zoomedCounty && job.name.toUpperCase() === zoomedCounty) {
+        let jMinX = Infinity, jMaxX = -Infinity, jMinY = Infinity, jMaxY = -Infinity;
+        for (const [x, y] of job.top.concat(job.ground)) {
+          if (x < jMinX) jMinX = x; if (x > jMaxX) jMaxX = x;
+          if (y < jMinY) jMinY = y; if (y > jMaxY) jMaxY = y;
+        }
+        const area = (jMaxX - jMinX) * (jMaxY - jMinY);
+        if (area > bestZoomArea) {
+          bestZoomArea = area;
+          zMinX = jMinX; zMaxX = jMaxX; zMinY = jMinY; zMaxY = jMaxY;
+          zoomedCountyDisplayName = job.name;
+        }
+      }
       track(job.top); track(job.ground);
     }
 
     renderPins(countyHeightByName);
 
-    const pad = 16;
-    flSvg.setAttribute("viewBox", `${(minX - pad).toFixed(1)} ${(minY - pad).toFixed(1)} ${(maxX - minX + pad * 2).toFixed(1)} ${(maxY - minY + pad * 2).toFixed(1)}`);
+    // zMinX only ever moves off Infinity if some job actually matched
+    // zoomedCounty above - a stale/mistyped ?county= value falls back
+    // to the statewide view instead of rendering an empty map.
+    const isZoomed = zoomedCounty !== null && zMinX !== Infinity;
+    const pad = isZoomed ? 10 : 16;
+    const [vMinX, vMaxX, vMinY, vMaxY] = isZoomed ? [zMinX, zMaxX, zMinY, zMaxY] : [minX, maxX, minY, maxY];
+    flSvg.setAttribute("viewBox", `${(vMinX - pad).toFixed(1)} ${(vMinY - pad).toFixed(1)} ${(vMaxX - vMinX + pad * 2).toFixed(1)} ${(vMaxY - vMinY + pad * 2).toFixed(1)}`);
+    updateZoomHint(isZoomed, zoomedCountyDisplayName);
 
     const captionEl = document.getElementById("gaugeCaption");
     const subEl = document.getElementById("gaugeSub");
@@ -1420,6 +1482,21 @@
     }
 
     renderLegend();
+  }
+
+  const gaugeHintEl = document.getElementById("gaugeHint");
+
+  function updateZoomHint(isZoomed, displayName) {
+    if (isZoomed) {
+      gaugeHintEl.innerHTML = `Zoomed to <span class="zoomed-name">${displayName}</span> &middot; <button type="button" class="zoom-out-btn" id="zoomOutBtn">&larr; All Counties</button>`;
+      document.getElementById("zoomOutBtn").addEventListener("click", () => {
+        zoomedCounty = null;
+        hideTooltip();
+        renderMap();
+      });
+    } else {
+      gaugeHintEl.textContent = "↓ click a county, or search below";
+    }
   }
 
   const pinsGroup = document.getElementById("flPins");
@@ -1443,7 +1520,7 @@
       const px = gx, py = gy - height - PIN_LIFT;
 
       const marker = document.createElementNS(svgNS, "use");
-      marker.setAttribute("href", "#hz-medium");
+      marker.setAttribute("href", "#hz-pin-bolt");
       marker.setAttribute("class", "fl-pin");
       // Real feedback 2026-08-17: 9x9 map units read as near-invisible
       // against the county tiles' own severity color, especially in a
