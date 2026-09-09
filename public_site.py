@@ -653,6 +653,7 @@ def index():
         available_counties=COUNTY_PICKER_CHOICES,
         available_counties_json=json.dumps(COUNTY_PICKER_CHOICES),
         selected_county=selected_county,
+        selected_county_json=json.dumps(selected_county),
         county_detail=county_detail,
         umami_script_url=UMAMI_SCRIPT_URL,
         umami_website_id=UMAMI_WEBSITE_ID,
