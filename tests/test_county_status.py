@@ -29,6 +29,17 @@ def db_path():
         os.remove(path)
 
 
+class TestGoogleMapsUrl:
+    def test_builds_a_real_maps_link(self):
+        assert cs.google_maps_url(27.9, -82.4) == "https://www.google.com/maps?q=27.9,-82.4"
+
+    def test_missing_lat_returns_none(self):
+        assert cs.google_maps_url(None, -82.4) is None
+
+    def test_missing_lon_returns_none(self):
+        assert cs.google_maps_url(27.9, None) is None
+
+
 class TestRowTier:
     def test_uses_real_percentage_when_present(self):
         assert cs._row_tier({"peak_percentage_out": 35, "peak_customers": 1}) == "critical"
@@ -497,7 +508,7 @@ class TestNormalizeClosedEvents:
             "utility": "FPL", "county": "Alachua", "peak_customers": 500,
             "peak_percentage_out": 2.5, "customers_served": 20000,
             "start_time": "2026-01-01T00:00:00", "end_time": "2026-01-01T02:00:00",
-            "duration": "2h 0m",
+            "duration": "2h 0m", "lat": None, "lon": None,
         }]
 
     def test_incident_level_source_has_no_percentage(self):
@@ -508,6 +519,28 @@ class TestNormalizeClosedEvents:
 
         assert rows[0]["peak_customers"] == 40
         assert rows[0]["peak_percentage_out"] is None
+
+    def test_incident_level_source_carries_lat_lon_through(self):
+        # Real coordinates already sitting in the *_incident_events
+        # tables since the live-pins work - added so a closed incident
+        # can show "View real location" the same way an open one can.
+        rows = cs._normalize_closed_events([{
+            "utility": "TECO", "county": "Hillsborough", "peak_customer_count": 40,
+            "start_time": "2026-01-01T00:00:00", "end_time": "2026-01-01T00:30:00",
+            "lat": 27.9, "lon": -82.4,
+        }], "peak_customer_count")
+
+        assert rows[0]["lat"] == 27.9
+        assert rows[0]["lon"] == -82.4
+
+    def test_rollup_source_has_no_lat_lon(self):
+        rows = cs._normalize_closed_events([{
+            "utility": "FPL", "county": "Alachua", "peak_customers_out": 500,
+            "start_time": "2026-01-01T00:00:00", "end_time": "2026-01-01T02:00:00",
+        }], "peak_customers_out")
+
+        assert rows[0]["lat"] is None
+        assert rows[0]["lon"] is None
 
 
 class TestNormalizeOpenEvents:
@@ -529,6 +562,26 @@ class TestNormalizeOpenEvents:
         }], "current_customers_out", "peak_customers_out")
 
         assert rows[0]["estimated_restoration"] is None
+
+    def test_incident_level_source_carries_lat_lon_through(self):
+        rows = cs._normalize_open_events([{
+            "utility": "Tampa Electric Company", "county": "Hillsborough",
+            "current_customer_count": 40, "peak_customer_count": 100,
+            "start_time": "2026-01-01T00:00:00", "lat": 27.9, "lon": -82.4,
+        }], "current_customer_count", "peak_customer_count")
+
+        assert rows[0]["lat"] == 27.9
+        assert rows[0]["lon"] == -82.4
+
+    def test_rollup_source_has_no_lat_lon(self):
+        rows = cs._normalize_open_events([{
+            "utility": "FPL", "county": "Alachua",
+            "current_customers_out": 40, "peak_customers_out": 100,
+            "start_time": "2026-01-01T00:00:00",
+        }], "current_customers_out", "peak_customers_out")
+
+        assert rows[0]["lat"] is None
+        assert rows[0]["lon"] is None
 
 
 class TestRealPerCountyClosedEvents:

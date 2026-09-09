@@ -38,6 +38,7 @@ from county_status import (
     attach_active_counties,
     at_risk_counties,
     _normalize_open_events,
+    google_maps_url,
 )
 from storm_history import (
     available_history_counties, load_history_for_county,
@@ -50,6 +51,7 @@ from map_projection import project_lat_lon
 app = Flask(__name__, template_folder="templates_public")
 app.jinja_env.filters['humanize'] = humanize_timestamp
 app.jinja_env.filters['row_tier'] = _row_tier
+app.jinja_env.globals['maps_url'] = google_maps_url
 
 # nginx now sits in front of this app (added 2026-08-11 for the public
 # launch) - without this, every visitor's request.remote_addr would

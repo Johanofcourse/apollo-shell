@@ -36,6 +36,7 @@ from county_status import (
     lwbu_etr_accuracy,
     clay_etr_accuracy,
     attach_active_counties as _attach_active_counties,
+    google_maps_url,
 )
 from storm_history import (
     HISTORICAL_DB_PATH,
@@ -203,6 +204,7 @@ def _get_cached_correlations(db_path, days):
 # _humanize_timestamp now lives in county_status.py as
 # humanize_timestamp (imported above under the old private name).
 app.jinja_env.filters['humanize'] = _humanize_timestamp
+app.jinja_env.globals['maps_url'] = google_maps_url
 
 
 def _incident_label(incident_id):
