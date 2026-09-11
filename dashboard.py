@@ -1,11 +1,14 @@
 import os
 import re
+import secrets
 import sqlite3
 import sys
 import time
 from datetime import datetime, timedelta
 
-from flask import Flask, render_template, request
+from dotenv import load_dotenv
+from flask import Flask, render_template, request, redirect, session, url_for
+from authlib.integrations.flask_client import OAuth
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
@@ -64,7 +67,83 @@ from fetch_lcec_outages import UTILITY_NAME as LCEC_UTILITY_NAME
 from fetch_clay_outages import UTILITY_NAME as CLAY_UTILITY_NAME
 
 
+load_dotenv()
+
 app = Flask(__name__)
+
+# Every other secret in this codebase is read with os.environ.get() so
+# a missing .env fails at request time, not at import time (CI has no
+# .env at all - a hard os.environ[...] here would break the whole test
+# suite). FLASK_SECRET_KEY is the one exception worth a fallback rather
+# than just None: an unset secret_key would sign session cookies with
+# whatever Flask does with None, and a *fixed* fallback string would be
+# a forgeable secret in prod if someone forgot to set the real one. A
+# fresh random key per process is the safe default - worst case if the
+# real VM .env value is missing, every gunicorn worker restart logs
+# everyone out (annoying, not exploitable), never a forgeable session.
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
+
+# Replaces nginx Basic Auth (see the deploy notes) with a real session
+# login - Basic Auth on mobile Safari kept prompting for credentials on
+# every tab switch. Google OAuth only proves who someone is, not
+# whether they should have access, so every request is also checked
+# against DASHBOARD_ALLOWED_EMAILS below.
+oauth = OAuth(app)
+oauth.register(
+    name="google",
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+    client_kwargs={"scope": "openid email profile"},
+)
+
+DASHBOARD_ALLOWED_EMAILS = {
+    email.strip().lower()
+    for email in os.environ.get("DASHBOARD_ALLOWED_EMAILS", "").split(",")
+    if email.strip()
+}
+
+_LOGIN_ENDPOINTS = {"login", "google_login", "auth_callback", "static"}
+
+
+@app.before_request
+def _require_login():
+    if request.endpoint in _LOGIN_ENDPOINTS:
+        return None
+    if session.get("user_email") not in DASHBOARD_ALLOWED_EMAILS:
+        return redirect(url_for("login"))
+    return None
+
+
+@app.route("/login")
+def login():
+    if session.get("user_email") in DASHBOARD_ALLOWED_EMAILS:
+        return redirect(url_for("index"))
+    return render_template("login.html", error=request.args.get("error"))
+
+
+@app.route("/auth/google")
+def google_login():
+    return oauth.google.authorize_redirect(url_for("auth_callback", _external=True))
+
+
+@app.route("/auth/callback")
+def auth_callback():
+    token = oauth.google.authorize_access_token()
+    userinfo = token.get("userinfo") or {}
+    email = (userinfo.get("email") or "").strip().lower()
+    if userinfo.get("email_verified") and email in DASHBOARD_ALLOWED_EMAILS:
+        session["user_email"] = email
+        return redirect(url_for("index"))
+    session.pop("user_email", None)
+    return redirect(url_for("login", error="That Google account isn't authorized for this dashboard."))
+
+
+@app.route("/logout")
+def logout():
+    session.pop("user_email", None)
+    return redirect(url_for("login"))
+
 
 # find_correlations()/find_teco_correlations()/find_duke_correlations()/
 # find_jea_correlations() each nested-loop the raw history of their
