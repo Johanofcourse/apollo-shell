@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import dashboard
 from dashboard import (
     _incident_label, _explain_pipeline_error, _group_pipeline_errors,
     _is_pipeline_error_ongoing, _normalize_open_events, _rows_for_county,
@@ -591,3 +592,105 @@ class TestGroupClosedEventsByMonth:
 
     def test_empty_rows_returns_empty(self):
         assert _rows_for_county([], "Duval") == []
+
+
+class TestDashboardLogin:
+    """
+    Google OAuth session login added 2026-09-11 to replace nginx Basic
+    Auth - mobile Safari kept re-prompting for Basic Auth credentials
+    on every tab switch. OAuth only proves who someone is, not whether
+    they should have access - DASHBOARD_ALLOWED_EMAILS is the actual
+    access-control check, checked on every request (not just at login),
+    and these tests cover both halves separately.
+    """
+
+    def test_unauthenticated_request_redirects_to_login(self):
+        client = dashboard.app.test_client()
+        resp = client.get("/")
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
+
+    def test_login_page_loads_for_anonymous_visitor(self):
+        client = dashboard.app.test_client()
+        resp = client.get("/login")
+        assert resp.status_code == 200
+        assert b"Sign in with Google" in resp.data
+
+    def test_already_authorized_session_is_bounced_off_login_page(self, monkeypatch):
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"test@example.com"})
+        client = dashboard.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_email"] = "test@example.com"
+        resp = client.get("/login")
+        assert resp.status_code == 302
+        assert "/login" not in resp.headers["Location"]
+
+    def test_allowlisted_session_reaches_the_dashboard(self, monkeypatch):
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"test@example.com"})
+        client = dashboard.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_email"] = "test@example.com"
+        resp = client.get("/")
+        assert resp.status_code == 200
+
+    def test_callback_grants_a_session_for_an_allowlisted_email(self, monkeypatch):
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"johan@example.com"})
+        monkeypatch.setattr(
+            dashboard.oauth.google, "authorize_access_token",
+            lambda: {"userinfo": {"email": "Johan@Example.com", "email_verified": True}},
+        )
+        client = dashboard.app.test_client()
+        resp = client.get("/auth/callback")
+        assert resp.status_code == 302
+        with client.session_transaction() as sess:
+            assert sess["user_email"] == "johan@example.com"
+
+    def test_callback_rejects_an_email_not_on_the_allowlist(self, monkeypatch):
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"johan@example.com"})
+        monkeypatch.setattr(
+            dashboard.oauth.google, "authorize_access_token",
+            lambda: {"userinfo": {"email": "stranger@example.com", "email_verified": True}},
+        )
+        client = dashboard.app.test_client()
+        resp = client.get("/auth/callback")
+        assert "/login" in resp.headers["Location"]
+        with client.session_transaction() as sess:
+            assert "user_email" not in sess
+
+    def test_callback_rejects_an_unverified_email_even_if_allowlisted(self, monkeypatch):
+        # Google's userinfo response includes email_verified - without
+        # this check, anyone who can produce an unverified claim for an
+        # allowlisted address (e.g. a G Suite domain they don't own)
+        # could otherwise get in.
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"johan@example.com"})
+        monkeypatch.setattr(
+            dashboard.oauth.google, "authorize_access_token",
+            lambda: {"userinfo": {"email": "johan@example.com", "email_verified": False}},
+        )
+        client = dashboard.app.test_client()
+        resp = client.get("/auth/callback")
+        assert "/login" in resp.headers["Location"]
+        with client.session_transaction() as sess:
+            assert "user_email" not in sess
+
+    def test_logout_clears_the_session(self, monkeypatch):
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"test@example.com"})
+        client = dashboard.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_email"] = "test@example.com"
+        resp = client.get("/logout")
+        assert resp.status_code == 302
+        with client.session_transaction() as sess:
+            assert "user_email" not in sess
+
+    def test_removing_an_email_from_the_allowlist_revokes_an_existing_session(self, monkeypatch):
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"test@example.com"})
+        client = dashboard.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_email"] = "test@example.com"
+        assert client.get("/").status_code == 200
+
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", set())
+        resp = client.get("/")
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]

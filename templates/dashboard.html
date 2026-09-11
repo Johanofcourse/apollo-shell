@@ -334,7 +334,7 @@
 </head>
 <body>
   <h1>Apollo Dashboard — Live Status</h1>
-  <div class="meta">Generated {{ generated_at }} · refreshes every 60s</div>
+  <div class="meta">Generated {{ generated_at }} · refreshes every 60s · {{ session.user_email }} · <a href="{{ url_for('logout') }}">Sign out</a></div>
 
   <div class="controls-strip">
     <a href="/county" class="nav-btn">County lookup &rarr;</a>
