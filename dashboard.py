@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, session, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 from authlib.integrations.flask_client import OAuth
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
@@ -70,6 +71,16 @@ from fetch_clay_outages import UTILITY_NAME as CLAY_UTILITY_NAME
 load_dotenv()
 
 app = Flask(__name__)
+
+# nginx sits in front of this app and only ever hands gunicorn plain
+# HTTP (see the proxy_pass block in the VM's nginx config) - without
+# this, url_for(..., _external=True) below would build OAuth redirect
+# URIs as http://dashboard.apollosentinel.app/... instead of https://,
+# which won't match the exact redirect URI registered with Google and
+# would fail every real login. Same fix, same reasoning, as
+# public_site.py's own ProxyFix - x_for=1/x_proto=1 trust exactly one
+# proxy hop (nginx is the only one in the chain here).
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 # Every other secret in this codebase is read with os.environ.get() so
 # a missing .env fails at request time, not at import time (CI has no
