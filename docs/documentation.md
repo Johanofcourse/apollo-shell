@@ -1733,3 +1733,32 @@ step down (1.4rem &rarr; 1.25rem) at the same 760px breakpoint `.hero`
 already uses elsewhere, verified with a real screenshot showing the
 full title on one line, and a second real screenshot confirming
 desktop still gets the larger original size.
+
+## Replacing the dashboard's Basic Auth with real Google sign-in (September 11, 2026)
+The dashboard's nginx Basic Auth (added August 12) worked, but was
+rough in exactly the way rough infrastructure tends to be: mobile
+Safari re-prompted for the browser's native credential popup on every
+tab switch. That friction, not a security concern with Basic Auth
+itself, is what actually forced this change.
+
+Replaced with real Google OAuth (via Authlib) - `/login`, `/auth/google`,
+`/auth/callback`, `/logout`, and a session cookie once signed in.
+Google only proves who someone is, not whether they should have
+access, so every request is separately checked against a small
+`DASHBOARD_ALLOWED_EMAILS` list - revoking someone's access takes
+effect on their very next request, since the check runs on every page
+load, not just at login.
+
+One real bug caught before a single real login was attempted:
+`dashboard.py` never had the `ProxyFix` middleware `public_site.py`
+already needed for the same reason (nginx only ever hands gunicorn
+plain HTTP internally). Without it, the OAuth redirect URI came out as
+`http://` instead of `https://`, which wouldn't have matched what's
+registered with Google and would've failed every login attempt with a
+confusing error. Caught by testing the raw `/auth/google` redirect
+directly on the VM before handing off for a real attempt, not by the
+test suite.
+
+Basic Auth was removed from nginx entirely once the new login was
+verified working live end to end. The dashboard's front door is now
+just the Google sign-in screen - no more native browser popup.
