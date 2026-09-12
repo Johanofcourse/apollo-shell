@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 import dashboard
 from dashboard import (
     _incident_label, _explain_pipeline_error, _group_pipeline_errors,
@@ -694,3 +696,33 @@ class TestDashboardLogin:
         resp = client.get("/")
         assert resp.status_code == 302
         assert "/login" in resp.headers["Location"]
+
+
+class TestProxyFixConfig:
+    """
+    ProxyFix (werkzeug) - added 2026-09-11 alongside the Google OAuth
+    login, same reasoning as public_site.py's own ProxyFix. Real bug
+    this prevents: nginx only ever hands gunicorn plain HTTP, so
+    without this, url_for(..., _external=True) builds OAuth redirect
+    URIs as http://... instead of https://, which won't match the
+    exact redirect URI registered with Google and fails every real
+    login. x_for/x_proto must stay at exactly 1 - the real hop count
+    for this deployment (one nginx instance directly in front of
+    gunicorn).
+    """
+
+    def test_trusts_exactly_one_proxy_hop_for_ip_and_scheme(self):
+        wsgi_app = dashboard.app.wsgi_app
+        assert isinstance(wsgi_app, ProxyFix)
+        assert wsgi_app.x_for == 1
+        assert wsgi_app.x_proto == 1
+
+    def test_oauth_redirect_uri_is_https_when_forwarded_proto_says_so(self, monkeypatch):
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", set())
+        client = dashboard.app.test_client()
+        resp = client.get(
+            "/auth/google",
+            headers={"X-Forwarded-Proto": "https", "Host": "dashboard.apollosentinel.app"},
+        )
+        assert resp.status_code == 302
+        assert "redirect_uri=https%3A%2F%2Fdashboard.apollosentinel.app" in resp.headers["Location"]
