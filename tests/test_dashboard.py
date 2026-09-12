@@ -618,6 +618,15 @@ class TestDashboardLogin:
         assert resp.status_code == 200
         assert b"Sign in with Google" in resp.data
 
+    def test_privacy_policy_loads_without_being_signed_in(self):
+        # Google's OAuth consent screen needs to fetch this page itself
+        # to leave "Testing" publishing status, so it must never be
+        # gated behind the login it's describing.
+        client = dashboard.app.test_client()
+        resp = client.get("/privacy")
+        assert resp.status_code == 200
+        assert b"Privacy Policy" in resp.data
+
     def test_already_authorized_session_is_bounced_off_login_page(self, monkeypatch):
         monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"test@example.com"})
         client = dashboard.app.test_client()

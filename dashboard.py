@@ -114,7 +114,7 @@ DASHBOARD_ALLOWED_EMAILS = {
     if email.strip()
 }
 
-_LOGIN_ENDPOINTS = {"login", "google_login", "auth_callback", "static"}
+_LOGIN_ENDPOINTS = {"login", "google_login", "auth_callback", "privacy_policy", "static"}
 
 
 @app.before_request
@@ -154,6 +154,15 @@ def auth_callback():
 def logout():
     session.pop("user_email", None)
     return redirect(url_for("login"))
+
+
+@app.route("/privacy")
+def privacy_policy():
+    # Publicly reachable on purpose (exempt in _LOGIN_ENDPOINTS above) -
+    # Google's OAuth consent screen requires a live privacy policy URL
+    # before it'll let this app leave "Testing" publishing status, and
+    # Google needs to be able to fetch it without being logged in.
+    return render_template("privacy.html")
 
 
 # find_correlations()/find_teco_correlations()/find_duke_correlations()/
