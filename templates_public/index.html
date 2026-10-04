@@ -291,15 +291,42 @@
       gap: 0.4rem;
       margin-bottom: 1.75rem;
     }
-    .mobile-tabs .map-mode-btn {
-      /* Same min-width: 0 story as .mobile-stat-tile above - flex
-         items won't actually shrink below their label's natural width
-         without it, so 4 buttons in a 390px row overflowed instead of
-         fitting. Smaller font/padding here too - the desktop-sized
-         map-mode-btn text was real close to the same problem even
-         with the fix. */
-      flex: 1 1 0; min-width: 0; text-align: center;
-      padding: 0.45rem 0.3rem; font-size: 0.6rem;
+    .mobile-tabs .mobile-tab-btn {
+      /* Hazard-signage plates instead of the generic pill buttons: stencil
+         type, a bevelled edge, a faint hatch texture, and a hazard strip on
+         the active tab. min-width: 0 stops four labels overflowing a 390px row. */
+      flex: 1 1 0; min-width: 0; position: relative;
+      padding: 0.7rem 0.2rem 0.6rem; font-size: 0.78rem;
+      font-family: "Big Shoulders Stencil Text", "Helvetica Neue", sans-serif;
+      font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+      text-align: center; color: var(--ink-soft);
+      background:
+        repeating-linear-gradient(-45deg, transparent 0 6px, rgba(255, 255, 255, 0.025) 6px 7px),
+        linear-gradient(180deg, #1b1f24 0%, var(--surface) 100%);
+      border: 1px solid var(--line);
+      border-top-color: #3a414a;
+      border-bottom-color: var(--recessed);
+      border-radius: 0;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 3px 0 var(--recessed);
+      transition: transform 0.08s ease, box-shadow 0.08s ease;
+    }
+    .mobile-tabs .mobile-tab-btn:hover:not(.active) { color: var(--ink); }
+    .mobile-tabs .mobile-tab-btn:active {
+      transform: translateY(2px);
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6), 0 1px 0 var(--recessed);
+    }
+    .mobile-tabs .mobile-tab-btn:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+    .mobile-tabs .mobile-tab-btn.active {
+      color: var(--void);
+      background: var(--yellow);
+      border-color: var(--yellow);
+      border-bottom-color: #8a7a00;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 3px 0 #8a7a00;
+    }
+    .mobile-tabs .mobile-tab-btn.active::after {
+      content: "";
+      position: absolute; left: 0; right: 0; bottom: 0; height: 5px;
+      background: repeating-linear-gradient(-45deg, var(--void) 0 6px, var(--yellow) 6px 12px);
     }
 
     [data-tab] { display: none; }
