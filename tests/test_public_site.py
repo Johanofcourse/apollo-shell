@@ -829,7 +829,7 @@ class TestWeatherAlertsPaginationRoute:
     def test_more_than_one_page_worth_shows_real_pagination_controls(self, monkeypatch):
         monkeypatch.setattr(
             OutageDatabase, "get_active_weather_alerts",
-            lambda self: [_fake_alert(n) for n in range(12)],
+            lambda self: [_fake_alert(n, areas="Statewide Test Zone") for n in range(12)],
         )
         public_site.app.testing = True
         client = public_site.app.test_client()
@@ -842,7 +842,7 @@ class TestWeatherAlertsPaginationRoute:
     def test_page_two_shows_different_alerts_than_page_one(self, monkeypatch):
         monkeypatch.setattr(
             OutageDatabase, "get_active_weather_alerts",
-            lambda self: [_fake_alert(n) for n in range(12)],
+            lambda self: [_fake_alert(n, areas="Statewide Test Zone") for n in range(12)],
         )
         public_site.app.testing = True
         client = public_site.app.test_client()
