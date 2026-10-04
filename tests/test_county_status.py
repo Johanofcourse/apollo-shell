@@ -31,22 +31,16 @@ def db_path():
 
 class TestMonthlyOutageCounts:
     def test_empty_input_returns_empty(self):
-        assert cs.monthly_outage_counts([]) == []
+        assert cs.monthly_outage_counts({}) == []
 
-    def test_counts_by_start_month_oldest_first(self):
-        rows = [
-            {"start_time": "2026-08-20T10:00:00"},
-            {"start_time": "2026-07-03T09:00:00"},
-            {"start_time": "2026-07-15T12:00:00"},
-        ]
-        assert cs.monthly_outage_counts(rows) == [
+    def test_returns_months_oldest_first(self):
+        assert cs.monthly_outage_counts({"2026-08": 1, "2026-07": 2}) == [
             {"month": "2026-07", "count": 2},
             {"month": "2026-08", "count": 1},
         ]
 
     def test_zero_fills_months_between_first_and_last(self):
-        rows = [{"start_time": "2026-05-01T00:00:00"}, {"start_time": "2026-08-01T00:00:00"}]
-        assert cs.monthly_outage_counts(rows) == [
+        assert cs.monthly_outage_counts({"2026-05": 1, "2026-08": 1}) == [
             {"month": "2026-05", "count": 1},
             {"month": "2026-06", "count": 0},
             {"month": "2026-07", "count": 0},
@@ -54,12 +48,73 @@ class TestMonthlyOutageCounts:
         ]
 
     def test_crosses_a_year_boundary_correctly(self):
-        rows = [{"start_time": "2025-12-10T00:00:00"}, {"start_time": "2026-01-10T00:00:00"}]
-        assert [m["month"] for m in cs.monthly_outage_counts(rows)] == ["2025-12", "2026-01"]
+        months = [m["month"] for m in cs.monthly_outage_counts({"2025-12": 1, "2026-01": 1})]
+        assert months == ["2025-12", "2026-01"]
 
-    def test_skips_rows_without_a_start_time(self):
-        rows = [{"start_time": None}, {"start_time": "2026-07-01T00:00:00"}]
-        assert cs.monthly_outage_counts(rows) == [{"month": "2026-07", "count": 1}]
+
+class TestFullHistoryCounts:
+    def test_month_label_reads_like_a_person_wrote_it(self):
+        assert cs.month_label("2026-09") == "Sep 2026"
+
+    def test_line_geometry_is_none_without_data(self):
+        assert cs.line_chart_geometry([]) is None
+
+    def test_line_geometry_scales_to_the_real_peak_and_totals_correctly(self):
+        counts = [
+            {"month": "2026-07", "count": 4},
+            {"month": "2026-08", "count": 0},
+            {"month": "2026-09", "count": 10},
+        ]
+        g = cs.line_chart_geometry(counts)
+        assert g["total"] == 14
+        assert g["first_label"] == "Jul 2026" and g["last_label"] == "Sep 2026"
+        assert g["ticks"][2]["value"] == 10
+        assert g["ticks"][2]["y"] == 16.0
+        assert len(g["points"]) == 3
+        assert g["points"][2]["y"] == 16.0
+
+    def test_county_lookup_matches_case_and_whitespace_and_sums_months(self):
+        class FakeDB:
+            def get_closed_outage_month_counts(self):
+                return [
+                    {"county": "Hillsborough", "month": "2026-07", "n": 2},
+                    {"county": " hillsborough ", "month": "2026-07", "n": 3},
+                    {"county": "Hillsborough", "month": "2026-09", "n": 1},
+                    {"county": "Pasco", "month": "2026-08", "n": 9},
+                ]
+
+        assert cs.monthly_counts_for_county(FakeDB(), "HILLSBOROUGH") == [
+            {"month": "2026-07", "count": 5},
+            {"month": "2026-08", "count": 0},
+            {"month": "2026-09", "count": 1},
+        ]
+
+    def test_sql_aggregate_spans_tables_and_skips_open_or_unlocated_rows(self, db_path):
+        db = OutageDatabase(db_path)
+        conn = db.connect()
+        conn.execute(
+            "INSERT INTO outage_events (utility, county, start_time, end_time, "
+            "peak_customers_out, peak_percentage_out, customers_served) VALUES (?, ?, ?, ?, 1, 1.0, 100)",
+            ("FPL", "Hillsborough", "2026-07-03T10:00:00", "2026-07-03T12:00:00"),
+        )
+        conn.execute(
+            "INSERT INTO teco_incident_events (incident_id, utility, county, start_time, end_time) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("a", "TECO", "Hillsborough", "2026-07-20T10:00:00", "2026-07-20T12:00:00"),
+        )
+        conn.execute(
+            "INSERT INTO teco_incident_events (incident_id, utility, county, start_time, end_time) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("b", "TECO", "Hillsborough", "2026-08-01T10:00:00", None),
+        )
+        conn.execute(
+            "INSERT INTO teco_incident_events (incident_id, utility, county, start_time, end_time) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("c", "TECO", None, "2026-08-02T10:00:00", "2026-08-02T12:00:00"),
+        )
+        conn.commit()
+        rows = db.get_closed_outage_month_counts()
+        assert rows == [{"county": "Hillsborough", "month": "2026-07", "n": 2}]
 
 
 class TestGoogleMapsUrl:

@@ -15,6 +15,17 @@ def _ensure_column(cursor, table, column, coltype='TEXT'):
         cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
 
 
+# Every real single-county closed-event table - the same sources the
+# public site's per-county list reads (combined-territory tables excluded).
+REAL_PER_COUNTY_CLOSED_TABLES = (
+    "outage_events", "teco_incident_events", "duke_incident_events",
+    "jea_outage_events", "tallahassee_outage_events", "talquin_outage_events",
+    "preco_outage_events", "fkec_outage_events", "lwbu_outage_events",
+    "ouc_outage_events", "lcec_outage_events", "clay_outage_events",
+    "fpuc_incident_events",
+)
+
+
 class OutageDatabase:
     """
     Handles all SQLite database operations for storing outage data
@@ -1043,6 +1054,12 @@ class OutageDatabase:
         ''')
 
         # Create indexes
+        for table in REAL_PER_COUNTY_CLOSED_TABLES:
+            cursor.execute(f'''
+                CREATE INDEX IF NOT EXISTS idx_{table}_end_time
+                ON {table}(end_time)
+            ''')
+
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_timestamp
             ON outages(timestamp)
@@ -3404,6 +3421,27 @@ class OutageDatabase:
             ORDER BY end_time DESC
             LIMIT ?
         ''', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+    def get_closed_outage_month_counts(self):
+        """
+        Resolved-outage counts per (county, month) across every real
+        per-county closed-event table, aggregated in SQL so the full
+        history never has to be pulled into Python.
+        """
+        union = " UNION ALL ".join(
+            f"SELECT county, start_time FROM {table} "
+            "WHERE end_time IS NOT NULL AND county IS NOT NULL AND start_time IS NOT NULL"
+            for table in REAL_PER_COUNTY_CLOSED_TABLES
+        )
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT county, substr(start_time, 1, 7) AS month, COUNT(*) AS n
+            FROM ({union})
+            GROUP BY county, month
+        """)
         return [dict(row) for row in cursor.fetchall()]
 
 

@@ -416,6 +416,24 @@
   }
   .outage-chart-label { font-size: 0.65rem; color: var(--ink-soft); margin-top: 6px; white-space: nowrap; }
   .outage-chart-caption { color: var(--ink-soft); font-size: 0.8rem; margin: 0.7rem 0 0; }
+  .outage-chart-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.3rem 1rem; align-items: baseline; margin-bottom: 0.9rem; }
+  .outage-chart-title { font-weight: 700; font-size: 1rem; }
+  .outage-chart-span { color: var(--ink-soft); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+  .chart-axis-title { color: var(--ink-soft); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.4rem; }
+  .chart-toggle-input { position: absolute; opacity: 0; pointer-events: none; }
+  .chart-toggle { display: inline-flex; border: 1px solid var(--line); margin-bottom: 0.8rem; }
+  .chart-toggle label { padding: 0.3rem 0.8rem; font-size: 0.78rem; color: var(--ink-soft); cursor: pointer; }
+  #cv-line:checked ~ .chart-toggle label[for="cv-line"],
+  #cv-bars:checked ~ .chart-toggle label[for="cv-bars"] { color: var(--ink); background: var(--surface); }
+  .chart-toggle-input:focus-visible ~ .chart-toggle { outline: 2px solid var(--magenta); }
+  #cv-line:checked ~ .chart-view-bars,
+  #cv-bars:checked ~ .chart-view-line { display: none; }
+  .chart-view svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .chart-grid { stroke: var(--line); stroke-width: 1; }
+  .chart-axis { stroke: var(--ink-soft); stroke-width: 1; }
+  .chart-line { stroke: var(--magenta); stroke-width: 2; }
+  .chart-dot { fill: var(--magenta); }
+  .chart-tick { fill: var(--ink-soft); font-size: 11px; font-variant-numeric: tabular-nums; }
   .history-county-title {
     font-family: "Big Shoulders Stencil Text", "Helvetica Neue", sans-serif;
     font-weight: 700; font-size: 1.4rem; text-transform: uppercase; letter-spacing: 0.02em; margin-bottom: 0.3rem;
@@ -1057,19 +1075,50 @@
     {% elif not county_detail.closed_events and not county_detail.combined_closed_events %}
       <div class="history-empty">No resolved outages on file for {{ selected_county }} County yet.</div>
     {% else %}
-      {% if county_detail.monthly_counts %}
-      {% set max_count = county_detail.monthly_counts | map(attribute='count') | max %}
+      {% if county_detail.monthly_chart %}
+      {% set chart = county_detail.monthly_chart %}
+      {% set peak = chart.ticks[2].value %}
       <div class="outage-chart">
-        <div class="outage-chart-bars" role="img" aria-label="Resolved outages per month for {{ selected_county }} County">
-          {% for m in county_detail.monthly_counts %}
-          <div class="outage-chart-bar" title="{{ m.month }}: {{ m.count }} resolved">
-            <span class="outage-chart-count">{{ m.count }}</span>
-            <div class="outage-chart-fill" style="height: {{ (m.count / max_count * 100) | round(1) }}%;"></div>
-            <span class="outage-chart-label">{{ m.month[5:7] }}/{{ m.month[2:4] }}</span>
-          </div>
-          {% endfor %}
+        <div class="outage-chart-head">
+          <div class="outage-chart-title">{{ selected_county }} County &middot; {{ "{:,}".format(chart.total) }} resolved outages</div>
+          <div class="outage-chart-span">{{ chart.first_label }} &ndash; {{ chart.last_label }}</div>
         </div>
-        <p class="outage-chart-caption">Resolved outages per month from the real per-county records this project has tracked. Coverage varies by utility, so this shows what was observed, not every outage that happened.</p>
+        <input type="radio" name="chart-view-{{ selected_county | lower | replace(' ', '-') }}" id="cv-line" class="chart-toggle-input" checked>
+        <input type="radio" name="chart-view-{{ selected_county | lower | replace(' ', '-') }}" id="cv-bars" class="chart-toggle-input">
+        <div class="chart-toggle" role="group" aria-label="Chart view">
+          <label for="cv-line">Line</label>
+          <label for="cv-bars">Bars</label>
+        </div>
+        <div class="chart-view chart-view-line">
+          <div class="chart-axis-title">Resolved outages per month</div>
+          <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="Line chart of resolved outages per month for {{ selected_county }} County, {{ chart.first_label }} to {{ chart.last_label }}">
+            {% for t in chart.ticks %}
+            <line x1="{{ chart.left }}" x2="{{ chart.right_x }}" y1="{{ t.y }}" y2="{{ t.y }}" class="chart-grid"/>
+            <text x="{{ chart.left - 8 }}" y="{{ t.y + 4 }}" text-anchor="end" class="chart-tick">{{ t.value }}</text>
+            {% endfor %}
+            <line x1="{{ chart.left }}" x2="{{ chart.right_x }}" y1="{{ chart.bottom_y }}" y2="{{ chart.bottom_y }}" class="chart-axis"/>
+            <polyline points="{{ chart.polyline }}" class="chart-line" fill="none"/>
+            {% for p in chart.points %}
+            <circle cx="{{ p.x }}" cy="{{ p.y }}" r="3.5" class="chart-dot"><title>{{ p.label }}: {{ p.count }} resolved</title></circle>
+            {% if p.show_label %}
+            <text x="{{ p.x }}" y="{{ chart.bottom_y + 16 }}" text-anchor="middle" class="chart-tick">{{ p.label }}</text>
+            {% endif %}
+            {% endfor %}
+          </svg>
+        </div>
+        <div class="chart-view chart-view-bars">
+          <div class="chart-axis-title">Resolved outages per month</div>
+          <div class="outage-chart-bars" role="img" aria-label="Bar chart of resolved outages per month for {{ selected_county }} County">
+            {% for p in chart.points %}
+            <div class="outage-chart-bar" title="{{ p.label }}: {{ p.count }} resolved">
+              <span class="outage-chart-count">{{ p.count }}</span>
+              <div class="outage-chart-fill" style="height: {{ (p.count / peak * 100) | round(1) }}%;"></div>
+              <span class="outage-chart-label">{% if p.show_label %}{{ p.label }}{% endif %}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <p class="outage-chart-caption">X: month. Y: resolved outages that month, from the real per-county records this project has tracked. Coverage varies by utility, so this shows what was observed, not every outage that happened.</p>
       </div>
       {% endif %}
       {% for e in county_detail.closed_events %}
