@@ -239,6 +239,27 @@ def _rows_for_county(rows, search_county):
     return [r for r in rows if r.get("county") and _county_in_alert(search_county, r["county"])]
 
 
+def monthly_outage_counts(rows):
+    """Resolved outages per calendar month, oldest first, zero-filling the gaps between the first and last month."""
+    counts = {}
+    for r in rows:
+        start = r.get("start_time")
+        if start:
+            counts[start[:7]] = counts.get(start[:7], 0) + 1
+    if not counts:
+        return []
+    year, month = map(int, min(counts).split("-"))
+    end_year, end_month = map(int, max(counts).split("-"))
+    result = []
+    while (year, month) <= (end_year, end_month):
+        key = f"{year:04d}-{month:02d}"
+        result.append({"month": key, "count": counts.get(key, 0)})
+        month += 1
+        if month > 12:
+            year, month = year + 1, 1
+    return result
+
+
 def _normalize_closed_events(closed_events, peak_field):
     """
     Common shape for a resolved (closed) event regardless of source -
