@@ -167,6 +167,17 @@
     .pagination a { color: var(--pink); text-decoration: none; }
     .pagination a:hover { text-decoration: underline; }
     .pagination-disabled { color: var(--border); pointer-events: none; }
+    .county-chart { background: var(--panel); border: 1px solid var(--border); padding: 1rem 1.25rem; margin: 1.5rem 0; }
+    .county-chart-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.3rem 1rem; align-items: baseline; margin-bottom: 0.6rem; }
+    .county-chart-title { font-weight: 700; }
+    .county-chart-span { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+    .county-chart-axis-title { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.4rem; }
+    .county-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+    .county-chart-grid { stroke: var(--border); stroke-width: 1; }
+    .county-chart-axis { stroke: var(--muted); stroke-width: 1; }
+    .county-chart-line { stroke: var(--pink); stroke-width: 2; }
+    .county-chart-dot { fill: var(--pink); }
+    .county-chart-tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
   </style>
 </head>
 <body>
@@ -512,6 +523,31 @@
           No entry, and no live source currently reports outage data for {{ selected_county }} at all.
         {% endif %}
       </div>
+    {% endif %}
+
+    {% if monthly_chart %}
+    <div class="county-chart">
+      <div class="county-chart-head">
+        <div class="county-chart-title">{{ selected_county }} County &middot; {{ "{:,}".format(monthly_chart.total) }} resolved outages</div>
+        <div class="county-chart-span">{{ monthly_chart.first_label }} &ndash; {{ monthly_chart.last_label }}</div>
+      </div>
+      <div class="county-chart-axis-title">Resolved outages per month</div>
+      <svg viewBox="0 0 {{ monthly_chart.width }} {{ monthly_chart.height }}" role="img" aria-label="Line chart of resolved outages per month for {{ selected_county }} County, {{ monthly_chart.first_label }} to {{ monthly_chart.last_label }}">
+        {% for tk in monthly_chart.ticks %}
+        <line x1="{{ monthly_chart.left }}" x2="{{ monthly_chart.right_x }}" y1="{{ tk.y }}" y2="{{ tk.y }}" class="county-chart-grid"/>
+        <text x="{{ monthly_chart.left - 8 }}" y="{{ tk.y + 4 }}" text-anchor="end" class="county-chart-tick">{{ tk.value }}</text>
+        {% endfor %}
+        <line x1="{{ monthly_chart.left }}" x2="{{ monthly_chart.right_x }}" y1="{{ monthly_chart.bottom_y }}" y2="{{ monthly_chart.bottom_y }}" class="county-chart-axis"/>
+        <polyline points="{{ monthly_chart.polyline }}" class="county-chart-line" fill="none"/>
+        {% for p in monthly_chart.points %}
+        <circle cx="{{ p.x }}" cy="{{ p.y }}" r="3.5" class="county-chart-dot"><title>{{ p.label }}: {{ p.count }} resolved</title></circle>
+        {% if p.show_label %}
+        <text x="{{ p.x }}" y="{{ monthly_chart.bottom_y + 16 }}" text-anchor="middle" class="county-chart-tick">{{ p.label }}</text>
+        {% endif %}
+        {% endfor %}
+      </svg>
+      <p class="section-note">X: month. Y: resolved outages that month, from the real per-county records this project has tracked. Coverage varies by utility, so this shows what was observed, not every outage that happened.</p>
+    </div>
     {% endif %}
 
     <h2>Monthly History</h2>

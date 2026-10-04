@@ -29,6 +29,7 @@ from correlate import (
     find_clay_correlations,
 )
 from county_status import (
+    monthly_counts_for_county, line_chart_geometry,
     COUNTY_PICKER_CHOICES, _duration_since, _percentage_tier,
     _normalize_open_events, _real_per_county_open_events,
     _combined_territory_open_events, _rows_for_county,
@@ -1241,6 +1242,7 @@ def county_detail():
         jea_precedent=jea_precedent,
         lwbu_accuracy=lwbu_accuracy,
         monthly_history=monthly_history,
+        monthly_chart=line_chart_geometry(monthly_counts_for_county(db, selected_county)),
     )
 
 
