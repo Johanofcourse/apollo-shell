@@ -5,6 +5,7 @@ facing page) so the two apps read the same live data the same way,
 without either one importing from the other. Pure data-assembly and
 formatting functions only; no Flask/template dependency here.
 """
+import math
 import re
 from datetime import datetime, timezone
 
@@ -258,6 +259,78 @@ def monthly_outage_counts(rows):
         if month > 12:
             year, month = year + 1, 1
     return result
+
+
+def _county_key(name):
+    return (name or "").strip().upper()
+
+
+def monthly_outage_counts(counts_by_month):
+    """
+    Resolved outages per calendar month, oldest first, zero-filling the gaps
+    between the first and last observed month - tracking is continuous for
+    these sources, so a gap means no outages, not a missing reading.
+    """
+    if not counts_by_month:
+        return []
+    year, month = map(int, min(counts_by_month).split("-"))
+    end_year, end_month = map(int, max(counts_by_month).split("-"))
+    result = []
+    while (year, month) <= (end_year, end_month):
+        key = f"{year:04d}-{month:02d}"
+        result.append({"month": key, "count": counts_by_month.get(key, 0)})
+        month += 1
+        if month > 12:
+            year, month = year + 1, 1
+    return result
+
+
+def monthly_counts_for_county(db, county):
+    by_month = {}
+    for row in db.get_closed_outage_month_counts():
+        if _county_key(row["county"]) == _county_key(county):
+            by_month[row["month"]] = by_month.get(row["month"], 0) + row["n"]
+    return monthly_outage_counts(by_month)
+
+
+def month_label(month):
+    return datetime.strptime(month, "%Y-%m").strftime("%b %Y")
+
+
+def line_chart_geometry(counts, width=640, height=220, left=48, right=16, top=16, bottom=34):
+    """
+    Plot coordinates for a monthly line chart, all computed here so the
+    template only places them. Y is scaled to the county's own peak month,
+    so the top gridline is always the real maximum, never a rounded guess.
+    """
+    if not counts:
+        return None
+    peak = max(c["count"] for c in counts) or 1
+    plot_w = width - left - right
+    plot_h = height - top - bottom
+    n = len(counts)
+    label_every = max(1, math.ceil(n / 8))
+    points = []
+    for i, c in enumerate(counts):
+        x = left + (plot_w * i / (n - 1) if n > 1 else plot_w / 2)
+        y = top + plot_h * (1 - c["count"] / peak)
+        points.append({
+            "x": round(x, 1), "y": round(y, 1), "count": c["count"],
+            "label": month_label(c["month"]),
+            "show_label": i % label_every == 0 or i == n - 1,
+        })
+    ticks = [
+        {"value": v, "y": round(top + plot_h * (1 - v / peak), 1)}
+        for v in (0, peak // 2, peak)
+    ]
+    return {
+        "width": width, "height": height, "left": left, "bottom_y": height - bottom,
+        "right_x": width - right, "points": points, "ticks": ticks,
+        "polyline": " ".join(f"{p['x']},{p['y']}" for p in points),
+        "total": sum(c["count"] for c in counts),
+        "first_label": month_label(counts[0]["month"]),
+        "last_label": month_label(counts[-1]["month"]),
+    }
 
 
 def _normalize_closed_events(closed_events, peak_field):
