@@ -29,6 +29,39 @@ def db_path():
         os.remove(path)
 
 
+class TestMonthlyOutageCounts:
+    def test_empty_input_returns_empty(self):
+        assert cs.monthly_outage_counts([]) == []
+
+    def test_counts_by_start_month_oldest_first(self):
+        rows = [
+            {"start_time": "2026-08-20T10:00:00"},
+            {"start_time": "2026-07-03T09:00:00"},
+            {"start_time": "2026-07-15T12:00:00"},
+        ]
+        assert cs.monthly_outage_counts(rows) == [
+            {"month": "2026-07", "count": 2},
+            {"month": "2026-08", "count": 1},
+        ]
+
+    def test_zero_fills_months_between_first_and_last(self):
+        rows = [{"start_time": "2026-05-01T00:00:00"}, {"start_time": "2026-08-01T00:00:00"}]
+        assert cs.monthly_outage_counts(rows) == [
+            {"month": "2026-05", "count": 1},
+            {"month": "2026-06", "count": 0},
+            {"month": "2026-07", "count": 0},
+            {"month": "2026-08", "count": 1},
+        ]
+
+    def test_crosses_a_year_boundary_correctly(self):
+        rows = [{"start_time": "2025-12-10T00:00:00"}, {"start_time": "2026-01-10T00:00:00"}]
+        assert [m["month"] for m in cs.monthly_outage_counts(rows)] == ["2025-12", "2026-01"]
+
+    def test_skips_rows_without_a_start_time(self):
+        rows = [{"start_time": None}, {"start_time": "2026-07-01T00:00:00"}]
+        assert cs.monthly_outage_counts(rows) == [{"month": "2026-07", "count": 1}]
+
+
 class TestGoogleMapsUrl:
     def test_builds_a_real_maps_link(self):
         assert cs.google_maps_url(27.9, -82.4) == "https://www.google.com/maps?q=27.9,-82.4"

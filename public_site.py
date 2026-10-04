@@ -30,7 +30,7 @@ from county_status import (
     COUNTY_PICKER_CHOICES, _real_per_county_open_events,
     _combined_territory_open_events, _real_per_county_closed_events,
     _combined_territory_closed_events, _rows_for_county, humanize_timestamp,
-    _row_tier, fpl_ordinary_restoration_stats,
+    _row_tier, fpl_ordinary_restoration_stats, monthly_outage_counts,
     teco_etr_accuracy, TECO_UTILITY_NAME,
     fpl_etr_accuracy,
     duke_restoration_precedent, DUKE_UTILITY_NAME,
@@ -574,6 +574,7 @@ def index():
         combined_closed_events.sort(key=lambda r: r["end_time"] or "", reverse=True)
         closed_events_total = len(closed_events)
         combined_closed_events_total = len(combined_closed_events)
+        monthly_counts = monthly_outage_counts(closed_events)
         closed_events, closed_events_page, closed_events_total_pages = _paginate(closed_events, "history_page")
         combined_closed_events, combined_closed_events_page, combined_closed_events_total_pages = _paginate(
             combined_closed_events, "combined_history_page"
@@ -609,6 +610,7 @@ def index():
             "active_alerts": active_alerts,
             "closed_events": closed_events,
             "closed_events_total": closed_events_total,
+            "monthly_counts": monthly_counts,
             "closed_events_page": closed_events_page,
             "closed_events_total_pages": closed_events_total_pages,
             "combined_closed_events": combined_closed_events,

@@ -400,6 +400,22 @@
   .county-suggestions li.no-match { cursor: default; color: var(--ink-soft); }
   .county-suggestions li.no-match:hover { background: none; color: var(--ink-soft); }
   .history-empty { color: var(--ink-soft); font-size: 0.9rem; padding: 0.5rem 0 1rem; }
+  .outage-chart { margin: 0 0 1.5rem; }
+  .outage-chart-bars {
+    display: flex; align-items: stretch; gap: 4px;
+    height: 150px; border-bottom: 1px solid var(--line); overflow-x: auto;
+  }
+  .outage-chart-bar {
+    flex: 1 0 2.2rem; min-width: 0; display: flex; flex-direction: column;
+    justify-content: flex-end; align-items: center;
+  }
+  .outage-chart-fill { width: 100%; background: var(--magenta); }
+  .outage-chart-count {
+    font-size: 0.7rem; color: var(--ink-soft); margin-bottom: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .outage-chart-label { font-size: 0.65rem; color: var(--ink-soft); margin-top: 6px; white-space: nowrap; }
+  .outage-chart-caption { color: var(--ink-soft); font-size: 0.8rem; margin: 0.7rem 0 0; }
   .history-county-title {
     font-family: "Big Shoulders Stencil Text", "Helvetica Neue", sans-serif;
     font-weight: 700; font-size: 1.4rem; text-transform: uppercase; letter-spacing: 0.02em; margin-bottom: 0.3rem;
@@ -1041,6 +1057,21 @@
     {% elif not county_detail.closed_events and not county_detail.combined_closed_events %}
       <div class="history-empty">No resolved outages on file for {{ selected_county }} County yet.</div>
     {% else %}
+      {% if county_detail.monthly_counts %}
+      {% set max_count = county_detail.monthly_counts | map(attribute='count') | max %}
+      <div class="outage-chart">
+        <div class="outage-chart-bars" role="img" aria-label="Resolved outages per month for {{ selected_county }} County">
+          {% for m in county_detail.monthly_counts %}
+          <div class="outage-chart-bar" title="{{ m.month }}: {{ m.count }} resolved">
+            <span class="outage-chart-count">{{ m.count }}</span>
+            <div class="outage-chart-fill" style="height: {{ (m.count / max_count * 100) | round(1) }}%;"></div>
+            <span class="outage-chart-label">{{ m.month[5:7] }}/{{ m.month[2:4] }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        <p class="outage-chart-caption">Resolved outages per month from the real per-county records this project has tracked. Coverage varies by utility, so this shows what was observed, not every outage that happened.</p>
+      </div>
+      {% endif %}
       {% for e in county_detail.closed_events %}
       {% set tier = e | row_tier %}
       <div class="outage-card resolved{% if tier == 'critical' %} hz-stripe{% endif %}">
