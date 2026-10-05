@@ -756,6 +756,10 @@ class TestCountyPageWithoutSelection:
         assert client.get("/county").status_code == 200
 
     def test_county_page_with_a_county_still_shows_the_chart(self, monkeypatch):
+        monkeypatch.setattr(
+            dashboard, "monthly_counts_for_county",
+            lambda db, county: [{"month": "2026-07", "count": 3}],
+        )
         client = self._authorized_client(monkeypatch)
         resp = client.get("/county?county=Hillsborough")
         assert resp.status_code == 200
