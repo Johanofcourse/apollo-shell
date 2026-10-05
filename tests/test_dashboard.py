@@ -735,3 +735,28 @@ class TestProxyFixConfig:
         )
         assert resp.status_code == 302
         assert "redirect_uri=https%3A%2F%2Fdashboard.apollosentinel.app" in resp.headers["Location"]
+
+
+class TestCountyPageWithoutSelection:
+    """
+    Real regression, 2026-10-05: the county page's monthly chart referenced
+    `db` outside the branch that defines it, so the bare /county page (no
+    county picked) crashed with UnboundLocalError. Tests exercise both paths.
+    """
+
+    def _authorized_client(self, monkeypatch):
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"test@example.com"})
+        client = dashboard.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_email"] = "test@example.com"
+        return client
+
+    def test_county_page_loads_with_no_county_selected(self, monkeypatch):
+        client = self._authorized_client(monkeypatch)
+        assert client.get("/county").status_code == 200
+
+    def test_county_page_with_a_county_still_shows_the_chart(self, monkeypatch):
+        client = self._authorized_client(monkeypatch)
+        resp = client.get("/county?county=Hillsborough")
+        assert resp.status_code == 200
+        assert b'class="county-chart"' in resp.data

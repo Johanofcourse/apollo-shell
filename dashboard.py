@@ -1093,6 +1093,7 @@ def county_detail():
     /history for real multi-year storm data per county.
     """
     selected_county = request.args.get("county", "").strip()
+    monthly_chart = None
 
     real_events = []
     combined_events = []
@@ -1205,6 +1206,7 @@ def county_detail():
         closed_events = _rows_for_county(_real_per_county_closed_events(db), selected_county)
         combined_closed_events = _rows_for_county(_combined_territory_closed_events(db), selected_county)
         monthly_history = _group_closed_events_by_month(closed_events + combined_closed_events)
+        monthly_chart = line_chart_geometry(monthly_counts_for_county(db, selected_county))
         for m in monthly_history:
             page_param = f"mpage_{m['month_key']}"
             try:
@@ -1242,7 +1244,7 @@ def county_detail():
         jea_precedent=jea_precedent,
         lwbu_accuracy=lwbu_accuracy,
         monthly_history=monthly_history,
-        monthly_chart=line_chart_geometry(monthly_counts_for_county(db, selected_county)),
+        monthly_chart=monthly_chart,
     )
 
 
