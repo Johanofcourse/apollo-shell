@@ -84,6 +84,16 @@ POLL_INTERVAL_SECONDS = 15 * 60
 # unproven.
 TALQUIN_PRECO_INTERVAL_SECONDS = 45 * 60
 
+# FPL's main feed, Northwest/Panhandle feed, and incident feed all sit
+# behind the same Incapsula WAF on the same host - widened from the
+# default 15 minutes after a real block (2026-10-10, ~03:52-04:14 UTC,
+# recovered, then relapsed ~11:11-18:41+ same day: Incapsula's own
+# "Request unsuccessful" block page, cip= echoing this VM's IP back).
+# Same reasoning as TALQUIN_PRECO_INTERVAL_SECONDS above - a lighter
+# cadence in case request volume is a contributing factor, not
+# confirmed to be the cause.
+FPL_INTERVAL_SECONDS = 30 * 60
+
 
 def run_outage_cycle(db):
     """
@@ -879,17 +889,25 @@ def main():
     print(f"Apollo Shell poller starting (every {POLL_INTERVAL_SECONDS // 60} min). Ctrl+C to stop.")
 
     last_talquin_preco_check = 0.0
+    last_fpl_check = 0.0
 
     try:
         while True:
             cycle_start = datetime.now()
             print(f"\n{'=' * 70}\nCycle started at {cycle_start.isoformat()}\n{'=' * 70}")
 
-            try:
-                run_outage_cycle(db)
-            except Exception as e:
-                print(f"Outage fetch cycle failed: {e}")
-                db.log_pipeline_error("fpl", str(e))
+            check_fpl_this_cycle = time.time() - last_fpl_check >= FPL_INTERVAL_SECONDS
+            if check_fpl_this_cycle:
+                last_fpl_check = time.time()
+            else:
+                print("Skipping FPL this cycle (30-min interval not yet elapsed)")
+
+            if check_fpl_this_cycle:
+                try:
+                    run_outage_cycle(db)
+                except Exception as e:
+                    print(f"Outage fetch cycle failed: {e}")
+                    db.log_pipeline_error("fpl", str(e))
 
             try:
                 run_weather_cycle(db)
@@ -909,11 +927,12 @@ def main():
                 print(f"Duke fetch cycle failed: {e}")
                 db.log_pipeline_error("duke", str(e))
 
-            try:
-                run_fpl_incidents_cycle(db)
-            except Exception as e:
-                print(f"FPL incidents fetch cycle failed: {e}")
-                db.log_pipeline_error("fpl_incidents", str(e))
+            if check_fpl_this_cycle:
+                try:
+                    run_fpl_incidents_cycle(db)
+                except Exception as e:
+                    print(f"FPL incidents fetch cycle failed: {e}")
+                    db.log_pipeline_error("fpl_incidents", str(e))
 
             try:
                 run_jea_cycle(db)
