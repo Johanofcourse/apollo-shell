@@ -1227,3 +1227,51 @@ class TestCountyEventsPaginationRoute:
 
         assert r.status_code == 200
         assert b"No active outages or weather alerts for Testonia County right now" in r.data
+
+
+class TestBusinessIntelligenceRoute:
+    """
+    /business-intelligence - the cross-utility BI page. The real
+    aggregation logic is tested directly in
+    test_business_intelligence.py; these just check the route wires
+    that data into the page correctly, including the empty-data case
+    (a fresh/empty database, same as this route sees on a clean CI run).
+    """
+
+    def test_loads_with_an_empty_database(self):
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/business-intelligence")
+        assert r.status_code == 200
+        assert b"Business Intelligence" in r.data
+
+    def test_renders_real_rows_from_each_panel(self, monkeypatch):
+        monkeypatch.setattr(public_site, "outage_frequency_by_utility", lambda db: [
+            {"source": "teco", "display_name": "TECO", "count": 3},
+            {"source": "fpl", "display_name": "FPL", "count": 1},
+        ])
+        monkeypatch.setattr(public_site, "restoration_duration_by_utility", lambda db: [
+            {"source": "talquin", "display_name": "Talquin Electric Cooperative", "n": 1,
+             "median_hours": 5.0, "p90_hours": 5.0, "excluded_count": 0, "limited": True},
+        ])
+        monkeypatch.setattr(public_site, "etr_accuracy_by_utility", lambda db: [
+            {"source": "teco", "display_name": "TECO", "n": 10, "median_error_hours": -1.5,
+             "on_time_pct": 90.0, "limited": False},
+        ])
+        monkeypatch.setattr(public_site, "utility_cause_breakdown", lambda db: {
+            "transparency": [
+                {"source": "teco", "display_name": "TECO", "n_total": 5, "n_real_cause": 4, "real_cause_pct": 80.0},
+            ],
+            "mix": {"teco": {"equipment": 2, "other_cause": 2}},
+        })
+
+        public_site.app.testing = True
+        client = public_site.app.test_client()
+        r = client.get("/business-intelligence")
+
+        assert r.status_code == 200
+        body = r.data.decode()
+        assert "Talquin Electric Cooperative" in body
+        assert "(limited)" in body
+        assert "90.0% on-time" in body
+        assert "bi-stack-seg" in body

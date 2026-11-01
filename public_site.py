@@ -39,11 +39,18 @@ from county_status import (
     at_risk_counties,
     _normalize_open_events,
     google_maps_url,
+    MAX_PLAUSIBLE_SINGLE_OUTAGE_HOURS,
+    MIN_EVENTS_FOR_CONFIDENT_RANGE,
 )
 from storm_history import (
     available_history_counties, load_history_for_county,
     fpl_restoration_precedent, fpl_restoration_precedent_by_wind_severity, FPL_UTILITY_NAME,
     jea_restoration_precedent, JEA_UTILITY_NAME,
+)
+from business_intelligence import (
+    outage_frequency_by_utility, restoration_duration_by_utility,
+    etr_accuracy_by_utility, utility_cause_breakdown,
+    CAUSE_DISPLAY_ORDER, CAUSE_DISPLAY_NAMES,
 )
 import florida_county_paths as county_map
 from map_projection import project_lat_lon
@@ -660,6 +667,49 @@ def index():
         selected_county=selected_county,
         selected_county_json=json.dumps(selected_county),
         county_detail=county_detail,
+        umami_script_url=UMAMI_SCRIPT_URL,
+        umami_website_id=UMAMI_WEBSITE_ID,
+    )
+
+
+@app.route("/business-intelligence")
+def business_intelligence_page():
+    """
+    "Business Intelligence" - cross-utility rollups answering one real
+    question each, built from the same real tables every other page on
+    this project reads (see apollo_shell/business_intelligence.py).
+    Separate page, not a section of "/", since none of this is
+    per-county the way the rest of the site is.
+    """
+    db = OutageDatabase()
+    frequency = outage_frequency_by_utility(db)
+    duration = restoration_duration_by_utility(db)
+    etr_accuracy = etr_accuracy_by_utility(db)
+    cause = utility_cause_breakdown(db)
+    db.close()
+
+    cause_mix_rows = [
+        {
+            "source": t["source"],
+            "display_name": t["display_name"],
+            "real_cause_pct": t["real_cause_pct"],
+            "n_real_cause": t["n_real_cause"],
+            "n_total": t["n_total"],
+            "mix": cause["mix"].get(t["source"], {}),
+        }
+        for t in cause["transparency"]
+    ]
+
+    return render_template(
+        "business_intelligence.html",
+        frequency=frequency,
+        duration=duration,
+        etr_accuracy=etr_accuracy,
+        cause_mix_rows=cause_mix_rows,
+        cause_category_order=CAUSE_DISPLAY_ORDER,
+        cause_category_names=CAUSE_DISPLAY_NAMES,
+        max_plausible_single_outage_hours=MAX_PLAUSIBLE_SINGLE_OUTAGE_HOURS,
+        min_events_for_confident_range=MIN_EVENTS_FOR_CONFIDENT_RANGE,
         umami_script_url=UMAMI_SCRIPT_URL,
         umami_website_id=UMAMI_WEBSITE_ID,
     )

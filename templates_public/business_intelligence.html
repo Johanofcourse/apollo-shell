@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Business Intelligence — Apollo's Florida Outage &amp; Weather Watch</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Cross-utility comparisons built from Apollo Sentinel's own real outage history — who gets hit most, who restores fastest, and whose restoration estimate you can trust.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Text:wght@700;800&family=Big+Shoulders+Stencil+Display:wght@800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #060708;
+    --surface: #131619;
+    --recessed: #08090b;
+    --white: #ffffff;
+    --ink: #eef1f4;
+    --ink-soft: #8b98a5;
+    --line: #262b31;
+
+    --magenta: #ff1f8f;
+    --yellow: #ffe600;
+    --lime: #c6ff2e;
+    --cyan: #00e5ff;
+
+    /* Dark-mode-band categorical set for the one chart on this page
+       that encodes identity (cause category), not magnitude - the
+       brand's own neon accents (above) are far too light for a large
+       fill area (validated with dataviz skill's validate_palette.js:
+       all three FAIL the dark-mode lightness band at L 0.84-0.93).
+       These are the same four hue families, darkened into the
+       OKLCH ~0.48-0.67 band until the categorical six-check validator
+       passes clean (confirmed 2026-11-01). */
+    --cause-equipment: #8a7a00;
+    --cause-planned: #b8185f;
+    --cause-vegetation: #5c8f16;
+    --cause-weather: #0092a8;
+    --cause-other: #4a5560;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--void);
+    color: var(--ink);
+    overflow-x: hidden;
+  }
+
+  body {
+    font-family: "Space Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+
+  .mono {
+    font-family: "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .label {
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    font-size: 0.7rem;
+  }
+
+  .bezel {
+    background: var(--void);
+    color: var(--white);
+    padding: 1.1rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    border-bottom: 3px solid var(--cyan);
+  }
+  .bezel h1 {
+    margin: 0; font-size: 1.4rem; font-weight: 900; letter-spacing: 0.02em;
+    font-family: "Big Shoulders Stencil Display", "Helvetica Neue", sans-serif;
+    text-wrap: balance;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .bezel h1 a { color: inherit; text-decoration: none; }
+  .bezel h1 a:hover { text-decoration: underline; }
+  @media (max-width: 760px) { .bezel h1 { font-size: 1.25rem; } }
+
+  .bezel-nav { display: flex; gap: 1.1rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; }
+  .bezel-nav a { color: var(--ink-soft); text-decoration: none; }
+  .bezel-nav a:hover { color: var(--ink); text-decoration: underline; }
+  .bezel-nav a.active { color: var(--yellow); }
+
+  .page { max-width: 960px; margin: 0 auto; padding: 1.75rem 1.5rem 4rem; }
+
+  .lede {
+    max-width: 42rem;
+    color: var(--ink-soft);
+    font-size: 1.02rem;
+    line-height: 1.65;
+    margin-bottom: 2.25rem;
+  }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  .tele-explain { margin-top: 0; padding-top: 0; border-top: none; margin-bottom: 2rem; }
+  .tele-explain summary { list-style: none; cursor: pointer; color: var(--cyan); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; border-bottom: 1px solid var(--cyan); display: inline-block; }
+  .tele-explain summary::-webkit-details-marker { display: none; }
+  .tele-explain p { font-size: 0.8rem; line-height: 1.55; color: var(--ink-soft); margin: 0.9rem 0 0; max-width: 42rem; }
+
+  h2.section-title {
+    font-family: "Big Shoulders Stencil Text", "Helvetica Neue", sans-serif;
+    font-size: 1.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; color: var(--lime);
+    border-bottom: 2px solid var(--lime); padding-bottom: 0.5rem; margin: 0 0 1rem;
+  }
+  .section-sub { color: var(--ink-soft); font-size: 0.9rem; line-height: 1.55; max-width: 42rem; margin-bottom: 1.25rem; }
+  section { margin-bottom: 3.25rem; }
+
+  /* One ranked bar per entity - mark spec per the dataviz skill:
+     <=24px thick, 4px rounded data-end, square at the baseline,
+     grows from a single shared baseline (the track's left edge). A
+     single-series ranking needs no legend box; the section title
+     already says what's plotted (color = magnitude, not identity). */
+  .bi-chart { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.9rem; min-width: 0; }
+  .bi-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; row-gap: 0.25rem; min-width: 0; }
+  .bi-row-label { flex: 0 0 11.5rem; font-size: 0.82rem; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bi-row-track { flex: 1 1 8rem; background: var(--surface); border-radius: 3px; height: 22px; min-width: 0; }
+  .bi-row-fill { height: 100%; border-radius: 0 4px 4px 0; max-width: 100%; }
+  .bi-row-value { flex: 0 1 auto; font-size: 0.78rem; font-variant-numeric: tabular-nums; color: var(--ink-soft); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .bi-row.limited .bi-row-fill { opacity: 0.45; }
+  .bi-row.limited .bi-row-value::after { content: " (limited)"; color: var(--ink-soft); opacity: 0.8; }
+  /* Real bug caught with an actual 390px screenshot, not assumed: the
+     value text (several words, deliberately not wrapped mid-number)
+     has no flex-shrink room at phone width once label+track+value all
+     sit on one line, so the row forces the whole page wider than the
+     viewport - everything below it (headings, paragraphs) then wraps
+     at that wider column and gets clipped by body's overflow-x:
+     hidden instead. Below 620px the label gets its own line so track
+     and value have the full width to negotiate between them. */
+  @media (max-width: 620px) {
+    .bi-row-label { flex-basis: 100%; font-size: 0.78rem; white-space: normal; }
+    .bi-row-value { flex-basis: 100%; text-align: right; white-space: normal; }
+  }
+
+  .bi-fill-yellow { background: var(--yellow); }
+  .bi-fill-cyan { background: var(--cyan); }
+  .bi-fill-magenta { background: var(--magenta); }
+
+  /* Cause-mix stacked bars - the one identity-coded chart on this page.
+     2px gaps between segments via flex `gap` (subtracted from the
+     track before the remaining width splits by flex-grow ratio, so
+     segments stay proportional to their real counts) instead of a
+     border - see marks-and-anatomy.md's "surface gap" spacer. */
+  .bi-stack-row { margin-bottom: 1rem; }
+  .bi-stack-head { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.82rem; margin-bottom: 0.35rem; }
+  .bi-stack-name { color: var(--ink); font-weight: 600; }
+  .bi-stack-pct { color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bi-stack { display: flex; gap: 2px; height: 20px; border-radius: 3px; overflow: hidden; background: var(--recessed); }
+  .bi-stack-seg { height: 100%; }
+  .bi-stack-empty { flex: 1 1 auto; background: var(--recessed); }
+
+  .bi-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; margin-bottom: 1.1rem; font-size: 0.78rem; color: var(--ink-soft); }
+  .bi-legend-item { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .bi-legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
+
+  .bi-caption { color: var(--ink-soft); font-size: 0.8rem; margin: 0.9rem 0 0; max-width: 42rem; line-height: 1.55; }
+
+  .bi-table-wrap { margin-top: 0.6rem; overflow-x: auto; }
+  .bi-table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+  .bi-table th, .bi-table td { text-align: left; padding: 0.45rem 0.9rem 0.45rem 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .bi-table th { color: var(--ink-soft); font-weight: 600; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.05em; }
+  .bi-table td { font-variant-numeric: tabular-nums; }
+
+  footer { color: var(--ink-soft); font-size: 0.82rem; border-top: 1px solid var(--line); padding-top: 1.5rem; }
+  footer a { color: var(--cyan); text-decoration: none; border-bottom: 1px solid var(--cyan); }
+</style>
+</head>
+<body>
+
+<div class="bezel">
+  <h1><a href="/">APOLLO'S FLORIDA OUTAGE &amp; WEATHER WATCH</a></h1>
+  <nav class="bezel-nav mono">
+    <a href="/">Map</a>
+    <a href="/business-intelligence" class="active">Business Intelligence</a>
+  </nav>
+</div>
+
+<div class="page">
+
+  <details class="tele-explain">
+    <summary>What is this page?</summary>
+    <p>
+      Four real comparisons across the utilities this project tracks, built from the same closed-event records
+      every other page here reads — nothing modeled or estimated. <strong>Coverage varies by utility</strong>
+      (some report every individual incident; others only ever give one county-wide rolling total), so a smaller
+      or newer utility having a short bar below usually means less historical data, not a better track record.
+      Where a number is thin enough to not mean much yet, it's labeled <strong>limited</strong> rather than hidden.
+    </p>
+  </details>
+
+  <section>
+    <h2 class="section-title">Who Gets Hit Most</h2>
+    <p class="section-sub">Resolved outage count per utility, statewide, from every real closed event on file.</p>
+
+    {% if frequency %}
+    <div class="bi-chart" role="img" aria-label="Bar chart of resolved outage counts per utility">
+      {% set max_count = frequency[0].count %}
+      {% for row in frequency %}
+      <div class="bi-row">
+        <div class="bi-row-label">{{ row.display_name }}</div>
+        <div class="bi-row-track" title="{{ row.display_name }}: {{ '{:,}'.format(row.count) }} resolved outages">
+          <div class="bi-row-fill bi-fill-yellow" style="width: {{ (row.count / max_count * 100) | round(1) }}%;"></div>
+        </div>
+        <div class="bi-row-value">{{ '{:,}'.format(row.count) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <details class="tele-explain">
+      <summary>View as table</summary>
+      <div class="bi-table-wrap">
+        <table class="bi-table">
+          <thead><tr><th>Utility</th><th>Resolved outages</th></tr></thead>
+          <tbody>
+            {% for row in frequency %}
+            <tr><td>{{ row.display_name }}</td><td>{{ '{:,}'.format(row.count) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% else %}
+    <p class="bi-caption">No resolved outages on file yet.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2 class="section-title">Who Takes Longest To Restore Power</h2>
+    <p class="section-sub">
+      Median outage duration per utility, longest first. A single outage lasting longer than
+      {{ max_plausible_single_outage_hours }} hours is excluded from this math — for a county-wide rolling-total
+      source, that's usually several separate real outages blurred into one implausibly long reading, not one
+      actual repair job (see the caption below).
+    </p>
+
+    {% if duration %}
+    <div class="bi-chart" role="img" aria-label="Bar chart of median restoration time per utility">
+      {% set max_median = duration[0].median_hours %}
+      {% for row in duration %}
+      <div class="bi-row {% if row.limited %}limited{% endif %}">
+        <div class="bi-row-label">{{ row.display_name }}</div>
+        <div class="bi-row-track" title="{{ row.display_name }}: {{ row.median_hours | round(1) }}h median, {{ row.p90_hours | round(1) }}h p90, n={{ row.n }}{% if row.excluded_count %}, {{ row.excluded_count }} excluded as implausible{% endif %}">
+          <div class="bi-row-fill bi-fill-cyan" style="width: {{ (row.median_hours / max_median * 100) | round(1) }}%;"></div>
+        </div>
+        <div class="bi-row-value">{{ row.median_hours | round(1) }}h median · {{ row.p90_hours | round(1) }}h p90</div>
+      </div>
+      {% endfor %}
+    </div>
+    <details class="tele-explain">
+      <summary>View as table</summary>
+      <div class="bi-table-wrap">
+        <table class="bi-table">
+          <thead><tr><th>Utility</th><th>n</th><th>Median hours</th><th>p90 hours</th><th>Excluded as implausible</th></tr></thead>
+          <tbody>
+            {% for row in duration %}
+            <tr>
+              <td>{{ row.display_name }}{% if row.limited %} (limited){% endif %}</td>
+              <td>{{ row.n }}</td>
+              <td>{{ row.median_hours | round(1) }}</td>
+              <td>{{ row.p90_hours | round(1) }}</td>
+              <td>{{ row.excluded_count }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    <p class="bi-caption">
+      "Limited" means fewer than {{ min_events_for_confident_range }} usable events on file — a real number, just
+      too thin yet to call a trend.
+    </p>
+    {% else %}
+    <p class="bi-caption">No resolved outages with usable timing on file yet.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2 class="section-title">Whose Restoration Estimate Can You Trust</h2>
+    <p class="section-sub">
+      When a utility tells you when your power will be back, how often is that true? On-time % per utility, most
+      honest first — only utilities that report a real per-incident estimate (not just a county-wide rollup) can
+      be checked this way, which is why only a few appear here.
+    </p>
+
+    {% if etr_accuracy %}
+    <div class="bi-chart" role="img" aria-label="Bar chart of restoration-estimate on-time percentage per utility">
+      {% for row in etr_accuracy %}
+      <div class="bi-row {% if row.limited %}limited{% endif %}">
+        <div class="bi-row-label">{{ row.display_name }}</div>
+        <div class="bi-row-track" title="{{ row.display_name }}: {{ row.on_time_pct | round(1) }}% on-time, median {{ 'late' if row.median_error_hours > 0 else 'early' }} by {{ (row.median_error_hours | abs) | round(1) }}h, n={{ row.n }}">
+          <div class="bi-row-fill bi-fill-magenta" style="width: {{ row.on_time_pct | round(1) }}%;"></div>
+        </div>
+        <div class="bi-row-value">
+          {{ row.on_time_pct | round(1) }}% on-time ·
+          {{ (row.median_error_hours | abs) | round(1) }}h {{ 'late' if row.median_error_hours > 0 else 'early' }} (median)
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <details class="tele-explain">
+      <summary>View as table</summary>
+      <div class="bi-table-wrap">
+        <table class="bi-table">
+          <thead><tr><th>Utility</th><th>n</th><th>On-time %</th><th>Median error (hours)</th></tr></thead>
+          <tbody>
+            {% for row in etr_accuracy %}
+            <tr>
+              <td>{{ row.display_name }}{% if row.limited %} (limited){% endif %}</td>
+              <td>{{ row.n }}</td>
+              <td>{{ row.on_time_pct | round(1) }}</td>
+              <td>{{ row.median_error_hours | round(1) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    <p class="bi-caption">
+      "On-time" means power actually came back at or before the utility's own first stated estimate. A positive
+      median error means the real median outage ran later than promised; negative means it beat its own estimate.
+    </p>
+    {% else %}
+    <p class="bi-caption">No restoration estimates with a known outcome on file yet.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2 class="section-title">What Actually Causes Outages</h2>
+    <p class="section-sub">
+      Share of closed incidents where the utility's own cause text actually resolved to a real category, per
+      utility — then, among those, what the real mix looks like.
+    </p>
+
+    {% if cause_mix_rows %}
+    <div class="bi-chart" role="img" aria-label="Bar chart of share of incidents with a known cause, per utility" style="margin-bottom: 1.75rem;">
+      {% for row in cause_mix_rows %}
+      <div class="bi-row">
+        <div class="bi-row-label">{{ row.display_name }}</div>
+        <div class="bi-row-track" title="{{ row.display_name }}: {{ row.n_real_cause }} of {{ row.n_total }} closed incidents had a real stated cause">
+          <div class="bi-row-fill bi-fill-yellow" style="width: {{ row.real_cause_pct | round(1) }}%;"></div>
+        </div>
+        <div class="bi-row-value">{{ row.real_cause_pct | round(1) }}% ({{ '{:,}'.format(row.n_real_cause) }} of {{ '{:,}'.format(row.n_total) }})</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="bi-legend">
+      {% for key in cause_category_order %}
+      <span class="bi-legend-item"><span class="bi-legend-swatch" style="background: var(--cause-{{ key | replace('_', '-') }});"></span>{{ cause_category_names[key] }}</span>
+      {% endfor %}
+    </div>
+
+    {% for row in cause_mix_rows %}
+    {% if row.mix %}
+    <div class="bi-stack-row">
+      <div class="bi-stack-head">
+        <span class="bi-stack-name">{{ row.display_name }}</span>
+        <span class="bi-stack-pct mono">{{ '{:,}'.format(row.n_real_cause) }} categorized</span>
+      </div>
+      <div class="bi-stack">
+        {% for key in cause_category_order %}
+        {% if row.mix.get(key) %}
+        <div class="bi-stack-seg" style="background: var(--cause-{{ key | replace('_', '-') }}); flex-grow: {{ row.mix[key] }};"
+             title="{{ row.display_name }} — {{ cause_category_names[key] }}: {{ '{:,}'.format(row.mix[key]) }} ({{ (row.mix[key] / row.n_real_cause * 100) | round(1) }}%)"></div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    <details class="tele-explain">
+      <summary>View as table</summary>
+      <div class="bi-table-wrap">
+        <table class="bi-table">
+          <thead>
+            <tr>
+              <th>Utility</th><th>Real cause %</th>
+              {% for key in cause_category_order %}<th>{{ cause_category_names[key] }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in cause_mix_rows %}
+            <tr>
+              <td>{{ row.display_name }}</td>
+              <td>{{ row.real_cause_pct | round(1) }}%</td>
+              {% for key in cause_category_order %}<td>{{ row.mix.get(key, 0) }}</td>{% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    <p class="bi-caption">
+      <strong>Known real quirk:</strong> Duke's own cause text almost never matches the keyword categories the
+      other three utilities' phrasing does fall into — that reads here as a low "real cause %," which is honest
+      about the comparison but isn't the same thing as Duke rarely knowing why the power went out. It's a
+      wording mismatch with this project's shared categorizer, not a finding about Duke's own record-keeping.
+    </p>
+    {% else %}
+    <p class="bi-caption">No categorized incident causes on file yet.</p>
+    {% endif %}
+  </section>
+
+  <footer>
+    Questions, corrections, or want to collaborate? <a href="mailto:contact@apollosentinel.app">contact@apollosentinel.app</a>
+  </footer>
+
+</div>
+
+<script defer src="{{ umami_script_url }}" data-website-id="{{ umami_website_id }}"></script>
+</body>
+</html>
