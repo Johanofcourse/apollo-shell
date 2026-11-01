@@ -815,6 +815,30 @@ def fpl_ordinary_restoration_stats(county, db):
     }
 
 
+def _etr_accuracy_stats(errors):
+    """
+    Shared tail end of every *_etr_accuracy()/*_etr_accuracy_statewide()
+    function below: turns a flat list of (actual - first-promised ETR)
+    hour deltas into the same n/median_error_hours/on_time_pct/limited
+    shape. Pulled out once a statewide variant of each per-county
+    function needed the identical math, rather than duplicating it a
+    second time per utility.
+    """
+    if not errors:
+        return None
+    errors.sort()
+    n = len(errors)
+    mid = n // 2
+    median = errors[mid] if n % 2 == 1 else (errors[mid - 1] + errors[mid]) / 2
+    on_time = sum(1 for e in errors if e <= 0)
+    return {
+        "n": n,
+        "median_error_hours": median,
+        "on_time_pct": on_time / n * 100,
+        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
+    }
+
+
 TECO_UTILITY_NAME = "Tampa Electric Company"
 
 
@@ -879,21 +903,39 @@ def teco_etr_accuracy(county, db):
             continue
         errors.append(error_hours)
 
-    if not errors:
-        return None
+    return _etr_accuracy_stats(errors)
 
-    errors.sort()
-    n = len(errors)
-    mid = n // 2
-    median = errors[mid] if n % 2 == 1 else (errors[mid - 1] + errors[mid]) / 2
-    on_time = sum(1 for e in errors if e <= 0)
 
-    return {
-        "n": n,
-        "median_error_hours": median,
-        "on_time_pct": on_time / n * 100,
-        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
-    }
+def teco_etr_accuracy_statewide(db):
+    """
+    Same real accuracy-check as teco_etr_accuracy(), with the per-county
+    filter dropped - every real closed TECO incident statewide, for the
+    BI page's cross-utility ETR-honesty comparison.
+    """
+    conn = db.connect()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT oe.end_time,
+               (SELECT ti.estimated_restoration FROM teco_incidents ti
+                WHERE ti.incident_id = oe.incident_id AND ti.estimated_restoration IS NOT NULL
+                ORDER BY ti.fetched_at ASC LIMIT 1) AS first_etr
+        FROM teco_incident_events oe
+        WHERE oe.end_time IS NOT NULL
+    ''')
+    rows = cursor.fetchall()
+
+    errors = []
+    for end_time, first_etr in rows:
+        if not first_etr:
+            continue
+        try:
+            etr_utc = _eastern_naive_to_utc_naive(first_etr)
+            error_hours = (datetime.fromisoformat(end_time) - etr_utc).total_seconds() / 3600
+        except (TypeError, ValueError, pytz.exceptions.InvalidTimeError):
+            continue
+        errors.append(error_hours)
+
+    return _etr_accuracy_stats(errors)
 
 
 def fpl_etr_accuracy(county, db):
@@ -942,21 +984,39 @@ def fpl_etr_accuracy(county, db):
             continue
         errors.append(error_hours)
 
-    if not errors:
-        return None
+    return _etr_accuracy_stats(errors)
 
-    errors.sort()
-    n = len(errors)
-    mid = n // 2
-    median = errors[mid] if n % 2 == 1 else (errors[mid - 1] + errors[mid]) / 2
-    on_time = sum(1 for e in errors if e <= 0)
 
-    return {
-        "n": n,
-        "median_error_hours": median,
-        "on_time_pct": on_time / n * 100,
-        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
-    }
+def fpl_etr_accuracy_statewide(db):
+    """
+    Same real accuracy-check as fpl_etr_accuracy(), with the per-county
+    filter dropped - every real closed FPL incident statewide, for the
+    BI page's cross-utility ETR-honesty comparison.
+    """
+    conn = db.connect()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT oe.end_time,
+               (SELECT fi.estimated_restoration FROM fpl_incidents fi
+                WHERE fi.incident_id = oe.incident_id AND fi.estimated_restoration IS NOT NULL
+                ORDER BY fi.fetched_at ASC LIMIT 1) AS first_etr
+        FROM fpl_incident_events oe
+        WHERE oe.end_time IS NOT NULL
+    ''')
+    rows = cursor.fetchall()
+
+    errors = []
+    for end_time, first_etr in rows:
+        if not first_etr:
+            continue
+        try:
+            etr_utc = _eastern_naive_to_utc_naive(first_etr)
+            error_hours = (datetime.fromisoformat(end_time) - etr_utc).total_seconds() / 3600
+        except (TypeError, ValueError, pytz.exceptions.InvalidTimeError):
+            continue
+        errors.append(error_hours)
+
+    return _etr_accuracy_stats(errors)
 
 
 _FRACTIONAL_SECONDS_RE = re.compile(r'\.(\d+)')
@@ -1042,21 +1102,41 @@ def lwbu_etr_accuracy(county, db):
             continue
         errors.append(error_hours)
 
-    if not errors:
-        return None
+    return _etr_accuracy_stats(errors)
 
-    errors.sort()
-    n = len(errors)
-    mid = n // 2
-    median = errors[mid] if n % 2 == 1 else (errors[mid - 1] + errors[mid]) / 2
-    on_time = sum(1 for e in errors if e <= 0)
 
-    return {
-        "n": n,
-        "median_error_hours": median,
-        "on_time_pct": on_time / n * 100,
-        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
-    }
+def lwbu_etr_accuracy_statewide(db):
+    """
+    Same real accuracy-check as lwbu_etr_accuracy(), with the per-county
+    filter dropped - every real closed LWBU incident statewide, for the
+    BI page's cross-utility ETR-honesty comparison.
+    """
+    conn = db.connect()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT oe.end_time,
+               (SELECT li.estimated_restoration FROM lwbu_incidents li
+                WHERE li.incident_id = oe.incident_id AND li.estimated_restoration IS NOT NULL
+                ORDER BY li.fetched_at ASC LIMIT 1) AS first_etr
+        FROM lwbu_incident_events oe
+        WHERE oe.end_time IS NOT NULL
+    ''')
+    rows = cursor.fetchall()
+
+    errors = []
+    for end_time, first_etr in rows:
+        if not first_etr:
+            continue
+        try:
+            etr_dt = _parse_flexible_isoformat(first_etr)
+            if etr_dt.tzinfo is not None:
+                etr_dt = etr_dt.astimezone(timezone.utc).replace(tzinfo=None)
+            error_hours = (datetime.fromisoformat(end_time) - etr_dt).total_seconds() / 3600
+        except (TypeError, ValueError):
+            continue
+        errors.append(error_hours)
+
+    return _etr_accuracy_stats(errors)
 
 
 CLAY_UTILITY_NAME = "Clay Electric Cooperative"
@@ -1110,21 +1190,7 @@ def clay_etr_accuracy(db):
             continue
         errors.append(error_hours)
 
-    if not errors:
-        return None
-
-    errors.sort()
-    n = len(errors)
-    mid = n // 2
-    median = errors[mid] if n % 2 == 1 else (errors[mid - 1] + errors[mid]) / 2
-    on_time = sum(1 for e in errors if e <= 0)
-
-    return {
-        "n": n,
-        "median_error_hours": median,
-        "on_time_pct": on_time / n * 100,
-        "limited": n < MIN_EVENTS_FOR_CONFIDENT_RANGE,
-    }
+    return _etr_accuracy_stats(errors)
 
 
 DUKE_UTILITY_NAME = "Duke Energy"

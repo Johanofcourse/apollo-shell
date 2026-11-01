@@ -25,6 +25,40 @@ REAL_PER_COUNTY_CLOSED_TABLES = (
     "fpuc_incident_events",
 )
 
+# Each closed table above, tagged with the same short source key
+# alerting.py's PIPELINE_SOURCE_DISPLAY_NAMES already uses for that
+# utility - lets the BI page's cross-utility aggregates share one
+# display-name lookup with the rest of the app instead of inventing a
+# second naming scheme. outage_events is FPL-only (confirmed: main.py's
+# only sync_outage_events() call passes FPL_UTILITY_NAME).
+CLOSED_TABLE_SOURCE_KEYS = {
+    "outage_events": "fpl",
+    "teco_incident_events": "teco",
+    "duke_incident_events": "duke",
+    "jea_outage_events": "jea",
+    "tallahassee_outage_events": "tallahassee",
+    "talquin_outage_events": "talquin",
+    "preco_outage_events": "preco",
+    "fkec_outage_events": "fkec",
+    "lwbu_outage_events": "lwbu",
+    "ouc_outage_events": "ouc",
+    "lcec_outage_events": "lcec",
+    "clay_outage_events": "clay",
+    "fpuc_incident_events": "fpuc",
+}
+
+# Only the utilities whose incident feed carries a cause/reason category
+# at all - confirmed via fetch_teco_outages.categorize_reason(), the one
+# shared categorizer every one of these four imports (Duke's and FPL's
+# raw feeds have no cause field of their own; this derived label is
+# what's actually being compared here, not each utility's own wording).
+CAUSE_CATEGORY_SOURCES = (
+    ("teco_incident_events", "reason_category", "teco"),
+    ("duke_incident_events", "cause_category", "duke"),
+    ("fpl_incident_events", "cause_category", "fpl"),
+    ("lwbu_incident_events", "cause_category", "lwbu"),
+)
+
 
 class OutageDatabase:
     """
@@ -3444,6 +3478,63 @@ class OutageDatabase:
         """)
         return [dict(row) for row in cursor.fetchall()]
 
+    def get_closed_outage_counts_by_source(self):
+        """
+        Resolved-outage counts per utility, statewide - same real
+        per-county closed tables and the same end_time/county/start_time
+        filter as get_closed_outage_month_counts(), just grouped by
+        source instead of county+month. Backs the BI page's "who gets
+        hit most" leaderboard.
+        """
+        union = " UNION ALL ".join(
+            f"SELECT '{source}' AS source FROM {table} "
+            "WHERE end_time IS NOT NULL AND county IS NOT NULL AND start_time IS NOT NULL"
+            for table, source in CLOSED_TABLE_SOURCE_KEYS.items()
+        )
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT source, COUNT(*) AS n FROM ({union}) GROUP BY source")
+        return {row["source"]: row["n"] for row in cursor.fetchall()}
+
+    def get_closed_outage_durations_by_source(self):
+        """
+        Raw (source, start_time, end_time) rows across every real
+        per-county closed table, statewide - the duration math itself
+        (outlier filtering, median/p90) happens in Python, same split
+        of responsibility as get_closed_outage_month_counts() leaving
+        zero-filling to Python. Backs the BI page's restoration-time
+        leaderboard.
+        """
+        union = " UNION ALL ".join(
+            f"SELECT '{source}' AS source, start_time, end_time FROM {table} "
+            "WHERE end_time IS NOT NULL AND county IS NOT NULL AND start_time IS NOT NULL"
+            for table, source in CLOSED_TABLE_SOURCE_KEYS.items()
+        )
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT source, start_time, end_time FROM ({union})")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_closed_incident_cause_counts(self):
+        """
+        (source, cause_category, count) across TECO/Duke/FPL/LWBU's
+        closed incidents - the only four sources that record a per-
+        incident cause at all. Backs the BI page's cause-breakdown
+        panel.
+        """
+        union = " UNION ALL ".join(
+            f"SELECT '{source}' AS source, {column} AS cause FROM {table} "
+            f"WHERE end_time IS NOT NULL AND {column} IS NOT NULL"
+            for table, column, source in CAUSE_CATEGORY_SOURCES
+        )
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT source, cause, COUNT(*) AS n
+            FROM ({union})
+            GROUP BY source, cause
+        """)
+        return [dict(row) for row in cursor.fetchall()]
 
     def get_jea_open_events(self):
         """
