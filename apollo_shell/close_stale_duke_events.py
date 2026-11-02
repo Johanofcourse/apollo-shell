@@ -1,12 +1,20 @@
 """
 One-off cleanup for Duke incident events left open by the Duke API-key
-outage that began 2026-07-20.
+outage that began 2026-07-20 - a real but short (~22.5 hour) credential
+outage, not a permanent one. Duke recovered the next day, 2026-07-21.
 
 What happened: duke_incident_events only closes an event when a
-successful poll stops listing it. Duke's key died right after the
-2026-07-20 09:56 poll, so every incident open at that poll stayed
-"open" for 100+ days - and once Duke is reconnected, the first good poll
-would close them all at the *recovery* time, recording ~100-day outages.
+successful poll stops listing it. The incidents open at the last good
+poll before the outage got no real follow-up poll until Duke's key
+came back, so the first good poll after recovery closed all of them at
+that *recovery* timestamp instead of their true last-seen time -
+overstating their real duration by up to ~38 hours (confirmed directly
+against the real data: 36 affected events, true last-seen between
+2026-07-20 08:05 and 16:33, all closed at the single recovery
+timestamp 2026-07-21T22:11). A real distortion worth fixing, but not
+the "100+ days" an earlier version of this comment claimed - that
+confused "how long ago this happened" with "how long the events were
+actually open," which was wrong.
 
 What this does: for every Duke event that was open at the last good poll
 before the outage and was never closed by a real follow-up poll (still

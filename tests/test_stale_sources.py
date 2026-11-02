@@ -2,10 +2,14 @@
 Tests for the stale-source guard: a utility whose feed keeps failing must
 stop having its last-seen "open" events presented as live outages.
 
-Real incident behind this: Duke's API key died 2026-07-20, and its 39
-last-seen incidents stayed open - and on the public homepage - for 100+
-days, because an event only closes when a successful poll stops listing
-it.
+Real incident behind this: Duke's API key died 2026-07-20 for about
+22.5 hours (not permanently - Duke recovered the next day), and the
+incidents open during that window stayed "open" - and on the public
+homepage - until the first good poll after recovery, because an event
+only closes when a successful poll stops listing it. See
+apollo_shell/close_stale_duke_events.py for the separate cleanup that
+corrects the ~38-hour duration distortion that caused (an earlier
+version of this docstring wrongly called it "100+ days").
 """
 
 import os

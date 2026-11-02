@@ -30,10 +30,13 @@ from alerting import (
 # being shown as live. Long enough that an ordinary blip (one or two
 # failed 15-min polls, or one missed 45-min Talquin/PRECO poll) never
 # hides real outages; short enough that a dead feed doesn't present
-# frozen data as "right now" for days. Prompted by Duke's API key dying
-# 2026-07-20: its 39 last-seen incidents stayed "open" - and on the
-# public site - for 100+ days, since an event only closes when a
-# successful poll stops listing it.
+# frozen data as "right now" for days. Prompted by two real Duke
+# outages: a ~22.5-hour API-key death on 2026-07-20 (its 39 last-seen
+# incidents stayed "open" on the public site until the next good poll,
+# not "100+ days" as an earlier version of this comment wrongly said -
+# see close_stale_duke_events.py), and a separate, longer server-side
+# 500-error outage starting 2026-10-14 that this guard itself exists
+# to handle, whatever its actual duration turns out to be.
 STALE_SOURCE_AFTER = timedelta(hours=2)
 
 # Where to look for a source's last success when pipeline_success has no
