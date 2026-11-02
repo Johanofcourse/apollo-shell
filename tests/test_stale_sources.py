@@ -159,6 +159,45 @@ class TestUnavailableSourceNames:
         assert cs.unavailable_source_names(db, now=NOW) == []
 
 
+class TestUnavailableSourcesDetail:
+    def test_includes_when_the_source_last_succeeded(self, db):
+        db.log_pipeline_error("duke", "500 Server Error", timestamp=_ts(0.25))
+        db.log_pipeline_success("duke", timestamp=_ts(5))
+
+        detail = cs.unavailable_sources_detail(db, now=NOW)
+
+        assert len(detail) == 1
+        assert detail[0]["display_name"] == "Duke Energy"
+        assert detail[0]["last_success"] == _ts(5)
+        assert detail[0]["down_for"] == "5h 0m"
+
+    def test_falls_back_to_the_sustained_alert_success_table(self, db):
+        # No pipeline_success row for duke yet - same fallback
+        # is_source_stale() itself uses (duke_counties.fetched_at).
+        db.log_pipeline_error("duke", "500 Server Error", timestamp=_ts(0.25))
+        db.connect().execute(
+            "INSERT INTO duke_counties (fetched_at, county) VALUES (?, ?)", (_ts(4), "Pinellas"),
+        )
+        db.connect().commit()
+
+        detail = cs.unavailable_sources_detail(db, now=NOW)
+
+        assert detail[0]["last_success"] == _ts(4)
+        assert detail[0]["down_for"] == "4h 0m"
+
+    def test_never_succeeded_reports_no_last_success(self, db):
+        db.log_pipeline_error("talquin", "boom", timestamp=_ts(5))
+
+        detail = cs.unavailable_sources_detail(db, now=NOW)
+
+        assert detail[0]["display_name"] == "Talquin Electric Cooperative"
+        assert detail[0]["last_success"] is None
+        assert detail[0]["down_for"] is None
+
+    def test_empty_when_everything_is_healthy(self, db):
+        assert cs.unavailable_sources_detail(db, now=NOW) == []
+
+
 class TestLogPipelineSuccess:
     def test_keeps_only_the_latest_success(self, db):
         db.log_pipeline_success("duke", timestamp="2026-11-01T00:00:00")

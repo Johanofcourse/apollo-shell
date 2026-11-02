@@ -42,6 +42,7 @@ from county_status import (
     clay_etr_accuracy,
     attach_active_counties as _attach_active_counties,
     google_maps_url,
+    _last_success_for_source,
 )
 from storm_history import (
     available_history_counties as _available_history_counties,
@@ -695,6 +696,11 @@ def index():
     clay_etr_accuracy_stats = clay_etr_accuracy(db)
 
     pipeline_health = db.get_pipeline_health(sources=["fpl", "fpl_incidents", "weather", "teco", "duke", "jea", "tallahassee", "talquin", "fpuc", "preco", "fkec", "tcec", "erec", "chelco", "gcec", "lwbu", "ouc", "lcec", "clay", "correlation", "historical_tally"])
+    # Looked up here, before db.close(), rather than inside the
+    # display-formatting loop below - "last error" alone doesn't say
+    # whether a source has recovered since, a real gap surfaced by
+    # Duke's own 2026-11-02 outage.
+    last_success_by_source = {source: _last_success_for_source(db, source) for source in pipeline_health}
     heat_summary = db.get_heat_advisory_summary()
 
     db.close()
@@ -955,6 +961,9 @@ def index():
         info["source"] = source
         info["display_name"] = PIPELINE_SOURCE_DISPLAY_NAMES.get(source, source.title())
         info["last_error_ago"] = _duration_since(info["last_error_time"]) if info["last_error_time"] else None
+        last_success_time = last_success_by_source.get(source)
+        info["last_success_time"] = last_success_time
+        info["last_success_ago"] = _duration_since(last_success_time) if last_success_time else None
     pipeline_status_order = {"critical": 0, "warning": 1, "healthy": 2}
     pipeline_health_list = sorted(
         pipeline_health.values(),
