@@ -14,11 +14,12 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import dashboard
 from dashboard import (
     _incident_label, _explain_pipeline_error, _group_pipeline_errors,
-    _is_pipeline_error_ongoing, _normalize_open_events, _rows_for_county,
+    _is_pipeline_error_ongoing, _rows_for_county,
     _paginate, _split_chronic_errors, _summarize_chronic_errors,
     _build_unified_view, COUNTY_PICKER_CHOICES,
     _group_closed_events_by_month,
 )
+from county_status import _normalize_open_events
 
 
 class TestBuildUnifiedView:
@@ -680,6 +681,39 @@ class TestDashboardLogin:
         )
         client = dashboard.app.test_client()
         resp = client.get("/auth/callback")
+        assert "/login" in resp.headers["Location"]
+        with client.session_transaction() as sess:
+            assert "user_email" not in sess
+
+    def test_callback_after_user_cancels_google_consent_redirects_to_login(self, monkeypatch):
+        # Not mocked: Google's real "Cancel" redirect carries
+        # ?error=access_denied, which makes authlib itself raise
+        # OAuthError - that used to surface as a 500.
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"johan@example.com"})
+        client = dashboard.app.test_client()
+        resp = client.get("/auth/callback?error=access_denied")
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
+        with client.session_transaction() as sess:
+            assert "user_email" not in sess
+
+    def test_callback_with_stale_state_redirects_to_login(self, monkeypatch):
+        # A replayed/back-button callback whose state doesn't match the
+        # session raises MismatchingStateError inside authlib.
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"johan@example.com"})
+        client = dashboard.app.test_client()
+        resp = client.get("/auth/callback?code=abc&state=stale")
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
+        with client.session_transaction() as sess:
+            assert "user_email" not in sess
+
+    def test_failed_callback_does_not_keep_an_existing_session(self, monkeypatch):
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"johan@example.com"})
+        client = dashboard.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_email"] = "johan@example.com"
+        resp = client.get("/auth/callback?error=access_denied")
         assert "/login" in resp.headers["Location"]
         with client.session_transaction() as sess:
             assert "user_email" not in sess

@@ -1,6 +1,5 @@
 import os
 import requests
-import json
 from datetime import datetime
 from dotenv import load_dotenv
 from database import OutageDatabase
@@ -128,7 +127,7 @@ def display_south_florida_outages(data):
             print(f"  Percentage Affected: {percentage:.2f}%")
     
     print("\n" + "-" * 70)
-    print(f"TOTAL SOUTH FLORIDA:")
+    print("TOTAL SOUTH FLORIDA:")
     print(f"  Customers Out: {total_out:,}")
     print(f"  Total Customers: {total_served:,}")
     
