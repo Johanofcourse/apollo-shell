@@ -908,24 +908,32 @@ def main():
                 except Exception as e:
                     print(f"Outage fetch cycle failed: {e}")
                     db.log_pipeline_error("fpl", str(e))
+                else:
+                    db.log_pipeline_success("fpl")
 
             try:
                 run_weather_cycle(db)
             except Exception as e:
                 print(f"Weather fetch cycle failed: {e}")
                 db.log_pipeline_error("weather", str(e))
+            else:
+                db.log_pipeline_success("weather")
 
             try:
                 run_teco_cycle(db)
             except Exception as e:
                 print(f"TECO fetch cycle failed: {e}")
                 db.log_pipeline_error("teco", str(e))
+            else:
+                db.log_pipeline_success("teco")
 
             try:
                 run_duke_cycle(db)
             except Exception as e:
                 print(f"Duke fetch cycle failed: {e}")
                 db.log_pipeline_error("duke", str(e))
+            else:
+                db.log_pipeline_success("duke")
 
             if check_fpl_this_cycle:
                 try:
@@ -933,18 +941,24 @@ def main():
                 except Exception as e:
                     print(f"FPL incidents fetch cycle failed: {e}")
                     db.log_pipeline_error("fpl_incidents", str(e))
+                else:
+                    db.log_pipeline_success("fpl_incidents")
 
             try:
                 run_jea_cycle(db)
             except Exception as e:
                 print(f"JEA fetch cycle failed: {e}")
                 db.log_pipeline_error("jea", str(e))
+            else:
+                db.log_pipeline_success("jea")
 
             try:
                 run_tallahassee_cycle(db)
             except Exception as e:
                 print(f"Tallahassee fetch cycle failed: {e}")
                 db.log_pipeline_error("tallahassee", str(e))
+            else:
+                db.log_pipeline_success("tallahassee")
 
             check_talquin_preco_this_cycle = (
                 time.time() - last_talquin_preco_check >= TALQUIN_PRECO_INTERVAL_SECONDS
@@ -960,12 +974,16 @@ def main():
                 except Exception as e:
                     print(f"Talquin fetch cycle failed: {e}")
                     db.log_pipeline_error("talquin", str(e))
+                else:
+                    db.log_pipeline_success("talquin")
 
             try:
                 run_fpuc_cycle(db)
             except Exception as e:
                 print(f"FPUC fetch cycle failed: {e}")
                 db.log_pipeline_error("fpuc", str(e))
+            else:
+                db.log_pipeline_success("fpuc")
 
             if check_talquin_preco_this_cycle:
                 try:
@@ -973,6 +991,8 @@ def main():
                 except Exception as e:
                     print(f"PRECO fetch cycle failed: {e}")
                     db.log_pipeline_error("preco", str(e))
+                else:
+                    db.log_pipeline_success("preco")
 
                 try:
                     check_and_alert_pipeline_health(
@@ -986,66 +1006,88 @@ def main():
             except Exception as e:
                 print(f"FKEC fetch cycle failed: {e}")
                 db.log_pipeline_error("fkec", str(e))
+            else:
+                db.log_pipeline_success("fkec")
 
             try:
                 run_tcec_cycle(db)
             except Exception as e:
                 print(f"TCEC fetch cycle failed: {e}")
                 db.log_pipeline_error("tcec", str(e))
+            else:
+                db.log_pipeline_success("tcec")
 
             try:
                 run_erec_cycle(db)
             except Exception as e:
                 print(f"EREC fetch cycle failed: {e}")
                 db.log_pipeline_error("erec", str(e))
+            else:
+                db.log_pipeline_success("erec")
 
             try:
                 run_chelco_cycle(db)
             except Exception as e:
                 print(f"CHELCO fetch cycle failed: {e}")
                 db.log_pipeline_error("chelco", str(e))
+            else:
+                db.log_pipeline_success("chelco")
 
             try:
                 run_gcec_cycle(db)
             except Exception as e:
                 print(f"GCEC fetch cycle failed: {e}")
                 db.log_pipeline_error("gcec", str(e))
+            else:
+                db.log_pipeline_success("gcec")
 
             try:
                 run_lwbu_cycle(db)
             except Exception as e:
                 print(f"LWBU fetch cycle failed: {e}")
                 db.log_pipeline_error("lwbu", str(e))
+            else:
+                db.log_pipeline_success("lwbu")
 
             try:
                 run_ouc_cycle(db)
             except Exception as e:
                 print(f"OUC fetch cycle failed: {e}")
                 db.log_pipeline_error("ouc", str(e))
+            else:
+                db.log_pipeline_success("ouc")
 
             try:
                 run_lcec_cycle(db)
             except Exception as e:
                 print(f"LCEC fetch cycle failed: {e}")
                 db.log_pipeline_error("lcec", str(e))
+            else:
+                db.log_pipeline_success("lcec")
 
             try:
                 run_clay_cycle(db)
             except Exception as e:
                 print(f"Clay fetch cycle failed: {e}")
                 db.log_pipeline_error("clay", str(e))
+            else:
+                db.log_pipeline_success("clay")
 
             try:
                 run_correlation_cycle()
             except Exception as e:
                 print(f"Correlation cycle failed: {e}")
                 db.log_pipeline_error("correlation", str(e))
+            else:
+                db.log_pipeline_success("correlation")
 
             try:
                 run_historical_tally_cycle(db)
             except Exception as e:
                 print(f"Historical tally cycle failed: {e}")
                 db.log_pipeline_error("historical_tally", str(e))
+            else:
+                db.log_pipeline_success("historical_tally")
 
             try:
                 check_and_alert_sustained_failures(db)

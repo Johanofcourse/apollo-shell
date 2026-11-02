@@ -7,7 +7,7 @@ formatting functions only; no Flask/template dependency here.
 """
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytz
 
@@ -22,6 +22,69 @@ from correlate import (
     find_lwbu_correlations, find_ouc_correlations, find_lcec_correlations, find_clay_correlations,
 )
 from historical_import import FLORIDA_COUNTIES
+from alerting import (
+    ALERT_WORTHY_SOURCES, SUSTAINED_ALERT_WORTHY_SOURCES, PIPELINE_SOURCE_DISPLAY_NAMES,
+)
+
+# How long a source can keep failing before its still-"open" events stop
+# being shown as live. Long enough that an ordinary blip (one or two
+# failed 15-min polls, or one missed 45-min Talquin/PRECO poll) never
+# hides real outages; short enough that a dead feed doesn't present
+# frozen data as "right now" for days. Prompted by Duke's API key dying
+# 2026-07-20: its 39 last-seen incidents stayed "open" - and on the
+# public site - for 100+ days, since an event only closes when a
+# successful poll stops listing it.
+STALE_SOURCE_AFTER = timedelta(hours=2)
+
+# Where to look for a source's last success when pipeline_success has no
+# row for it yet (it only starts filling once the poller runs code that
+# writes it) - the same success-table map the sustained-failure alerts
+# use. Duke is overridden to duke_counties: duke_incidents is skipped on
+# zero-incident polls, but the county rollup is written every success.
+_FALLBACK_SUCCESS_TABLES = {
+    **{source: (table, "timestamp") for source, table in ALERT_WORTHY_SOURCES.items()},
+    **SUSTAINED_ALERT_WORTHY_SOURCES,
+    "duke": ("duke_counties", "fetched_at"),
+}
+
+
+def is_source_stale(db, source, now=None):
+    """
+    True when `source` is currently failing (its latest error is newer
+    than its latest success) AND has gone more than STALE_SOURCE_AFTER
+    without a success - i.e. whatever it last reported can no longer be
+    presented as live. A source with no recorded errors is never stale,
+    however quiet it's been.
+    """
+    last_error = db.get_last_pipeline_error_time(source)
+    if last_error is None:
+        return False
+
+    last_success = db.get_last_pipeline_success(source)
+    if last_success is None and source in _FALLBACK_SUCCESS_TABLES:
+        last_success = db.get_max_timestamp(*_FALLBACK_SUCCESS_TABLES[source])
+
+    if last_success is not None and last_success > last_error:
+        return False
+
+    now = now or datetime.now()
+    return last_success is None or last_success < (now - STALE_SOURCE_AFTER).isoformat()
+
+
+def unavailable_source_names(db, now=None):
+    """
+    Display names of every utility source whose live data is currently
+    being withheld as stale - for the "data temporarily unavailable"
+    notice, so a missing utility reads as "we can't see it right now,"
+    not "no outages there."
+    """
+    sources = {source for _, source, _, _ in _REAL_OPEN_EVENT_SOURCES + _COMBINED_OPEN_EVENT_SOURCES}
+    sources.add("fpl_incidents")
+    return sorted(
+        PIPELINE_SOURCE_DISPLAY_NAMES.get(source, source)
+        for source in sources
+        if is_source_stale(db, source, now=now)
+    )
 
 # The 67 real Florida county names, properly cased for display. See
 # FLORIDA_COUNTIES (all-caps, a PSC-parser artifact) - .title() handles
@@ -154,7 +217,49 @@ def _normalize_open_events(open_events, customers_field, peak_field):
     } for e in open_events]
 
 
-def _real_per_county_open_events(db):
+# (db getter name, pipeline source key, current field, peak field)
+_REAL_OPEN_EVENT_SOURCES = [
+    ("get_open_events", "fpl", "current_customers_out", "peak_customers_out"),
+    ("get_teco_open_events", "teco", "current_customer_count", "peak_customer_count"),
+    ("get_duke_open_events", "duke", "current_customer_count", "peak_customer_count"),
+    ("get_jea_open_events", "jea", "current_customers_out", "peak_customers_out"),
+    ("get_tallahassee_open_events", "tallahassee", "current_customers_out", "peak_customers_out"),
+    ("get_talquin_open_events", "talquin", "current_customers_out", "peak_customers_out"),
+    ("get_preco_open_events", "preco", "current_customers_out", "peak_customers_out"),
+    ("get_fkec_open_events", "fkec", "current_customers_out", "peak_customers_out"),
+    ("get_lwbu_open_events", "lwbu", "current_customers_out", "peak_customers_out"),
+    ("get_ouc_open_events", "ouc", "current_customers_out", "peak_customers_out"),
+    ("get_lcec_open_events", "lcec", "current_customers_out", "peak_customers_out"),
+    ("get_clay_open_events", "clay", "current_customers_out", "peak_customers_out"),
+    ("get_fpuc_open_incidents", "fpuc", "current_customer_count", "peak_customer_count"),
+]
+
+_COMBINED_OPEN_EVENT_SOURCES = [
+    ("get_fpuc_open_events", "fpuc", "current_customers_out", "peak_customers_out"),
+    ("get_tcec_open_events", "tcec", "current_customers_out", "peak_customers_out"),
+    ("get_erec_open_events", "erec", "current_customers_out", "peak_customers_out"),
+    ("get_chelco_open_events", "chelco", "current_customers_out", "peak_customers_out"),
+    ("get_gcec_open_events", "gcec", "current_customers_out", "peak_customers_out"),
+]
+
+
+def _collect_open_events(db, sources, now=None):
+    """
+    Normalized open events from each (getter, source, fields) entry,
+    skipping any source whose feed is stale (see is_source_stale()) -
+    its last-seen events aren't live anymore, and showing them as
+    "ongoing" would be wrong. Their history is untouched; only the
+    "right now" views drop them.
+    """
+    rows = []
+    for getter, source, current_field, peak_field in sources:
+        if is_source_stale(db, source, now=now):
+            continue
+        rows += _normalize_open_events(getattr(db, getter)(), current_field, peak_field)
+    return rows
+
+
+def _real_per_county_open_events(db, now=None):
     """
     Every currently-open event from a source whose "county" field is a
     real, single Florida county - safe to match exactly. Includes
@@ -163,41 +268,23 @@ def _real_per_county_open_events(db):
     deliberately NOT the combined-territory sources (FPUC's original
     combined view, TCEC, EREC, CHELCO, GCEC), whose "county" is a
     multi-name label rather than one real county - see
-    _combined_territory_open_events() below.
+    _combined_territory_open_events() below. Stale sources are left
+    out - see _collect_open_events().
     """
-    return (
-        _normalize_open_events(db.get_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_teco_open_events(), "current_customer_count", "peak_customer_count")
-        + _normalize_open_events(db.get_duke_open_events(), "current_customer_count", "peak_customer_count")
-        + _normalize_open_events(db.get_jea_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_tallahassee_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_talquin_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_preco_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_fkec_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_lwbu_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_ouc_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_lcec_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_clay_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_fpuc_open_incidents(), "current_customer_count", "peak_customer_count")
-    )
+    return _collect_open_events(db, _REAL_OPEN_EVENT_SOURCES, now=now)
 
 
-def _combined_territory_open_events(db):
+def _combined_territory_open_events(db, now=None):
     """
     Every currently-open event from a combined-territory source - real
     counties, just not splittable from a single response (see each
     fetch_X_outages.py module's own COMBINED_TERRITORY_LABEL). Kept as
     its own distinct group, never mixed in with the real per-county
     rows, so a reader can't mistake "the whole territory's number" for
-    "just this county's number."
+    "just this county's number." Stale sources are left out - see
+    _collect_open_events().
     """
-    return (
-        _normalize_open_events(db.get_fpuc_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_tcec_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_erec_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_chelco_open_events(), "current_customers_out", "peak_customers_out")
-        + _normalize_open_events(db.get_gcec_open_events(), "current_customers_out", "peak_customers_out")
-    )
+    return _collect_open_events(db, _COMBINED_OPEN_EVENT_SOURCES, now=now)
 
 
 def attach_active_counties(combined_events, selected_county, db):

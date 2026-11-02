@@ -1488,6 +1488,19 @@ class OutageDatabase:
             ON pipeline_errors(source, timestamp)
         ''')
 
+        # Counterpart to pipeline_errors: one row per source, the last
+        # time its fetch cycle completed without raising. Needed because
+        # several sources' data tables (duke_incidents, teco_incidents,
+        # fpl_incidents) are only written when the feed is non-empty, so
+        # "newest row in the data table" can't tell a quiet day apart
+        # from a dead feed. Read by county_status.is_source_stale().
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS pipeline_success (
+                source TEXT PRIMARY KEY,
+                timestamp TEXT NOT NULL
+            )
+        ''')
+
         conn.commit()
         print(f"Database initialized: {self.db_path}")
 
@@ -1507,6 +1520,44 @@ class OutageDatabase:
             VALUES (?, ?, ?)
         ''', (timestamp, source, error_message))
         conn.commit()
+
+    def log_pipeline_success(self, source, timestamp=None):
+        """
+        Record that `source`'s fetch cycle just completed without
+        raising (overwrites the previous success time - only the latest
+        one matters). Never raises: this is bookkeeping called from the
+        poll loop's own try/else, and a failure here must not take the
+        poller down.
+        """
+        try:
+            conn = self.connect()
+            timestamp = timestamp or datetime.now().isoformat()
+            conn.execute('''
+                INSERT INTO pipeline_success (source, timestamp) VALUES (?, ?)
+                ON CONFLICT(source) DO UPDATE SET timestamp = excluded.timestamp
+            ''', (source, timestamp))
+            conn.commit()
+        except Exception as e:
+            print(f"Failed to record pipeline success for {source}: {e}")
+
+    def get_last_pipeline_success(self, source):
+        row = self.connect().execute(
+            "SELECT timestamp FROM pipeline_success WHERE source = ?", (source,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def get_last_pipeline_error_time(self, source):
+        return self.connect().execute(
+            "SELECT MAX(timestamp) FROM pipeline_errors WHERE source = ?", (source,)
+        ).fetchone()[0]
+
+    def get_max_timestamp(self, table, column):
+        """
+        Newest value of `column` in `table`. table/column are trusted
+        constants from code (county_status's fallback map), never user
+        input - they're interpolated, not bound.
+        """
+        return self.connect().execute(f"SELECT MAX({column}) FROM {table}").fetchone()[0]
 
     def get_pipeline_health(self, sources=None, warning_window_hours=24, critical_window_hours=1, critical_count=3):
         """

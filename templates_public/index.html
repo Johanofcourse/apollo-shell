@@ -116,6 +116,8 @@
   .summary-panel p:last-child { margin-bottom: 0; }
   .summary-panel strong { color: var(--ink); font-weight: 600; overflow-wrap: break-word; }
   .summary-panel strong.c-magenta { color: var(--magenta); }
+  .summary-panel .data-gap-note { border-left: 3px solid var(--yellow); padding-left: 10px; color: var(--ink-soft); }
+  .summary-panel .data-gap-note strong { color: var(--yellow); }
 
   .hero {
     display: grid;
@@ -648,6 +650,14 @@
       <strong class="mono">{{ "{:,}".format(narrative.total_known_served) }}</strong> tracked customers with a known
       base right now{% endif %}.
     </p>
+    {% if unavailable_sources %}
+    <p class="data-gap-note">
+      <strong>Live data temporarily unavailable:</strong> {{ unavailable_sources | join(", ") }}.
+      We can't currently reach {{ "this utility's" if unavailable_sources|length == 1 else "these utilities'" }}
+      outage feed{{ "" if unavailable_sources|length == 1 else "s" }}, so {{ "its" if unavailable_sources|length == 1 else "their" }}
+      outages aren't included in the numbers or map above.
+    </p>
+    {% endif %}
     {% if narrative.worst_county_name %}
     <p>
       <strong>{{ narrative.worst_county_name }}</strong> County has the most customers out right now, with
