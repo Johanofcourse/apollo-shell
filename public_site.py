@@ -39,6 +39,7 @@ from county_status import (
     at_risk_counties,
     _normalize_open_events,
     google_maps_url,
+    is_source_stale, unavailable_source_names,
     MAX_PLAUSIBLE_SINGLE_OUTAGE_HOURS,
     MIN_EVENTS_FOR_CONFIDENT_RANGE,
 )
@@ -285,6 +286,8 @@ def _fpl_incident_pins(db):
     guessing a placement.
     """
     pins = []
+    if is_source_stale(db, "fpl_incidents"):
+        return pins
     for event in db.get_fpl_open_events():
         xy = project_lat_lon(event.get("lat"), event.get("lon"))
         if xy is None:
@@ -321,6 +324,8 @@ def _fpl_incident_rows(db, county):
     index()'s real_events handling for how the caller keeps the two
     from ever being displayed together for the same county.
     """
+    if is_source_stale(db, "fpl_incidents"):
+        return []
     events = [e for e in db.get_fpl_open_events() if (e.get("county") or "").upper() == county.upper()]
     return _normalize_open_events(events, "current_customer_count", "peak_customer_count")
 
@@ -417,6 +422,7 @@ def index():
     counties_data = _county_map_data(db, all_rows)
     fpl_incident_pins = _fpl_incident_pins(db)
     narrative = _narrative_stats(all_rows)
+    unavailable_sources = unavailable_source_names(db)
     heat_summary = db.get_heat_advisory_summary()
 
     all_active_alerts = db.get_active_weather_alerts()
@@ -651,6 +657,7 @@ def index():
         county_rings_json=json.dumps(county_map.FLORIDA_COUNTY_RINGS),
         fpl_incident_pins_json=json.dumps(fpl_incident_pins),
         narrative=narrative,
+        unavailable_sources=unavailable_sources,
         tracked_utility_count=TRACKED_UTILITY_COUNT,
         sentinel_version=SENTINEL_VERSION,
         heat_summary=heat_summary,
