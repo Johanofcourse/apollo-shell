@@ -652,7 +652,9 @@
     </p>
     {% if unavailable_sources %}
     <p class="data-gap-note">
-      <strong>Live data temporarily unavailable:</strong> {{ unavailable_sources | join(", ") }}.
+      <strong>Live data temporarily unavailable:</strong>
+      {% for s in unavailable_sources %}{{ s.display_name }}
+        <span class="mono" title="{{ s.last_success | humanize if s.last_success else 'No successful fetch on record' }}">(last good data {{ s.down_for ~ " ago" if s.down_for else "unavailable" }})</span>{% if not loop.last %}, {% endif %}{% endfor %}.
       We can't currently reach {{ "this utility's" if unavailable_sources|length == 1 else "these utilities'" }}
       outage feed{{ "" if unavailable_sources|length == 1 else "s" }}, so {{ "its" if unavailable_sources|length == 1 else "their" }}
       outages aren't included in the numbers or map above.

@@ -384,6 +384,9 @@
           Last: {{ source.last_error_ago }} ago &mdash; {{ source.last_error_message }}
         </div>
         {% endif %}
+        <div class="pipeline-source-detail" style="color: var(--muted);" title="{{ source.last_success_time | humanize if source.last_success_time else '' }}">
+          Last good data: {{ (source.last_success_ago ~ " ago") if source.last_success_ago else "never recorded" }}
+        </div>
       </div>
       {% endfor %}
     </div>

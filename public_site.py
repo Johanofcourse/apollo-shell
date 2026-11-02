@@ -39,7 +39,7 @@ from county_status import (
     at_risk_counties,
     _normalize_open_events,
     google_maps_url,
-    is_source_stale, unavailable_source_names,
+    is_source_stale, unavailable_sources_detail,
     MAX_PLAUSIBLE_SINGLE_OUTAGE_HOURS,
     MIN_EVENTS_FOR_CONFIDENT_RANGE,
 )
@@ -422,7 +422,7 @@ def index():
     counties_data = _county_map_data(db, all_rows)
     fpl_incident_pins = _fpl_incident_pins(db)
     narrative = _narrative_stats(all_rows)
-    unavailable_sources = unavailable_source_names(db)
+    unavailable_sources = unavailable_sources_detail(db)
     heat_summary = db.get_heat_advisory_summary()
 
     all_active_alerts = db.get_active_weather_alerts()

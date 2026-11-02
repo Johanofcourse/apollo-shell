@@ -48,6 +48,20 @@ _FALLBACK_SUCCESS_TABLES = {
 }
 
 
+def _last_success_for_source(db, source):
+    """
+    `source`'s last known successful fetch - pipeline_success if it's
+    ever logged one, otherwise the same fallback success table the
+    sustained-failure alerts use (see _FALLBACK_SUCCESS_TABLES). Shared
+    by is_source_stale() (just needs to know "how long ago") and
+    unavailable_sources_detail() (needs the actual timestamp to show).
+    """
+    last_success = db.get_last_pipeline_success(source)
+    if last_success is None and source in _FALLBACK_SUCCESS_TABLES:
+        last_success = db.get_max_timestamp(*_FALLBACK_SUCCESS_TABLES[source])
+    return last_success
+
+
 def is_source_stale(db, source, now=None):
     """
     True when `source` is currently failing (its latest error is newer
@@ -60,15 +74,19 @@ def is_source_stale(db, source, now=None):
     if last_error is None:
         return False
 
-    last_success = db.get_last_pipeline_success(source)
-    if last_success is None and source in _FALLBACK_SUCCESS_TABLES:
-        last_success = db.get_max_timestamp(*_FALLBACK_SUCCESS_TABLES[source])
+    last_success = _last_success_for_source(db, source)
 
     if last_success is not None and last_success > last_error:
         return False
 
     now = now or datetime.now()
     return last_success is None or last_success < (now - STALE_SOURCE_AFTER).isoformat()
+
+
+def _unavailable_sources(now=None):
+    sources = {source for _, source, _, _ in _REAL_OPEN_EVENT_SOURCES + _COMBINED_OPEN_EVENT_SOURCES}
+    sources.add("fpl_incidents")
+    return sources
 
 
 def unavailable_source_names(db, now=None):
@@ -78,13 +96,36 @@ def unavailable_source_names(db, now=None):
     notice, so a missing utility reads as "we can't see it right now,"
     not "no outages there."
     """
-    sources = {source for _, source, _, _ in _REAL_OPEN_EVENT_SOURCES + _COMBINED_OPEN_EVENT_SOURCES}
-    sources.add("fpl_incidents")
     return sorted(
         PIPELINE_SOURCE_DISPLAY_NAMES.get(source, source)
-        for source in sources
+        for source in _unavailable_sources()
         if is_source_stale(db, source, now=now)
     )
+
+
+def unavailable_sources_detail(db, now=None):
+    """
+    Same sources as unavailable_source_names(), but with *when* each
+    one's feed last actually succeeded - real feedback (2026-11-02)
+    after Duke's outage that a bare utility name with no sense of how
+    long isn't articulate enough. last_success is the raw ISO
+    timestamp (None if this source has never once succeeded); down_for
+    is _duration_since()'s compact "1d 3h 15m" form, for the same
+    timestamp, or None to match.
+    """
+    now = now or datetime.now()
+    result = []
+    for source in _unavailable_sources():
+        if not is_source_stale(db, source, now=now):
+            continue
+        last_success = _last_success_for_source(db, source)
+        result.append({
+            "display_name": PIPELINE_SOURCE_DISPLAY_NAMES.get(source, source),
+            "last_success": last_success,
+            "down_for": _duration_since(last_success, now.isoformat()) if last_success else None,
+        })
+    result.sort(key=lambda r: r["display_name"])
+    return result
 
 # The 67 real Florida county names, properly cased for display. See
 # FLORIDA_COUNTIES (all-caps, a PSC-parser artifact) - .title() handles

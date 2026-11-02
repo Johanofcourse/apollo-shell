@@ -20,6 +20,7 @@ from dashboard import (
     _group_closed_events_by_month,
 )
 from county_status import _normalize_open_events
+from database import OutageDatabase
 
 
 class TestBuildUnifiedView:
@@ -769,6 +770,48 @@ class TestProxyFixConfig:
         )
         assert resp.status_code == 302
         assert "redirect_uri=https%3A%2F%2Fdashboard.apollosentinel.app" in resp.headers["Location"]
+
+
+class TestPipelineHealthLastGoodData:
+    """
+    Real gap surfaced by Duke's own 2026-11-02 outage: the pipeline
+    health strip could say a source had failures, but never said
+    whether real data was still flowing - "last error" alone doesn't
+    answer "when did we last actually get something good."
+    """
+
+    def _authorized_client(self, monkeypatch, db_path):
+        monkeypatch.setattr(dashboard, "DASHBOARD_ALLOWED_EMAILS", {"test@example.com"})
+        monkeypatch.setattr(dashboard, "OutageDatabase", lambda *a, **k: OutageDatabase(db_path))
+        client = dashboard.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_email"] = "test@example.com"
+        return client
+
+    def test_shows_when_a_failing_source_last_succeeded(self, tmp_path, monkeypatch):
+        db_path = str(tmp_path / "test.db")
+        db = OutageDatabase(db_path)
+        db.log_pipeline_error("duke", "500 Server Error", timestamp="2026-11-02T10:00:00")
+        db.log_pipeline_success("duke", timestamp="2026-11-02T06:00:00")
+        db.close()
+
+        client = self._authorized_client(monkeypatch, db_path)
+        resp = client.get("/")
+
+        assert resp.status_code == 200
+        assert b"Last good data:" in resp.data
+
+    def test_never_succeeded_says_so_instead_of_a_bare_timestamp(self, tmp_path, monkeypatch):
+        db_path = str(tmp_path / "test.db")
+        db = OutageDatabase(db_path)
+        db.log_pipeline_error("duke", "500 Server Error", timestamp="2026-11-02T10:00:00")
+        db.close()
+
+        client = self._authorized_client(monkeypatch, db_path)
+        resp = client.get("/")
+
+        assert resp.status_code == 200
+        assert b"never recorded" in resp.data
 
 
 class TestCountyPageWithoutSelection:
