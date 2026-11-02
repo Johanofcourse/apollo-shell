@@ -1,7 +1,6 @@
 import os
 import re
 import secrets
-import sqlite3
 import sys
 import time
 from datetime import datetime, timedelta
@@ -10,6 +9,7 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, session, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from authlib.integrations.flask_client import OAuth
+from authlib.integrations.base_client.errors import OAuthError
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'apollo_shell'))
 
@@ -31,7 +31,7 @@ from correlate import (
 from county_status import (
     monthly_counts_for_county, line_chart_geometry,
     COUNTY_PICKER_CHOICES, _duration_since, _percentage_tier,
-    _normalize_open_events, _real_per_county_open_events,
+    _real_per_county_open_events,
     _combined_territory_open_events, _rows_for_county,
     _real_per_county_closed_events, _combined_territory_closed_events,
     humanize_timestamp as _humanize_timestamp,
@@ -44,9 +44,7 @@ from county_status import (
     google_maps_url,
 )
 from storm_history import (
-    HISTORICAL_DB_PATH,
     available_history_counties as _available_history_counties,
-    all_storms as _all_storms,
     load_history_for_county as _load_history_for_county,
     fpl_restoration_precedent as _fpl_restoration_precedent,
     fpl_restoration_precedent_by_wind_severity as _fpl_restoration_precedent_by_wind_severity,
@@ -141,7 +139,17 @@ def google_login():
 
 @app.route("/auth/callback")
 def auth_callback():
-    token = oauth.google.authorize_access_token()
+    # authorize_access_token() raises when Google sends the user back
+    # without a usable grant - they hit "Cancel" on the consent screen
+    # (?error=access_denied), or the callback URL is stale/replayed and
+    # its state no longer matches the session (MismatchingStateError,
+    # an OAuthError subclass). Either way that's a failed login, not a
+    # server error - send them back to the login page instead of a 500.
+    try:
+        token = oauth.google.authorize_access_token()
+    except OAuthError:
+        session.pop("user_email", None)
+        return redirect(url_for("login", error="Google sign-in didn't complete. Please try again."))
     userinfo = token.get("userinfo") or {}
     email = (userinfo.get("email") or "").strip().lower()
     if userinfo.get("email_verified") and email in DASHBOARD_ALLOWED_EMAILS:

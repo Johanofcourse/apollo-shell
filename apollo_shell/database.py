@@ -1,6 +1,5 @@
 import sqlite3
 from datetime import datetime, timedelta, timezone
-import os
 
 
 def _ensure_column(cursor, table, column, coltype='TEXT'):
